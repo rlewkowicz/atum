@@ -109,7 +109,7 @@ func TestApplicationPairedCompatibleReleaseUsesOldestCompatibleSameApplicationBa
 	}
 }
 
-func TestApplicationPairedSemanticAliasesShareExhaustionAndBaselineIdentity(t *testing.T) {
+func TestApplicationPairedChartsBacktrackWithinNewestSemanticApplication(t *testing.T) {
 	t.Parallel()
 
 	releases := []chartRelease{

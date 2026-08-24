@@ -271,7 +271,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if inferredMappings > 0 {
 		service.logger.InfoContext(ctx, "inferred tracked chart delivery mappings", "count", inferredMappings)
 	}
-	service.logger.InfoContext(ctx, "selecting newest compatible Big Bang and Kubernetes pair")
+	service.logger.InfoContext(ctx, "selecting compatible Kubernetes and charts for the newest Big Bang")
 	selection, err := service.selectCompatiblePlatform(
 		ctx,
 		bigBang,
@@ -889,26 +889,19 @@ type platformSelection struct {
 	clusterReleases      []config.ClusterRelease
 }
 
-// recordWrapperCandidateFailure is the candidate-selection boundary for
-// wrapper incompatibility. Ordinary resolution records the rejected
-// coordinate and continues the catalog; an exact historical selection has no
-// fallback candidate and returns the incompatibility directly.
-func recordWrapperCandidateFailure(
-	failures *[]string,
-	bigBangVersion string,
-	candidateCoordinate string,
-	pinned bool,
-	err error,
-) error {
+func incompatibleBigBangError(version string, pinned bool, failures []string) error {
+	selection := "newest Big Bang"
 	if pinned {
-		return fmt.Errorf(
-			"pinned Big Bang %s has an incompatible wrapper contract: %w",
-			bigBangVersion,
-			err,
-		)
+		selection = "pinned Big Bang"
 	}
-	*failures = append(*failures, candidateCoordinate+": "+err.Error())
-	return nil
+	return fmt.Errorf("%s %s is incompatible: %s", selection, version, strings.Join(failures, "; "))
+}
+
+// latestOnlyBigBangCandidate removes the release catalog after resolution so
+// platform selection cannot reinterpret older stable tags as candidates.
+func latestOnlyBigBangCandidate(latest resolvedGit) resolvedGit {
+	latest.Releases = nil
+	return latest
 }
 
 func (service *Service) selectCompatiblePlatform(
@@ -948,19 +941,11 @@ func (service *Service) selectCompatiblePlatform(
 	if err != nil {
 		return platformSelection{}, err
 	}
-	failures := make([]string, 0, len(bigBangLatest.Releases))
-	for index := range bigBangLatest.Releases {
-		if err := ctx.Err(); err != nil {
-			return platformSelection{}, err
-		}
-		candidate := bigBangLatest
-		if index != 0 {
-			var err error
-			candidate, err = resolveGitRelease(ctx, service.cache, "bigbang", desired.Platform.BigBang, bigBangLatest.Releases, index)
-			if err != nil {
-				return platformSelection{}, err
-			}
-		}
+	var failures []string
+	if err := ctx.Err(); err != nil {
+		return platformSelection{}, err
+	}
+	candidate := latestOnlyBigBangCandidate(bigBangLatest)
 		metadata, err := readChartMetadata(filepath.Join(candidate.Checkout, "chart"))
 		if err != nil {
 			return platformSelection{}, fmt.Errorf("inspect Big Bang chart %s: %w", candidate.Source.Version, err)
@@ -970,12 +955,16 @@ func (service *Service) selectCompatiblePlatform(
 		}
 		if metadata.KubeVersion == "" {
 			failures = append(failures, candidate.Source.Version+": Big Bang chart has no Kubernetes compatibility constraint")
-			continue
+			return platformSelection{}, incompatibleBigBangError(
+				candidate.Source.Version, resetToPinnedBigBang, failures,
+			)
 		}
 		candidate.Source.KubeVersion = metadata.KubeVersion
 		bigBangValues, err := readBigBangValues(candidate.Checkout)
 		if err != nil {
-			return platformSelection{}, err
+			return platformSelection{}, fmt.Errorf(
+				"read Big Bang %s values: %w", candidate.Source.Version, err,
+			)
 		}
 		effectiveValues := mergeValues(bigBangValues, configuredValues)
 		if err := verifySelectedPackages(effectiveValues, desired.Platform.Packages, desired.Platform.Charts); err != nil {
@@ -988,23 +977,21 @@ func (service *Service) selectCompatiblePlatform(
 			ctx, service.cache, candidate, desired.Platform, bigBangValues, effectiveValues, lock.Resolved,
 		)
 		if err != nil {
-			terminalErr := recordWrapperCandidateFailure(
-				&failures,
-				candidate.Source.Version,
-				candidate.Source.Version,
-				resetToPinnedBigBang,
-				fmt.Errorf("wrapper source contract: %w", err),
+			failures = append(
+				failures,
+				candidate.Source.Version+": wrapper source contract: "+err.Error(),
 			)
-			if terminalErr != nil {
-				return platformSelection{}, terminalErr
-			}
-			continue
+			return platformSelection{}, incompatibleBigBangError(
+				candidate.Source.Version, resetToPinnedBigBang, failures,
+			)
 		}
 		packages, err := resolvePackages(
 			ctx, service.cache, parallelism, bigBangValues, desired.Platform.Packages, resetToPinnedBigBang,
 		)
 		if err != nil {
-			return platformSelection{}, err
+			return platformSelection{}, fmt.Errorf(
+				"resolve Big Bang %s packages: %w", candidate.Source.Version, err,
+			)
 		}
 		candidateDesired := desired
 		candidateDesired.Platform.BigBang = candidate.Source
@@ -1019,14 +1006,22 @@ func (service *Service) selectCompatiblePlatform(
 		if err != nil {
 			if errors.Is(err, errNoCompatibleKubernetes) {
 				failures = append(failures, candidate.Source.Version+": "+err.Error())
-				continue
+				return platformSelection{}, incompatibleBigBangError(
+					candidate.Source.Version, resetToPinnedBigBang, failures,
+				)
 			}
-			return platformSelection{}, err
+			return platformSelection{}, fmt.Errorf(
+				"resolve Kubernetes candidates for Big Bang %s: %w",
+				candidate.Source.Version, err,
+			)
 		}
+		failures = make([]string, 0, len(kubernetesCandidates))
 		if resetToPinnedBigBang {
 			slices.Reverse(kubernetesCandidates)
 		}
 		for _, kubernetesCandidate := range kubernetesCandidates {
+			coordinate := candidate.Source.Version + "/Kubernetes " +
+				kubernetesCandidate.kubernetes.Version
 			trackedOffsets := make(map[string]int, len(desired.Platform.Charts))
 			bootstrapOffsets := make(map[string]int, len(desired.Platform.Bootstrap.Charts))
 			for attempt := 1; ; attempt++ {
@@ -1039,10 +1034,12 @@ func (service *Service) selectCompatiblePlatform(
 				)
 				if err != nil {
 					if errors.Is(err, errNoCompatibleKubernetes) {
-						failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+err.Error())
+						failures = append(failures, coordinate+": "+err.Error())
 						break
 					}
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"resolve tracked charts for %s: %w", coordinate, err,
+					)
 				}
 				bootstrapCharts, err := resolveBootstrapChartsForKubernetes(
 					ctx, service.charts, parallelism, desired.Platform.Bootstrap.Charts, bootstrapChartCatalogs,
@@ -1050,10 +1047,12 @@ func (service *Service) selectCompatiblePlatform(
 				)
 				if err != nil {
 					if errors.Is(err, errNoCompatibleKubernetes) {
-						failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+err.Error())
+						failures = append(failures, coordinate+": "+err.Error())
 						break
 					}
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"resolve bootstrap charts for %s: %w", coordinate, err,
+					)
 				}
 				for i := range trackedCharts {
 					attemptDesired.Platform.Charts[i] = trackedCharts[i].Chart
@@ -1063,7 +1062,7 @@ func (service *Service) selectCompatiblePlatform(
 				}
 				constraints := collectConstraints(&attemptDesired)
 				if _, err := compatibleKubernetes([]kubernetesRelease{kubernetesCandidate.kubernetes}, constraints); err != nil {
-					failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+err.Error())
+					failures = append(failures, coordinate+": "+err.Error())
 					break
 				}
 				candidateGenerated := cloneMap(generated)
@@ -1075,11 +1074,15 @@ func (service *Service) selectCompatiblePlatform(
 					trackedCharts,
 					attemptDesired.Delivery.Images,
 				); err != nil {
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"prepare generated values for %s: %w", coordinate, err,
+					)
 				}
 				candidateConfiguredValues, err := config.MergePlatformValues(operational, candidateGenerated, profile)
 				if err != nil {
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"merge platform values for %s: %w", coordinate, err,
+					)
 				}
 				candidateRenderValues, err := sourceVersionValues(
 					candidateConfiguredValues,
@@ -1090,18 +1093,24 @@ func (service *Service) selectCompatiblePlatform(
 					attemptDesired.Delivery.Images,
 				)
 				if err != nil {
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"prepare source values for %s: %w", coordinate, err,
+					)
 				}
 				candidateInputs, err := candidateArtifacts(
 					candidate, attemptDesired.Platform.Sources, attemptDesired.Platform.Bootstrap.Registry,
 					packages, trackedCharts, bootstrapCharts, candidateRenderValues, service.root, files,
 				)
 				if err != nil {
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"assemble candidate artifacts for %s: %w", coordinate, err,
+					)
 				}
 				artifacts, err := pairArtifacts(currentInputs, candidateInputs)
 				if err != nil {
-					return platformSelection{}, err
+					return platformSelection{}, fmt.Errorf(
+						"pair candidate artifacts for %s: %w", coordinate, err,
+					)
 				}
 				service.logger.InfoContext(ctx, "rendering candidate Helm contracts",
 					"bigbang", candidate.Source.Version,
@@ -1122,7 +1131,7 @@ func (service *Service) selectCompatiblePlatform(
 						)
 						continue
 					}
-					failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+err.Error())
+					failures = append(failures, coordinate+": "+err.Error())
 					break
 				}
 				retryChart := false
@@ -1160,7 +1169,7 @@ func (service *Service) selectCompatiblePlatform(
 						"kubernetes", kubernetesCandidate.kubernetes.Version,
 						"error", incompatible,
 					)
-					failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+incompatible)
+					failures = append(failures, coordinate+": "+incompatible)
 					break
 				}
 				if err := validatePlatformMeshContract(
@@ -1173,17 +1182,7 @@ func (service *Service) selectCompatiblePlatform(
 					openSearchIdentity.Host,
 				); err != nil {
 					contractErr := fmt.Errorf("platform mesh contract: %w", err)
-					coordinate := candidate.Source.Version + "/Kubernetes " + kubernetesCandidate.kubernetes.Version
-					terminalErr := recordWrapperCandidateFailure(
-						&failures,
-						candidate.Source.Version,
-						coordinate,
-						resetToPinnedBigBang,
-						contractErr,
-					)
-					if terminalErr != nil {
-						return platformSelection{}, terminalErr
-					}
+					failures = append(failures, coordinate+": "+contractErr.Error())
 					service.logger.WarnContext(ctx, "candidate Big Bang mesh contract is incompatible",
 						"bigbang", candidate.Source.Version,
 						"kubernetes", kubernetesCandidate.kubernetes.Version,
@@ -1199,13 +1198,13 @@ func (service *Service) selectCompatiblePlatform(
 					files,
 					service.root,
 				); err != nil {
-					coordinate := candidate.Source.Version + "/Kubernetes " +
-						kubernetesCandidate.kubernetes.Version
 					contractErr := fmt.Errorf("platform identity contract: %w", err)
 					if resetToPinnedBigBang {
-						return platformSelection{}, fmt.Errorf(
-							"pinned Big Bang %s has an incompatible identity contract: %w",
-							candidate.Source.Version, contractErr)
+						return platformSelection{}, incompatibleBigBangError(
+							candidate.Source.Version,
+							true,
+							[]string{coordinate + ": " + contractErr.Error()},
+						)
 					}
 					failures = append(failures, coordinate+": "+contractErr.Error())
 					service.logger.WarnContext(
@@ -1226,7 +1225,7 @@ func (service *Service) selectCompatiblePlatform(
 					kubernetesCandidate,
 				)
 				if err != nil {
-					failures = append(failures, candidate.Source.Version+"/Kubernetes "+kubernetesCandidate.kubernetes.Version+": "+err.Error())
+					failures = append(failures, coordinate+": "+err.Error())
 					break
 				}
 				return platformSelection{
@@ -1245,8 +1244,9 @@ func (service *Service) selectCompatiblePlatform(
 				}, nil
 			}
 		}
-	}
-	return platformSelection{}, fmt.Errorf("no stable compatible Big Bang/Kubernetes pair: %s", strings.Join(failures, "; "))
+	return platformSelection{}, incompatibleBigBangError(
+		candidate.Source.Version, resetToPinnedBigBang, failures,
+	)
 }
 
 func backtrackChart(id string, tracked, bootstrap map[string]int) bool {

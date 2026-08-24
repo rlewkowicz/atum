@@ -329,19 +329,6 @@ func TestCurrentWrapperContractValuesOnlySuppressesStaleConsumers(t *testing.T) 
 	if !reflect.DeepEqual(stale, secondStale) {
 		t.Fatal("stale wrapper baseline changed on the second pass")
 	}
-	var firstFailures, secondFailures []string
-	firstTerminal := recordWrapperCandidateFailure(
-		&firstFailures, "3.30.0", "3.30.0", false,
-		assertiveError("wrapper source contract: source moved"),
-	)
-	secondTerminal := recordWrapperCandidateFailure(
-		&secondFailures, "3.30.0", "3.30.0", false,
-		assertiveError("wrapper source contract: source moved"),
-	)
-	if !reflect.DeepEqual(firstFailures, secondFailures) || firstTerminal != nil || secondTerminal != nil {
-		t.Fatal("wrapper compatibility classification changed on the second pass")
-	}
-
 	current, err := currentWrapperContractValues(values, platform, []config.SupportSource{{ID: "wrapper"}})
 	if err != nil {
 		t.Fatalf("prepare current wrapper baseline: %v", err)
@@ -387,53 +374,6 @@ func TestWrapperMeshContractRequiresSupportForActiveConsumers(t *testing.T) {
 	err := validatePlatformMeshContract(resolvedGit{}, platform, nil, nil, values, "", "")
 	if err == nil || !strings.Contains(err.Error(), "one resolved wrapper support source") {
 		t.Fatalf("active wrapper contract without support = %v", err)
-	}
-}
-
-func TestWrapperCandidateFailureClassification(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name       string
-		coordinate string
-		failure    error
-	}{
-		{
-			name:       "source",
-			coordinate: "3.30.0",
-			failure:    assertiveError("wrapper source contract: source moved"),
-		},
-		{
-			name:       "mesh",
-			coordinate: "3.30.0/Kubernetes 1.35.4",
-			failure:    assertiveError("wrapper mesh contract: schema changed"),
-		},
-	}
-	for _, test := range cases {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			var failures []string
-			terminalErr := recordWrapperCandidateFailure(
-				&failures, "3.30.0", test.coordinate, false, test.failure,
-			)
-			if terminalErr != nil {
-				t.Fatalf("ordinary candidate failure became terminal: %v", terminalErr)
-			}
-			expected := test.coordinate + ": " + test.failure.Error()
-			if len(failures) != 1 || failures[0] != expected {
-				t.Fatalf("ordinary rejections = %#v", failures)
-			}
-
-			failures = nil
-			terminalErr = recordWrapperCandidateFailure(
-				&failures, "3.30.0", test.coordinate, true, test.failure,
-			)
-			if len(failures) != 0 || terminalErr == nil ||
-				!strings.Contains(terminalErr.Error(), "pinned Big Bang 3.30.0") ||
-				!strings.Contains(terminalErr.Error(), test.failure.Error()) {
-				t.Fatalf("pinned classification = (%#v, %v)", failures, terminalErr)
-			}
-		})
 	}
 }
 
@@ -654,10 +594,6 @@ func TestWrapperNamespaceRejectsPolicySchemaDrift(t *testing.T) {
 		})
 	}
 }
-
-type assertiveError string
-
-func (err assertiveError) Error() string { return string(err) }
 
 func wrapperTopologyFixture() (
 	*releaseValueCollector,

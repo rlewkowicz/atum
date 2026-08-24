@@ -255,8 +255,8 @@ atum platform flux <flux-args...>
 
 ## Upstream Updates
 
-Resolve the newest stable Big Bang, package, chart, Flux, and Kubespray set that
-satisfies the committed Kubernetes compatibility policy:
+Resolve the newest stable Big Bang, then select compatible package, chart,
+Flux, Kubernetes, and Kubespray coordinates beneath that release:
 
 ```sh
 atum pull updates --check
@@ -273,13 +273,16 @@ atum pull updates 0123456789abcdef0123456789abcdef01234567
 The pinned form intentionally permits the Big Bang-managed package versions
 to move backward and selects the oldest compatible Kubernetes/Kubespray entry
 from the committed release floor. It replaces the desired release ladder with
-that single baseline. The selected stable Big Bang release or exact commit is
-the compatibility authority for its package graph; Atum-owned custom and
-bootstrap dependencies still advance to the newest stable release compatible
-with that selection. After the baseline is deployed and healthy, the ordinary
-no-argument command resolves current upstreams and reconstructs every required
-one-minor Kubernetes/Kubespray upgrade step. Arbitrary commits, abbreviated
-hashes, prereleases, and commits without a stable release tag are rejected.
+that single baseline. The newest stable Big Bang release, or the exact commit
+for a historical baseline, is the sole Big Bang candidate and the compatibility
+authority for its package graph. Atum never retries an older Big Bang tag when
+that candidate is incompatible. Kubernetes/Kubespray candidates and Atum-owned
+custom and bootstrap chart releases are still searched for compatibility
+beneath the selected Big Bang release. After the baseline is deployed and
+healthy, the ordinary no-argument command resolves current upstreams and
+reconstructs every required one-minor Kubernetes/Kubespray upgrade step.
+Arbitrary commits, abbreviated hashes, prereleases, and commits without a
+stable release tag are rejected.
 
 The resolver enumerates bounded release catalogs, peels Git tags to commits,
 verifies chart archives and Kubespray checksums, renders the exact Flux/Helm
@@ -296,9 +299,9 @@ Bang release, snapshots it into the deployment bundle, mirrors it as
 `atum-upstreams/wrapper`, and points the generated Big Bang values at the
 immutable internal source. Historical Big Bang baselines therefore reproduce
 their historical wrapper selection. A moved tag, changed source declaration,
-or incompatible rendered wrapper contract rejects that Big Bang candidate;
-ordinary updates can fall back to an older compatible stable candidate, while
-an exact pinned baseline reports the incompatibility directly.
+or incompatible rendered wrapper contract terminates selection for the newest
+stable Big Bang or exact pinned baseline and reports that failed coordinate
+directly.
 
 Autonomous update catalogs exclude prerelease sources. Atum-managed custom and
 bootstrap charts also skip stable chart releases whose semantic `appVersion`
