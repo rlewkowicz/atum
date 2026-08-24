@@ -9,6 +9,7 @@ import (
 
 	"atum/cli/delivery"
 	"atum/cli/fssecure"
+	"atum/cli/identity"
 	"atum/cli/kube"
 	"atum/cli/progress"
 	atumsecrets "atum/cli/secrets"
@@ -38,11 +39,12 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 // potentially long Kubespray convergence without repeating it. Its fields are
 // deliberately private so callers cannot weaken the verified identities.
 type Handoff struct {
-	bundle      *delivery.DeploymentBundle
-	forgejo     *forgejoControl
-	credentials atumsecrets.Document
-	publication publicationReceipt
-	activated   bool
+	bundle           *delivery.DeploymentBundle
+	forgejo          *forgejoControl
+	credentials      atumsecrets.Document
+	identityContract *identity.Contract
+	publication      publicationReceipt
+	activated        bool
 }
 
 // Seed waits for the Terraform-owned bastion services and publishes the exact
@@ -64,6 +66,10 @@ func (service Service) Seed(
 	}
 	if err := credentials.Validate(); err != nil {
 		return nil, fmt.Errorf("validate seed credentials: %w", err)
+	}
+	contract, err := service.identityContract()
+	if err != nil {
+		return nil, err
 	}
 	timeout := timeoutOrDefault(options.Timeout)
 	progress.Start(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", "waiting for bastion registry")
@@ -90,17 +96,19 @@ func (service Service) Seed(
 	if err != nil {
 		return nil, fmt.Errorf("retain seed runtime image receipt: %w", err)
 	}
-	return &Handoff{
-		bundle:      bundle,
-		forgejo:     forgejo,
-		credentials: credentials,
+	handoff := &Handoff{
+		bundle:           bundle,
+		forgejo:          forgejo,
+		credentials:      credentials,
+		identityContract: contract,
 		publication: publicationReceipt{
 			registry: registryObservation{
 				imageExact: true, chartsExact: true, chartsImmutable: true,
 			},
 			runtimeImages: runtimeImages,
 		},
-	}, nil
+	}
+	return handoff, nil
 }
 
 func (service Service) preparePlatform(
@@ -127,29 +135,6 @@ func (service Service) preparePlatform(
 		return err
 	}
 	progress.Done(ctx, progress.Platform, "bundle", "Deployment bundle", "exact bundle imported")
-	if !handoff.activated {
-		progress.Start(ctx, progress.Platform, "forgejo", "Forgejo sources", "advancing the planner-approved platform source")
-		sources := service.Project.Desired.Platform.Sources
-		if err := handoff.forgejo.activateAtumSource(
-			ctx, bundle, sources.Organization, sources.Repository,
-		); err != nil {
-			progress.Fail(ctx, progress.Platform, "forgejo", "Forgejo sources", err)
-			return fmt.Errorf("activate exact platform source: %w", err)
-		}
-		progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
-			"deployed branch advanced with lease", 1, len(bundle.Repositories)+1)
-		if err := handoff.forgejo.activateUpstreams(
-			ctx,
-			bundle.Repositories,
-			sources.UpstreamOrganization,
-			service.Project.Desired.Updates.Parallelism,
-		); err != nil {
-			progress.Fail(ctx, progress.Platform, "forgejo", "Forgejo sources", err)
-			return fmt.Errorf("activate exact upstream sources: %w", err)
-		}
-		handoff.activated = true
-		progress.Done(ctx, progress.Platform, "forgejo", "Forgejo sources", "platform and upstream branches advanced with leases")
-	}
 	if handoff.forgejo.fluxToken == "" {
 		token, err := handoff.forgejo.rotateFluxToken()
 		if err != nil {
@@ -158,7 +143,7 @@ func (service Service) preparePlatform(
 		handoff.forgejo.fluxToken = token
 	}
 
-	if err := service.bootstrapFlux(ctx, client, bundle, handoff.forgejo, timeout); err != nil {
+	if err := service.bootstrapFlux(ctx, client, bundle, handoff, timeout); err != nil {
 		progress.Fail(ctx, progress.Platform, "flux", "Flux", err)
 		return err
 	}
@@ -167,6 +152,45 @@ func (service Service) preparePlatform(
 	}
 	service.logger().InfoContext(ctx, "platform preparation complete", "bundle", bundle.ArchiveSHA256)
 	return nil
+}
+
+func (service Service) identityContract() (*identity.Contract, error) {
+	target, exists := service.Project.Desired.ActiveTarget()
+	if !exists {
+		return nil, errors.New("active infrastructure target is undefined")
+	}
+	if target.PlatformProfile != "local" {
+		return nil, nil
+	}
+	relative, exists := service.Project.Desired.ActiveIdentityContractPath()
+	if !exists {
+		return nil, errors.New("local identity contract path is undefined")
+	}
+	contract, err := identity.Load(service.Project.Root, relative)
+	if err != nil {
+		return nil, err
+	}
+	return contract, nil
+}
+
+func (service Service) deriveIdentityProjection(
+	contract *identity.Contract,
+	credentials atumsecrets.Document,
+) (*identity.BootstrapProjection, error) {
+	target, exists := service.Project.Desired.ActiveTarget()
+	if !exists || target.LocalAccess == nil {
+		return nil, errors.New("local identity requires the active local-access target")
+	}
+	projection, err := identity.Derive(
+		contract,
+		credentials.Identity.Seed,
+		service.Project.Desired.Project.Cluster,
+		target.LocalAccess.Domain,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("derive platform identity projection: %w", err)
+	}
+	return projection, nil
 }
 
 func (service Service) Apply(ctx context.Context, options ApplyOptions) error {

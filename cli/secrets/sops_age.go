@@ -37,10 +37,15 @@ const (
 )
 
 type encryptedDocument struct {
-	SchemaVersion string                  `yaml:"schemaVersion"`
-	Forgejo       encryptedForgejoSecrets `yaml:"forgejo"`
-	Harbor        encryptedHarborSecrets  `yaml:"harbor"`
-	SOPS          ageMetadata             `yaml:"sops"`
+	SchemaVersion string                   `yaml:"schemaVersion"`
+	Forgejo       encryptedForgejoSecrets  `yaml:"forgejo"`
+	Harbor        encryptedHarborSecrets   `yaml:"harbor"`
+	Identity      encryptedIdentitySecrets `yaml:"identity"`
+	SOPS          ageMetadata              `yaml:"sops"`
+}
+
+type encryptedIdentitySecrets struct {
+	Seed string `yaml:"seed"`
 }
 
 type encryptedForgejoSecrets struct {
@@ -106,6 +111,7 @@ func encryptDocument(document Document, recipientStrings []string) ([]byte, erro
 		{document.Forgejo.AdminPassword, "forgejo:adminPassword:", func(value string) { encrypted.Forgejo.AdminPassword = value }},
 		{document.Harbor.AdminPassword, "harbor:adminPassword:", func(value string) { encrypted.Harbor.AdminPassword = value }},
 		{document.Harbor.SecretKey, "harbor:secretKey:", func(value string) { encrypted.Harbor.SecretKey = value }},
+		{document.Identity.Seed, "identity:seed:", func(value string) { encrypted.Identity.Seed = value }},
 	}
 	for _, field := range fields {
 		value, err := encryptSOPSString(field.plain, dataKey, field.path)
@@ -172,6 +178,13 @@ func decryptDocument(data []byte) (Document, error) {
 		{encrypted.Harbor.AdminPassword, "harbor:adminPassword:", func(value string) { document.Harbor.AdminPassword = value }},
 		{encrypted.Harbor.SecretKey, "harbor:secretKey:", func(value string) { document.Harbor.SecretKey = value }},
 	}
+	if encrypted.Identity.Seed != "" {
+		fields = append(fields, struct {
+			encrypted string
+			path      string
+			set       func(string)
+		}{encrypted.Identity.Seed, "identity:seed:", func(value string) { document.Identity.Seed = value }})
+	}
 	for _, field := range fields {
 		value, err := decryptSOPSString(field.encrypted, dataKey, field.path)
 		if err != nil {
@@ -197,6 +210,9 @@ func documentMAC(document Document) string {
 	_, _ = io.WriteString(hash, document.Forgejo.AdminPassword)
 	_, _ = io.WriteString(hash, document.Harbor.AdminPassword)
 	_, _ = io.WriteString(hash, document.Harbor.SecretKey)
+	if document.SchemaVersion != schemaVersionV1 {
+		_, _ = io.WriteString(hash, document.Identity.Seed)
+	}
 	return strings.ToUpper(hex.EncodeToString(hash.Sum(nil)))
 }
 

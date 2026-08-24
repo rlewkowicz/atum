@@ -2,10 +2,40 @@ package update
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"atum/cli/config"
 )
+
+func TestRenderFluxSyncOwnsPostAdmissionRoot(t *testing.T) {
+	t.Parallel()
+	desired := config.Document{
+		Project: config.ProjectConfig{Cluster: "atum"},
+		Platform: config.Platform{
+			Directory: "platform",
+			Sources: config.SourceRegistry{
+				ClusterURL:   "http://forgejo:3000",
+				Organization: "atum",
+				Repository:   "atum",
+			},
+		},
+	}
+	data, err := renderFluxSync(desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sync := string(data)
+	for _, required := range []string{
+		"branch: deployed",
+		"path: ./platform/clusters/atum",
+		"url: http://forgejo:3000/atum/atum.git",
+	} {
+		if !strings.Contains(sync, required) {
+			t.Fatalf("rendered Flux sync does not contain %q:\n%s", required, sync)
+		}
+	}
+}
 
 func TestFluxProfilePatch(t *testing.T) {
 	t.Parallel()

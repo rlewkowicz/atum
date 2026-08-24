@@ -2,14 +2,106 @@ package secrets
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"atum/cli/config"
 	"atum/cli/progress"
 )
+
+func TestLoadOrCreateLocalMigratesCompleteV1(t *testing.T) {
+	project := testProject(t)
+	legacy := struct {
+		SchemaVersion string         `json:"schemaVersion"`
+		Forgejo       ForgejoSecrets `json:"forgejo"`
+		Harbor        HarborSecrets  `json:"harbor"`
+	}{
+		SchemaVersion: schemaVersionV1,
+		Forgejo: ForgejoSecrets{
+			Username: "legacy_admin", AdminPassword: "123456789012345678901234",
+		},
+		Harbor: HarborSecrets{
+			AdminPassword: "abcdefghijklmnopqrstuvwx", SecretKey: "0123456789abcdef",
+		},
+	}
+	data, err := json.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(project.Root, project.Desired.Secrets.LocalFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(project); !errors.Is(err, ErrMigrationRequired) {
+		t.Fatalf("read-only load error = %v, want migration requirement", err)
+	}
+	document, created, err := LoadOrCreateLocal(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("migration was reported as fresh credential creation")
+	}
+	if document.Forgejo != legacy.Forgejo || document.Harbor != legacy.Harbor {
+		t.Fatal("v1 credentials changed during migration")
+	}
+	seed, err := base64.RawStdEncoding.DecodeString(document.Identity.Seed)
+	if err != nil || len(seed) != 32 {
+		t.Fatalf("migrated seed is invalid: length %d, error %v", len(seed), err)
+	}
+	clear(seed)
+	reloaded, err := Load(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded != document {
+		t.Fatal("migrated document was not stable")
+	}
+}
+
+func TestLoadOrCreateLocalSerializesV1Migration(t *testing.T) {
+	project := testProject(t)
+	legacy := []byte(`{
+  "schemaVersion": "atum.dev/secrets/v1",
+  "forgejo": {"username":"legacy_admin","adminPassword":"123456789012345678901234"},
+  "harbor": {"adminPassword":"abcdefghijklmnopqrstuvwx","secretKey":"0123456789abcdef"}
+}
+`)
+	path := filepath.Join(project.Root, project.Desired.Secrets.LocalFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	results := make([]Document, 8)
+	errs := make([]error, len(results))
+	var group sync.WaitGroup
+	group.Add(len(results))
+	for index := range results {
+		go func() {
+			defer group.Done()
+			results[index], _, errs[index] = LoadOrCreateLocal(project)
+		}()
+	}
+	group.Wait()
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("migration %d failed: %v", index, err)
+		}
+		if results[index] != results[0] {
+			t.Fatalf("migration %d observed a different canonical document", index)
+		}
+	}
+}
 
 func TestLoadOrCreateLocal(t *testing.T) {
 	project := testProject(t)

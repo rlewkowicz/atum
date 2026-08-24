@@ -1,0 +1,119 @@
+schemaVersion: atum.dev/identity/v1
+realm: master
+issuer: https://keycloak.atum.test/auth/realms/master
+scopes:
+  - openid
+  - profile
+  - email
+  - groups
+groupClaim: groups
+administrator:
+  username: atum
+  password: atum
+  group: atum-admins
+  serverRole: admin
+additionalEndpoints:
+  - id: keycloak
+    host: keycloak.atum.test
+    category: identity
+    access: browser
+  - id: gitlab-kas
+    host: kas.atum.test
+    category: development
+    access: token
+  - id: gitlab-registry
+    host: registry.atum.test
+    category: development
+    access: token
+clients:
+  - id: atum-headlamp
+    type: public-pkce
+    host: headlamp.atum.test
+    category: development
+    integration: native-oidc
+    callbacks:
+      - https://headlamp.atum.test/oidc-callback
+    administratorMapping: oidc:atum-admins=cluster-admin
+    audience: true
+  - id: atum-kiali
+    type: confidential
+    host: kiali.atum.test
+    category: observability
+    integration: native-oidc
+    secretPurpose: kiali
+    callbacks:
+      - https://kiali.atum.test/kiali
+    administratorMapping: authenticated-cluster-admin
+    audience: true
+  - id: atum-grafana
+    type: confidential
+    host: grafana.atum.test
+    category: observability
+    integration: native-oidc
+    secretPurpose: grafana
+    callbacks:
+      - https://grafana.atum.test/login/generic_oauth
+    administratorMapping: Admin
+  - id: atum-gitlab
+    type: confidential
+    host: gitlab.atum.test
+    category: development
+    integration: native-oidc
+    secretPurpose: gitlab
+    callbacks:
+      - https://gitlab.atum.test/users/auth/openid_connect/callback
+    administratorMapping: adminGroups
+  - id: atum-policy-reporter
+    type: confidential
+    host: policy.atum.test
+    category: observability
+    integration: native-oidc
+    secretPurpose: policy-reporter
+    callbacks:
+      - https://policy.atum.test/callback
+    administratorMapping: authenticated-ui-admin
+  - id: atum-harbor
+    type: confidential
+    host: harbor.atum.test
+    category: development
+    integration: native-oidc
+    secretPurpose: harbor
+    callbacks:
+      - https://harbor.atum.test/c/oidc/callback
+    administratorMapping: oidc-admin-group
+  - id: atum-openbao
+    type: confidential
+    host: vault.atum.test
+    category: identity
+    integration: flux-reconciliation
+    secretPurpose: openbao
+    callbacks:
+      - https://vault.atum.test/ui/vault/auth/oidc/oidc/callback
+    administratorMapping: administrator-policy
+  - id: atum-prometheus
+    type: confidential
+    host: prometheus.atum.test
+    category: observability
+    integration: authservice
+    secretPurpose: prometheus
+    callbacks:
+      - https://prometheus.atum.test/oauth2/callback
+    administratorMapping: authenticated
+  - id: atum-alertmanager
+    type: confidential
+    host: alertmanager.atum.test
+    category: observability
+    integration: authservice
+    secretPurpose: alertmanager
+    callbacks:
+      - https://alertmanager.atum.test/oauth2/callback
+    administratorMapping: authenticated
+  - id: atum-opensearch
+    type: confidential
+    host: opensearch.atum.test
+    category: observability
+    integration: authservice
+    secretPurpose: opensearch
+    callbacks:
+      - https://opensearch.atum.test/oauth2/callback
+    administratorMapping: authenticated

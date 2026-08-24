@@ -274,6 +274,18 @@ func (d Document) ActiveProfileValuesPath() (string, bool) {
 	return path, exists
 }
 
+// ActiveIdentityContractPath returns the canonical contract for profiles that
+// own human identity. Profiles without one intentionally return false.
+func (d Document) ActiveIdentityContractPath() (string, bool) {
+	target, exists := d.ActiveTarget()
+	if !exists || target.PlatformProfile != "local" {
+		return "", false
+	}
+	return filepath.Join(
+		d.Platform.Directory, "profiles", target.PlatformProfile, "identity", "contract.yaml",
+	), true
+}
+
 // ActiveBootstrapCharts returns the bootstrap charts reconciled by the active
 // profile. Charts without an explicit profile remain global. Validated profile
 // slices are sorted, allowing allocation-free membership checks.
@@ -1263,6 +1275,9 @@ func (p *Project) validate(allowStale bool, files map[string][]byte) error {
 			filepath.Join(profileRoot, "prep", "kustomization.yaml"),
 			filepath.Join(profileRoot, "access", "kustomization.yaml"),
 		)
+		if profile == "local" {
+			requiredFiles = append(requiredFiles, filepath.Join(profileRoot, "identity", "contract.yaml"))
+		}
 	}
 	for _, relative := range requiredFiles {
 		if _, exists := files[relative]; exists {

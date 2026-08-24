@@ -73,6 +73,7 @@ func (service Service) ClearLocalState() error {
 		filepath.Join(inventory, "hosts.yaml"),
 		installIntentPath,
 		identityVariablesPath,
+		platformIdentityVariablesPath,
 	} {
 		if err := fssecure.RemoveRegular(service.Project.Root, relative); err != nil {
 			return err

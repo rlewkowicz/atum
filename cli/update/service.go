@@ -391,6 +391,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	fluxKustomizationPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "kustomization.yaml")
+	fluxSyncPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "gotk-sync.yaml")
+	candidateFluxSync, err := renderFluxSync(desired)
+	if err != nil {
+		return Result{}, err
+	}
 	fluxKustomization, err := tree.YAML(fluxKustomizationPath)
 	if err != nil {
 		return Result{}, err
@@ -562,6 +567,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, errors.New("resolved Flux source must contain exactly one install asset")
 	}
 	if err := tree.Set(desired.Platform.Flux.Assets[0].File, fluxManifest); err != nil {
+		return Result{}, err
+	}
+	if err := tree.Set(fluxSyncPath, candidateFluxSync); err != nil {
 		return Result{}, err
 	}
 	if err := setCandidateYAML(tree, fluxKustomizationPath, fluxKustomization, candidateFluxKustomization); err != nil {

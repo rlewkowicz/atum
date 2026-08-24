@@ -17,6 +17,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
@@ -26,22 +27,26 @@ import (
 )
 
 const (
-	SchemaVersion = "atum.dev/secrets/v1"
-	fileLimit     = 1 << 20
+	SchemaVersion   = "atum.dev/secrets/v2"
+	schemaVersionV1 = "atum.dev/secrets/v1"
+	fileLimit       = 1 << 20
+	migrationLock   = ".atum/state/secrets-migration.lock"
 )
 
 var (
 	ErrNotFound            = errors.New("secrets do not exist")
+	ErrMigrationRequired   = errors.New("secrets migration to atum.dev/secrets/v2 is required")
 	forgejoUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38}[A-Za-z0-9])?$`)
 	harborSecretKeyPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 )
 
-// Document is the complete credential set required to bootstrap the internal
-// Forgejo and Harbor control plane.
+// Document is the canonical credential set required to bootstrap the internal
+// Forgejo and Harbor control plane and derive the platform identity projection.
 type Document struct {
-	SchemaVersion string         `json:"schemaVersion" yaml:"schemaVersion"`
-	Forgejo       ForgejoSecrets `json:"forgejo" yaml:"forgejo"`
-	Harbor        HarborSecrets  `json:"harbor" yaml:"harbor"`
+	SchemaVersion string          `json:"schemaVersion" yaml:"schemaVersion"`
+	Forgejo       ForgejoSecrets  `json:"forgejo" yaml:"forgejo"`
+	Harbor        HarborSecrets   `json:"harbor" yaml:"harbor"`
+	Identity      IdentitySecrets `json:"identity" yaml:"identity"`
 }
 
 type ForgejoSecrets struct {
@@ -52,6 +57,10 @@ type ForgejoSecrets struct {
 type HarborSecrets struct {
 	AdminPassword string `json:"adminPassword" yaml:"adminPassword"`
 	SecretKey     string `json:"secretKey" yaml:"secretKey"`
+}
+
+type IdentitySecrets struct {
+	Seed string `json:"seed" yaml:"seed"`
 }
 
 // InitOptions controls creation of exactly one secrets representation.
@@ -109,6 +118,21 @@ func LoadOrCreateLocal(project *config.Project) (Document, bool, error) {
 	if err == nil {
 		return document, false, nil
 	}
+	if errors.Is(err, ErrMigrationRequired) {
+		unlock, lockErr := fssecure.LockContext(context.Background(), project.Root, migrationLock, 25*time.Millisecond)
+		if lockErr != nil {
+			return Document{}, false, fmt.Errorf("lock secrets migration: %w", lockErr)
+		}
+		defer unlock()
+		if document, err = Load(project); err == nil {
+			return document, false, nil
+		}
+		if !errors.Is(err, ErrMigrationRequired) {
+			return Document{}, false, err
+		}
+		document, err = migrateLocal(project)
+		return document, false, err
+	}
 	if !errors.Is(err, ErrNotFound) {
 		return Document{}, false, err
 	}
@@ -157,52 +181,79 @@ func Ensure(ctx context.Context, project *config.Project, logger *slog.Logger) (
 // validates the resulting typed credentials. A local document may be complete
 // or may replace only selected non-empty fields.
 func Load(project *config.Project) (Document, error) {
+	document, migration, _, _, err := load(project)
+	if err != nil {
+		return Document{}, err
+	}
+	if migration {
+		return Document{}, fmt.Errorf("%w; run a mutating Atum apply or prepare command", ErrMigrationRequired)
+	}
+	return document, nil
+}
+
+func load(project *config.Project) (Document, bool, partialDocument, bool, error) {
 	if project == nil {
-		return Document{}, errors.New("project is required")
+		return Document{}, false, partialDocument{}, false, errors.New("project is required")
 	}
 	var override partialDocument
 	localLoaded := false
+	localV1 := false
+	sopsV1 := false
 	if data, exists, err := readOptional(project.Root, project.Desired.Secrets.LocalFile, true); err != nil {
-		return Document{}, fmt.Errorf("read local secrets override: %w", err)
+		return Document{}, false, override, false, fmt.Errorf("read local secrets override: %w", err)
 	} else if exists {
 		if err := config.DecodeJSON(data, &override); err != nil {
 			clear(data)
-			return Document{}, fmt.Errorf("decode local secrets override: %w", err)
+			return Document{}, false, override, false, fmt.Errorf("decode local secrets override: %w", err)
 		}
 		clear(data)
 		localLoaded = true
+		localV1 = override.SchemaVersion == schemaVersionV1
 		var local Document
 		applyOverride(&local, override)
 		if err := local.Validate(); err == nil {
-			return local, nil
+			return local, false, override, true, nil
 		}
 	}
 	var document Document
 	loaded := false
 	if data, exists, err := readOptional(project.Root, project.Desired.Secrets.SOPSFile, false); err != nil {
-		return Document{}, fmt.Errorf("read SOPS secrets: %w", err)
+		return Document{}, false, override, localLoaded, fmt.Errorf("read SOPS secrets: %w", err)
 	} else if exists {
 		decrypted, err := decryptDocument(data)
 		clear(data)
 		if err != nil {
-			return Document{}, fmt.Errorf("decrypt SOPS secrets: %w", err)
+			return Document{}, false, override, localLoaded, fmt.Errorf("decrypt SOPS secrets: %w", err)
 		}
 		document = decrypted
 		loaded = true
+		sopsV1 = document.SchemaVersion == schemaVersionV1
 	}
 	if localLoaded {
 		applyOverride(&document, override)
 		loaded = true
 	}
 	if !loaded {
-		return Document{}, fmt.Errorf("%w at %s or %s; run `atum secrets init`",
+		return Document{}, false, override, localLoaded, fmt.Errorf("%w at %s or %s; run `atum secrets init`",
 			ErrNotFound,
 			project.Desired.Secrets.SOPSFile, project.Desired.Secrets.LocalFile)
 	}
-	if err := document.Validate(); err != nil {
-		return Document{}, err
+	migration := localV1 || (sopsV1 &&
+		!(localLoaded && override.SchemaVersion == SchemaVersion && override.Identity.Seed != nil))
+	if migration {
+		document.SchemaVersion = SchemaVersion
+		if document.Identity.Seed == "" {
+			seed, err := randomSeed()
+			if err != nil {
+				return Document{}, false, override, localLoaded, err
+			}
+			document.Identity.Seed = seed
+		}
 	}
-	return document, nil
+	if err := document.Validate(); err != nil {
+		return Document{}, false, override, localLoaded, err
+	}
+	return document, migration, override, localLoaded, nil
 }
 
 func (document Document) Validate() error {
@@ -222,6 +273,11 @@ func (document Document) Validate() error {
 	if !harborSecretKeyPattern.MatchString(document.Harbor.SecretKey) {
 		problems = append(problems, "harbor.secretKey must be exactly 16 lowercase hexadecimal characters")
 	}
+	seed, err := base64.RawStdEncoding.DecodeString(document.Identity.Seed)
+	if err != nil || len(seed) != 32 {
+		problems = append(problems, "identity.seed must encode exactly 32 bytes using raw base64")
+	}
+	clear(seed)
 	if len(problems) != 0 {
 		return fmt.Errorf("secrets validation failed:\n- %s", strings.Join(problems, "\n- "))
 	}
@@ -229,9 +285,14 @@ func (document Document) Validate() error {
 }
 
 type partialDocument struct {
-	SchemaVersion string                `json:"schemaVersion"`
-	Forgejo       partialForgejoSecrets `json:"forgejo"`
-	Harbor        partialHarborSecrets  `json:"harbor"`
+	SchemaVersion string                 `json:"schemaVersion"`
+	Forgejo       partialForgejoSecrets  `json:"forgejo"`
+	Harbor        partialHarborSecrets   `json:"harbor"`
+	Identity      partialIdentitySecrets `json:"identity"`
+}
+
+type partialIdentitySecrets struct {
+	Seed *string `json:"seed,omitempty"`
 }
 
 type partialForgejoSecrets struct {
@@ -260,6 +321,9 @@ func applyOverride(document *Document, override partialDocument) {
 	if override.Harbor.SecretKey != nil {
 		document.Harbor.SecretKey = *override.Harbor.SecretKey
 	}
+	if override.Identity.Seed != nil {
+		document.Identity.Seed = *override.Identity.Seed
+	}
 }
 
 func generate() (Document, error) {
@@ -272,6 +336,7 @@ func generate() (Document, error) {
 		return Document{}, fmt.Errorf("generate Harbor password: %w", err)
 	}
 	key := make([]byte, 8)
+	defer clear(key)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return Document{}, fmt.Errorf("generate Harbor secret key: %w", err)
 	}
@@ -286,8 +351,62 @@ func generate() (Document, error) {
 			SecretKey:     hex.EncodeToString(key),
 		},
 	}
-	clear(key)
+	seed, err := randomSeed()
+	if err != nil {
+		return Document{}, err
+	}
+	document.Identity.Seed = seed
 	return document, document.Validate()
+}
+
+func randomSeed() (string, error) {
+	seed := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
+		return "", fmt.Errorf("generate identity seed: %w", err)
+	}
+	encoded := base64.RawStdEncoding.EncodeToString(seed)
+	clear(seed)
+	return encoded, nil
+}
+
+func migrateLocal(project *config.Project) (Document, error) {
+	document, migration, override, localLoaded, err := load(project)
+	if err != nil {
+		return Document{}, err
+	}
+	if !migration {
+		return document, nil
+	}
+	var data []byte
+	if localLoaded {
+		override.SchemaVersion = SchemaVersion
+		override.Identity.Seed = &document.Identity.Seed
+		var local Document
+		applyOverride(&local, override)
+		if local.Validate() == nil {
+			data, err = json.MarshalIndent(document, "", "  ")
+		} else {
+			data, err = json.MarshalIndent(override, "", "  ")
+		}
+	} else {
+		seed := document.Identity.Seed
+		override = partialDocument{SchemaVersion: SchemaVersion, Identity: partialIdentitySecrets{Seed: &seed}}
+		data, err = json.MarshalIndent(override, "", "  ")
+	}
+	if err != nil {
+		return Document{}, fmt.Errorf("encode migrated local secrets: %w", err)
+	}
+	data = append(data, '\n')
+	defer clear(data)
+	if localLoaded {
+		err = fssecure.ReplaceRegular(project.Root, project.Desired.Secrets.LocalFile, data, 0o600)
+	} else {
+		err = fssecure.WriteRegular(project.Root, project.Desired.Secrets.LocalFile, data, 0o600)
+	}
+	if err != nil {
+		return Document{}, fmt.Errorf("atomically migrate local secrets: %w", err)
+	}
+	return document, nil
 }
 
 func randomPassword(bytesCount int) (string, error) {

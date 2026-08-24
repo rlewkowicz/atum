@@ -327,6 +327,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		filepath.Join(clusterRoot, "platform-profile-prep.yaml"),
 		filepath.Join(clusterRoot, "prep.yaml"),
 		filepath.Join(clusterRoot, "flux-system", "platform-profile.yaml"),
+		filepath.Join(clusterRoot, "flux-system", "gotk-sync.yaml"),
 		"platform/build/.dockerignore",
 		"platform/build/docker-bake.hcl",
 	}

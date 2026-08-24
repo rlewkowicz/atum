@@ -42,8 +42,15 @@ func TestPlatformProfileSelection(t *testing.T) {
 	if got, ok := document.ActiveProfileValuesPath(); !ok || got != "platform/profiles/local/prep/values.yaml" {
 		t.Fatalf("local profile values = %q, %t", got, ok)
 	}
+	if got, ok := document.ActiveIdentityContractPath(); !ok ||
+		got != "platform/profiles/local/identity/contract.yaml" {
+		t.Fatalf("local identity contract = %q, %t", got, ok)
+	}
 
 	document.Infrastructure.Active = "cloud"
+	if got, ok := document.ActiveIdentityContractPath(); ok || got != "" {
+		t.Fatalf("cloud identity contract = %q, %t", got, ok)
+	}
 	if got, want := chartIDs(document.ActiveBootstrapCharts()), []string{"global", "cloud-only", "both"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("cloud bootstrap charts = %v, want %v", got, want)
 	}
