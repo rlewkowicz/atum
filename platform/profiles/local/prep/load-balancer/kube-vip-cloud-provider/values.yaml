@@ -1,0 +1,16 @@
+replicasCount: 1
+image:
+  repository: 10.77.0.9:32443/atum/kube-vip-cloud-provider
+  tag: v0.0.12
+  pullPolicy: IfNotPresent
+cm:
+  data:
+    range-global: 10.77.0.22-10.77.0.39
+enableloadbalancerClass: false
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi

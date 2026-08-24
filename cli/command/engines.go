@@ -1,0 +1,535 @@
+package command
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"atum/cli/config"
+	"atum/cli/delivery"
+	"atum/cli/infra"
+	"atum/cli/orchestration"
+	"atum/cli/preflight"
+	"atum/cli/process"
+	"atum/cli/progress"
+	atumsecrets "atum/cli/secrets"
+)
+
+func (a *app) runTerraform(ctx context.Context, args ...string) error {
+	return a.runTerraformWithEnvironment(ctx, nil, args...)
+}
+
+type terraformRuntime struct {
+	binary      string
+	target      config.InfrastructureTarget
+	environment []string
+}
+
+func (a *app) terraformRuntime(additionalEnvironment []string) (terraformRuntime, error) {
+	if err := a.ensureProjectLoaded(); err != nil {
+		return terraformRuntime{}, err
+	}
+	target, exists := a.project.Desired.ActiveTarget()
+	if !exists {
+		return terraformRuntime{}, fmt.Errorf("active infrastructure target %q is not defined", a.project.Desired.Infrastructure.Active)
+	}
+	terraform, err := a.requiredBinary(preflight.Terraform)
+	if err != nil {
+		return terraformRuntime{}, err
+	}
+	environment, err := terraformTargetEnvironment(target, additionalEnvironment)
+	if err != nil {
+		return terraformRuntime{}, err
+	}
+	return terraformRuntime{binary: terraform, target: target, environment: environment}, nil
+}
+
+func terraformTargetEnvironment(target config.InfrastructureTarget, additional []string) ([]string, error) {
+	const localVariableCount = 6
+	capacity := len(additional)
+	if target.LocalAccess != nil {
+		capacity += localVariableCount
+	}
+	environment := make([]string, 0, capacity)
+	if target.LocalAccess != nil {
+		access := target.LocalAccess
+		rangeStart, rangeEnd, found := strings.Cut(access.LoadBalancerRange, "-")
+		if !found {
+			return nil, fmt.Errorf("local access load-balancer range %q is invalid", access.LoadBalancerRange)
+		}
+		loadBalancerRange, err := json.Marshal(struct {
+			Start string `json:"start"`
+			End   string `json:"end"`
+		}{Start: rangeStart, End: rangeEnd})
+		if err != nil {
+			return nil, fmt.Errorf("encode local access load-balancer range: %w", err)
+		}
+		passthroughHosts := append([]string(nil), access.PassthroughHosts...)
+		sort.Strings(passthroughHosts)
+		encodedHosts, err := json.Marshal(passthroughHosts)
+		if err != nil {
+			return nil, fmt.Errorf("encode local access passthrough hosts: %w", err)
+		}
+		environment = append(environment,
+			"TF_VAR_platform_domain="+access.Domain,
+			"TF_VAR_dns_server="+access.DNSServer,
+			"TF_VAR_public_ingress_vip="+access.PublicIngressVIP,
+			"TF_VAR_passthrough_ingress_vip="+access.PassthroughIngressVIP,
+			"TF_VAR_load_balancer_range="+string(loadBalancerRange),
+			"TF_VAR_passthrough_hosts="+string(encodedHosts),
+		)
+	}
+	environment = append(environment, additional...)
+	return environment, nil
+}
+
+func (a *app) runTerraformCommand(ctx context.Context, runtime terraformRuntime, args ...string) error {
+	terraformArgs := make([]string, 0, len(args)+1)
+	terraformArgs = append(terraformArgs, "-chdir="+runtime.target.Directory)
+	terraformArgs = append(terraformArgs, args...)
+	return a.runCommand(ctx, "Terraform", process.Command{
+		Name: runtime.binary,
+		Args: terraformArgs,
+		Dir:  a.root,
+		Env:  runtime.environment,
+	})
+}
+
+func (a *app) runTerraformWithEnvironment(ctx context.Context, environment []string, args ...string) error {
+	runtime, err := a.terraformRuntime(environment)
+	if err != nil {
+		return err
+	}
+	return a.runTerraformCommand(ctx, runtime, args...)
+}
+
+func (a *app) runTerraformAction(ctx context.Context, action string, args ...string) error {
+	return a.runTerraformActionWithEnvironment(ctx, action, nil, args...)
+}
+
+func (a *app) runTerraformActionWithEnvironment(
+	ctx context.Context,
+	action string,
+	environment []string,
+	args ...string,
+) error {
+	label := "Terraform " + action
+	progress.Start(ctx, progress.Infrastructure, "terraform", label, "initializing")
+	runtime, err := a.terraformRuntime(environment)
+	if err != nil {
+		progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
+		return err
+	}
+	if terraformInformational(args) {
+		err := a.runTerraformCommand(ctx, runtime, append([]string{action}, args...)...)
+		if err != nil {
+			progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
+			return err
+		}
+		progress.Done(ctx, progress.Infrastructure, "terraform", label, "complete")
+		progress.Finish(ctx, progress.Infrastructure, progress.Complete, "complete")
+		return nil
+	}
+	if err := a.runTerraformCommand(ctx, runtime, "init", "-input=false"); err != nil {
+		err = fmt.Errorf("initialize Terraform target: %w", err)
+		progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
+		return err
+	}
+	progress.Update(ctx, progress.Infrastructure, "terraform", label, "converging", 0, 0)
+	terraformArgs := make([]string, 0, len(args)+3)
+	terraformArgs = append(terraformArgs, action)
+	terraformArgs = append(terraformArgs, args...)
+	if runtime.target.AutoApprove && (action == "apply" || action == "destroy") && !hasTerraformAutoApprove(args) {
+		terraformArgs = append(terraformArgs, "-auto-approve")
+	}
+	if !a.raw && terraformStructuredOutput(action, runtime.target.AutoApprove, args) && !hasTerraformJSON(args) {
+		terraformArgs = append(terraformArgs, "-json")
+	}
+	if err := a.runTerraformCommand(ctx, runtime, terraformArgs...); err != nil {
+		progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
+		return err
+	}
+	if action == "destroy" && !a.dryRun {
+		if err := a.orchestrationService().ClearLocalState(); err != nil {
+			err = fmt.Errorf("clear local orchestration state after Terraform destroy: %w", err)
+			progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
+			return err
+		}
+	}
+	detail := "converged"
+	switch action {
+	case "destroy":
+		detail = "destroyed"
+	case "plan":
+		detail = "plan complete"
+	}
+	progress.Done(ctx, progress.Infrastructure, "terraform", label, detail)
+	progress.Finish(ctx, progress.Infrastructure, progress.Complete, detail)
+	return nil
+}
+
+type terraformSeed struct {
+	environment []string
+	bundle      *delivery.DeploymentBundle
+	credentials atumsecrets.Document
+}
+
+func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, error) {
+	bundle, err := delivery.MaterializeLockedBundle(ctx, a.project)
+	if err != nil {
+		return terraformSeed{}, fmt.Errorf("materialize Terraform seed payload: %w", err)
+	}
+	if bundle.SeedPayload.Path == "" || bundle.SeedPayload.SHA256 == "" {
+		return terraformSeed{}, errors.New("deployment bundle has no verified seed payload")
+	}
+	credentials, err := atumsecrets.Ensure(ctx, a.project, a.logger)
+	if err != nil {
+		return terraformSeed{}, err
+	}
+	seed := a.project.Desired.Delivery.Seed
+	environment := make([]string, 0, 10)
+	environment = append(environment,
+		"TF_VAR_seed_archive_path="+bundle.SeedPayload.Path,
+		"TF_VAR_seed_archive_sha256="+bundle.SeedPayload.SHA256,
+		"TF_VAR_seed_forgejo_image="+seed.Forgejo.Image.Source,
+		"TF_VAR_seed_forgejo_url="+seed.Forgejo.URL,
+		"TF_VAR_seed_forgejo_username="+credentials.Forgejo.Username,
+		"TF_VAR_seed_forgejo_admin_password="+credentials.Forgejo.AdminPassword,
+		"TF_VAR_seed_harbor_version="+seed.Harbor.Version,
+		"TF_VAR_seed_harbor_url="+seed.Harbor.URL,
+		"TF_VAR_seed_harbor_admin_password="+credentials.Harbor.AdminPassword,
+		"TF_VAR_seed_harbor_secret_key="+credentials.Harbor.SecretKey,
+	)
+	return terraformSeed{bundle: bundle, credentials: credentials, environment: environment}, nil
+}
+
+func terraformInformational(args []string) bool {
+	for _, argument := range args {
+		switch argument {
+		case "-help", "--help", "-version", "--version":
+			return true
+		}
+	}
+	return false
+}
+
+func hasTerraformAutoApprove(args []string) bool {
+	for _, argument := range args {
+		if argument == "-auto-approve" || strings.HasPrefix(argument, "-auto-approve=") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTerraformJSON(args []string) bool {
+	for _, argument := range args {
+		if argument == "-json" || strings.HasPrefix(argument, "-json=") {
+			return true
+		}
+	}
+	return false
+}
+
+func terraformStructuredOutput(action string, autoApprove bool, args []string) bool {
+	if action == "plan" {
+		return true
+	}
+	return (action == "apply" || action == "destroy") && (autoApprove || hasTerraformAutoApprove(args))
+}
+
+func effectiveUID() int { return os.Geteuid() }
+
+func (a *app) runLibvirtPermissions(ctx context.Context, action string) error {
+	if a.dryRun && action != "status" {
+		a.logger.InfoContext(ctx, "dry-run libvirt permission mutation", "action", action)
+		return nil
+	}
+	scope := preflight.LibvirtPermissionsFile
+	if action == "install" {
+		scope = preflight.LibvirtPermissionsInstall
+	} else if action != "status" && action != "uninstall" {
+		return fmt.Errorf("unsupported libvirt permissions action %q", action)
+	}
+	if err := a.checkPreflight(ctx, scope); err != nil {
+		return err
+	}
+	service := infra.LibvirtService{
+		Runner:        a.runner,
+		OutputRunner:  a.outputRunner,
+		Out:           a.out,
+		EUID:          effectiveUID(),
+		RestoreconBin: a.preflight.Binary(preflight.Restorecon),
+	}
+	return service.Permissions(ctx, action)
+}
+
+func (a *app) runLibvirtForwarding(ctx context.Context, action string) error {
+	if a.dryRun && action != "status" {
+		a.logger.InfoContext(ctx, "dry-run libvirt forwarding mutation", "action", action)
+		return nil
+	}
+	plan, err := infra.PlanForwarding(action)
+	if err != nil {
+		return err
+	}
+	if err := a.checkForwardingPreflight(ctx, plan); err != nil {
+		return err
+	}
+	service := infra.LibvirtService{
+		Runner:       a.runner,
+		OutputRunner: a.outputRunner,
+		Out:          a.out,
+		EUID:         effectiveUID(),
+		VirshBin:     a.preflight.Binary(preflight.Virsh),
+		FirewallBin:  a.preflight.Binary(preflight.Firewall),
+	}
+	return service.Forwarding(ctx, plan)
+}
+
+func (a *app) orchestrationService() orchestration.Service {
+	return orchestration.Service{
+		Project:        a.project,
+		Runner:         a.runner,
+		Logger:         a.logger,
+		Env:            a.env,
+		PythonBin:      a.preflight.Binary(preflight.Python),
+		PythonIdentity: a.preflight.Identity(preflight.Python),
+		SSHBin:         a.preflight.Binary(preflight.OpenSSH),
+	}
+}
+
+func (a *app) runOrchestrationPrepare(ctx context.Context) error {
+	if a.dryRun {
+		a.logger.InfoContext(ctx, "dry-run orchestration tool preparation",
+			"releases", len(a.project.Desired.Orchestration.Releases))
+		return nil
+	}
+	toolchains, err := a.orchestrationService().Prepare(ctx)
+	if err != nil {
+		return err
+	}
+	for _, toolchain := range toolchains {
+		if _, err := fmt.Fprintf(a.out, "%s\t%s\t%s\n",
+			toolchain.Release.Kubernetes,
+			toolchain.Release.Kubespray.Version,
+			toolchain.Source,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *app) runAnsiblePlaybook(ctx context.Context, args ...string) error {
+	if err := a.ensureMutationAllowed(); err != nil {
+		return err
+	}
+	if err := a.checkPreflight(ctx, preflight.OrchestrationAnsible); err != nil {
+		return err
+	}
+	if a.dryRun {
+		a.logger.InfoContext(ctx, "dry-run Ansible passthrough")
+		return nil
+	}
+	return a.orchestrationService().RunAnsible(ctx, progress.Target{
+		Phase: progress.Orchestration,
+		ID:    "activity",
+		Label: "Ansible activity",
+	}, args)
+}
+
+func (a *app) runOrchestrationInventory(ctx context.Context) error {
+	inventoryPath := a.orchestrationInventoryPath()
+	return a.generateOrchestrationInventory(ctx, inventoryPath)
+}
+
+func (a *app) generateOrchestrationInventory(ctx context.Context, inventoryPath string) error {
+	progress.Start(ctx, progress.Orchestration, "inventory", "Inventory", "deriving from Terraform outputs")
+	if a.dryRun {
+		a.logger.InfoContext(ctx, "dry-run orchestration inventory", "output", inventoryPath)
+		progress.Done(ctx, progress.Orchestration, "inventory", "Inventory", "planned")
+		return nil
+	}
+	target, exists := a.project.Desired.ActiveTarget()
+	if !exists {
+		return fmt.Errorf("active infrastructure target %q is not defined", a.project.Desired.Infrastructure.Active)
+	}
+	terraform, err := a.requiredBinary(preflight.Terraform)
+	if err != nil {
+		return err
+	}
+	environment, err := terraformTargetEnvironment(target, nil)
+	if err != nil {
+		return err
+	}
+	service := orchestration.InventoryService{
+		OutputRunner: a.outputRunner,
+		Root:         a.root,
+		TerraformBin: terraform,
+		TerraformDir: target.Directory,
+		Environment:  environment,
+		AnsibleUser:  a.project.Desired.Orchestration.AnsibleUser,
+	}
+	if err := service.Generate(ctx, inventoryPath); err != nil {
+		progress.Fail(ctx, progress.Orchestration, "inventory", "Inventory", err)
+		return err
+	}
+	progress.Done(ctx, progress.Orchestration, "inventory", "Inventory", "derived from Terraform")
+	return nil
+}
+
+func (a *app) runOrchestrationPlan(ctx context.Context) (orchestration.UpgradePlan, error) {
+	plan, err := a.orchestrationService().Plan(ctx)
+	if err != nil {
+		return orchestration.UpgradePlan{}, err
+	}
+	if err := a.printOrchestrationPlan(plan); err != nil {
+		return orchestration.UpgradePlan{}, err
+	}
+	return plan, nil
+}
+
+func (a *app) printOrchestrationPlan(plan orchestration.UpgradePlan) error {
+	current := plan.Current
+	if current == "" {
+		current = "absent"
+	}
+	if _, err := fmt.Fprintf(a.out, "current=%s target=%s order=%s resume=%s->%s\n",
+		current, plan.Target, plan.Order, plan.ResumeFrom, plan.ResumeTarget); err != nil {
+		return err
+	}
+	for _, step := range plan.Steps {
+		if _, err := fmt.Fprintf(a.out, "upgrade=%s kubespray=%s commit=%s\n",
+			step.Kubernetes, step.Kubespray.Version, step.Kubespray.Commit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *app) runOrchestrationConverge(ctx context.Context, mode orchestration.ConvergenceMode, args ...string) error {
+	if err := a.ensureMutationAllowed(); err != nil {
+		return err
+	}
+	service := a.orchestrationService()
+	if a.dryRun {
+		plan, err := service.Plan(ctx)
+		if err != nil {
+			return err
+		}
+		if err := service.ValidatePlan(plan, mode); err != nil {
+			return err
+		}
+		return a.printOrchestrationPlan(plan)
+	}
+	inventoryPath := a.orchestrationInventoryPath()
+	if err := a.generateOrchestrationInventory(ctx, inventoryPath); err != nil {
+		return err
+	}
+	if err := a.convergeOrchestration(ctx, service, inventoryPath, args, mode, nil); err != nil {
+		progress.Finish(ctx, progress.Orchestration, progress.Failed, err.Error())
+		return err
+	}
+	progress.Finish(ctx, progress.Orchestration, progress.Complete, "cluster healthy")
+	return nil
+}
+
+func (a *app) convergeOrchestration(
+	ctx context.Context,
+	service orchestration.Service,
+	inventoryPath string,
+	rawArgs []string,
+	mode orchestration.ConvergenceMode,
+	platformHandoff func() error,
+) error {
+	limit := len(a.project.Desired.Orchestration.Releases)*2 + 3
+	planning := true
+	progress.Start(ctx, progress.Orchestration, "plan", "Convergence plan",
+		"inspecting live cluster and durable install state")
+	for range limit {
+		plan, err := service.Plan(ctx)
+		if err != nil {
+			if planning {
+				progress.Fail(ctx, progress.Orchestration, "plan", "Convergence plan", err)
+			}
+			return err
+		}
+		if err := service.ValidatePlan(plan, mode); err != nil {
+			if planning {
+				progress.Fail(ctx, progress.Orchestration, "plan", "Convergence plan", err)
+			}
+			return err
+		}
+		if planning {
+			progress.Done(ctx, progress.Orchestration, "plan", "Convergence plan", convergencePlanDetail(plan))
+			planning = false
+		}
+		if plan.Order == orchestration.PlatformFirst && platformHandoff != nil {
+			if err := platformHandoff(); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := service.ConvergePlanned(ctx, plan, inventoryPath, rawArgs, mode); err != nil {
+			return err
+		}
+		if plan.Order == orchestration.AlreadyCurrent {
+			return nil
+		}
+	}
+	return errors.New("orchestration convergence exceeded the committed release and platform handoff bound")
+}
+
+func convergencePlanDetail(plan orchestration.UpgradePlan) string {
+	switch plan.Order {
+	case orchestration.InstallTarget:
+		return "fresh cluster install to Kubernetes " + plan.Target
+	case orchestration.FinalizeInstall:
+		return "finalizing interrupted Kubernetes " + plan.Target + " install"
+	case orchestration.ReconcileCurrent:
+		return "reconciling current Kubernetes " + plan.Target + " configuration"
+	case orchestration.PlatformFirst:
+		return "platform reconciliation before Kubernetes " + plan.Target
+	case orchestration.KubernetesFirst:
+		return "Kubernetes " + plan.Current + " → " + plan.Target + " before platform reconciliation"
+	case orchestration.AlreadyCurrent:
+		return "Kubernetes " + plan.Target + " is current; verifying health"
+	default:
+		return "selected " + string(plan.Order)
+	}
+}
+
+func (a *app) orchestrationInventoryPath() string {
+	return filepath.Join(a.project.Desired.Orchestration.Inventory, "hosts.yaml")
+}
+
+func (a *app) runFlux(ctx context.Context, args ...string) error {
+	if err := a.ensureMutationAllowed(); err != nil {
+		return err
+	}
+	if err := a.checkPreflight(ctx, preflight.FluxDirect); err != nil {
+		return err
+	}
+	flux, err := a.requiredBinary(preflight.Flux)
+	if err != nil {
+		return err
+	}
+	return a.run(ctx, "Flux", flux, args...)
+}
+
+func (a *app) runVelero(ctx context.Context, args ...string) error {
+	if err := a.checkPreflight(ctx, preflight.VeleroDirect); err != nil {
+		return err
+	}
+	velero, err := a.requiredBinary(preflight.Velero)
+	if err != nil {
+		return err
+	}
+	return a.run(ctx, "Velero", velero, args...)
+}

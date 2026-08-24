@@ -1,0 +1,55 @@
+hostname: ${harbor_host}
+
+http:
+  port: 32443
+
+external_url: ${harbor_url}
+harbor_admin_password: ${harbor_admin_password}
+
+database:
+  password: ${database_password}
+  max_idle_conns: 50
+  max_open_conns: 100
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 0
+
+data_volume: /data/harbor
+
+jobservice:
+  max_job_workers: 10
+  max_job_duration_hours: 24
+  job_loggers:
+    - STD_OUTPUT
+  logger_sweeper_duration: 1
+
+notification:
+  webhook_job_max_retry: 3
+  webhook_job_http_client_timeout: 3
+
+log:
+  level: info
+  local:
+    rotate_count: 5
+    rotate_size: 20M
+    location: /data/harbor/log
+
+upload_purging:
+  enabled: true
+  age: 168h
+  interval: 24h
+  dryrun: false
+
+cache:
+  enabled: false
+  expire_hours: 24
+
+_version: ${harbor_config_version}
+
+proxy:
+  http_proxy:
+  https_proxy:
+  no_proxy:
+  components:
+    - core
+    - jobservice
+    - trivy

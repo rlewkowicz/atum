@@ -1,0 +1,16 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: kube-vip-cloud-provider
+  namespace: kube-system
+spec:
+  insecure: true
+  interval: 30m
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  provider: generic
+  ref:
+    tag: 0.2.10
+  timeout: 60s
+  url: oci://10.77.0.9:32443/charts/kube-vip-cloud-provider

@@ -1,0 +1,131 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+    name: bigbang
+    namespace: bigbang
+spec:
+    chart:
+        spec:
+            chart: ./chart
+            interval: 10m
+            reconcileStrategy: Revision
+            sourceRef:
+                kind: GitRepository
+                name: bigbang
+                namespace: bigbang
+    driftDetection:
+        mode: enabled
+    install:
+        crds: CreateReplace
+        disableWait: true
+        strategy:
+            name: RetryOnFailure
+            retryInterval: 5m
+    interval: 10m
+    postRenderers:
+        - kustomize:
+            patches:
+                - patch: |
+                    - op: add
+                      path: /metadata/annotations/atum.dev~1istio-version
+                      value: 1.30.3
+                    - op: add
+                      path: /spec/dependsOn/0/readyExpr
+                      value: |-
+                        dep.status.history.exists(e,
+                          e.status == 'deployed' &&
+                          (e.chartVersion == "1.30.3" || e.chartVersion.startsWith("1.30.3-"))) &&
+                          dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+                  target:
+                    group: helm.toolkit.fluxcd.io
+                    kind: HelmRelease
+                    name: ^(authservice|fluentbit|gitlab|grafana|harbor|headlamp|keycloak|kiali|passthrough-ingressgateway|public-ingressgateway|vault|velero)$
+                    namespace: bigbang
+                    version: v2
+                - patch: |
+                    - op: add
+                      path: /metadata/annotations/atum.dev~1istio-version
+                      value: 1.30.3
+                    - op: add
+                      path: /spec/dependsOn/1/readyExpr
+                      value: |-
+                        dep.status.history.exists(e,
+                          e.status == 'deployed' &&
+                          (e.chartVersion == "1.30.3" || e.chartVersion.startsWith("1.30.3-"))) &&
+                          dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+                  target:
+                    group: helm.toolkit.fluxcd.io
+                    kind: HelmRelease
+                    name: ^(monitoring|tempo)$
+                    namespace: bigbang
+                    version: v2
+                - patch: |
+                    - op: add
+                      path: /metadata/annotations/atum.dev~1istio-version
+                      value: 1.30.3
+                    - op: add
+                      path: /spec/dependsOn/3/readyExpr
+                      value: |-
+                        dep.status.history.exists(e,
+                          e.status == 'deployed' &&
+                          (e.chartVersion == "1.30.3" || e.chartVersion.startsWith("1.30.3-"))) &&
+                          dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+                  target:
+                    group: helm.toolkit.fluxcd.io
+                    kind: HelmRelease
+                    name: ^(kyverno-reporter)$
+                    namespace: bigbang
+                    version: v2
+                - patch: |
+                    - op: add
+                      path: /metadata/annotations/atum.dev~1istio-version
+                      value: 1.30.3
+                    - op: add
+                      path: /spec/dependsOn/1/readyExpr
+                      value: |-
+                        dep.status.history.exists(e,
+                          e.status == 'deployed' &&
+                          (e.chartVersion == "1.30.3" || e.chartVersion.startsWith("1.30.3-"))) &&
+                          dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+                  target:
+                    group: helm.toolkit.fluxcd.io
+                    kind: HelmRelease
+                    name: ^(opensearch|opensearch-dashboards)$
+                    namespace: opensearch
+                    version: v2
+                - patch: |
+                    - op: add
+                      path: /metadata/annotations/atum.dev~1istio-version
+                      value: 1.30.3
+                    - op: add
+                      path: /spec/dependsOn/1/readyExpr
+                      value: |-
+                        dep.status.history.exists(e,
+                          e.status == 'deployed' &&
+                          (e.chartVersion == "1.30.3" || e.chartVersion.startsWith("1.30.3-"))) &&
+                          dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+                  target:
+                    group: helm.toolkit.fluxcd.io
+                    kind: HelmRelease
+                    name: ^(opensearch-operator)$
+                    namespace: opensearch-operator
+                    version: v2
+    releaseName: bigbang
+    targetNamespace: bigbang
+    timeout: 30m
+    upgrade:
+        crds: CreateReplace
+        disableWait: true
+        strategy:
+            name: RetryOnFailure
+            retryInterval: 5m
+    valuesFrom:
+        - kind: ConfigMap
+          name: bigbang-operational-values
+          valuesKey: values.yaml
+        - kind: ConfigMap
+          name: bigbang-generated-values
+          valuesKey: values.yaml
+        - kind: ConfigMap
+          name: bigbang-target-values
+          valuesKey: values.yaml

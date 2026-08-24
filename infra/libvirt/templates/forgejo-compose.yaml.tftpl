@@ -1,0 +1,26 @@
+services:
+  forgejo:
+    image: ${forgejo_image}
+    pull_policy: never
+    container_name: atum-forgejo
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__server__DOMAIN: ${forgejo_host}
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__ROOT_URL: ${forgejo_url}
+      FORGEJO__server__SSH_DOMAIN: ${forgejo_host}
+      FORGEJO__server__SSH_PORT: "2222"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__security__INSTALL_LOCK: "true"
+      GITEA_ADMIN_USERNAME: ${forgejo_admin_username}
+      GITEA_ADMIN_PASSWORD: ${forgejo_admin_password}
+      GITEA_ADMIN_EMAIL: "atum@localhost"
+    ports:
+      - "3000:3000"
+      - "2222:2222"
+    volumes:
+      - /data/forgejo:/var/lib/gitea
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro

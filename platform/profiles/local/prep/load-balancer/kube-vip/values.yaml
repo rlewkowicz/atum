@@ -1,0 +1,30 @@
+image:
+  repository: 10.77.0.9:32443/atum/kube-vip
+  tag: v1.2.2
+  pullPolicy: IfNotPresent
+env:
+  vip_interface: ""
+  vip_arp: "true"
+  lb_enable: "false"
+  cp_enable: "false"
+  svc_enable: "true"
+  svc_election: "true"
+  vip_leaderelection: "false"
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    add:
+      - NET_ADMIN
+      - NET_RAW
+    drop:
+      - ALL
+  privileged: false
+  seccompProfile:
+    type: RuntimeDefault
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

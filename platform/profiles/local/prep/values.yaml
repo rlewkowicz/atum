@@ -1,0 +1,68 @@
+domain: ${ATUM_PLATFORM_DOMAIN}
+networkPolicies:
+  # The local profile owns the control-plane network once. Big Bang packages
+  # use it for API egress, while webhook packages consume the reusable kubeAPI
+  # ingress definition.
+  controlPlaneCidr: &kubeAPICIDR 10.77.0.8/29
+  # Big Bang uses the VPC CIDR alongside the control-plane CIDR when
+  # generating Vault's reusable kubeAPI egress definition.
+  vpcCidr: 10.77.0.0/24
+  ingress:
+    definitions:
+      kubeAPI:
+        from:
+          - ipBlock:
+              cidr: *kubeAPICIDR
+addons:
+  keycloak:
+    values:
+      upstream:
+        http:
+          internalScheme: HTTPS
+        extraEnv: |
+          - name: KC_HTTPS_CLIENT_AUTH
+            value: request
+          - name: KC_TRUSTSTORE_PATHS
+            value: /etc/ssl/certs/
+          - name: KC_HOSTNAME
+            value: keycloak.${ATUM_PLATFORM_DOMAIN}
+          - name: KC_HOSTNAME_STRICT
+            value: "true"
+          - name: KC_HTTPS_CERTIFICATE_FILE
+            value: /opt/keycloak/conf/atum-tls/tls.crt
+          - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+            value: /opt/keycloak/conf/atum-tls/tls.key
+        extraVolumes: |
+          - name: keycloak-tls
+            secret:
+              secretName: keycloak-tls
+        extraVolumeMounts: |
+          # keep /etc/x509/https/ for legacy backwards compatibility
+          - name: keycloak-tls
+            mountPath: /etc/x509/https
+            readOnly: true
+          # Quarkus cert paths
+          - name: keycloak-tls
+            mountPath: /opt/keycloak/conf/atum-tls
+            readOnly: true
+  vault:
+    values:
+      upstream:
+        server:
+          ha:
+            apiAddr: https://vault.${ATUM_PLATFORM_DOMAIN}
+istioGateway:
+  values:
+    gateways:
+      public:
+        upstream:
+          service:
+            type: LoadBalancer
+            annotations:
+              kube-vip.io/loadbalancerIPs: "10.77.0.20"
+      passthrough:
+        upstream:
+          service:
+            type: LoadBalancer
+            annotations:
+              kube-vip.io/loadbalancerIPs: "10.77.0.21"

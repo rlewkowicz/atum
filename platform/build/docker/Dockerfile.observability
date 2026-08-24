@@ -1,0 +1,320 @@
+FROM atum_runtime AS fluent-bit-build
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bison \
+      build-essential \
+      cmake \
+      flex \
+      libcurl4-openssl-dev \
+      libpq-dev \
+      libsasl2-dev \
+      libssl-dev \
+      libsystemd-dev \
+      libyaml-dev \
+      pkg-config \
+      zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=fluent_bit_source / /src/fluent-bit
+WORKDIR /src/fluent-bit/build
+RUN set -eux; \
+    cmake \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/fluent-bit \
+      -DFLB_CHUNK_TRACE=On \
+      -DFLB_EXAMPLES=Off \
+      -DFLB_HTTP_SERVER=On \
+      -DFLB_IN_EXEC=Off \
+      -DFLB_IN_SYSTEMD=On \
+      -DFLB_JEMALLOC=On \
+      -DFLB_LOG_NO_CONTROL_CHARS=On \
+      -DFLB_OUT_KAFKA=On \
+      -DFLB_OUT_PGSQL=On \
+      -DFLB_RELEASE=On \
+      -DFLB_SHARED_LIB=Off \
+      -DFLB_SIMD=On \
+      -DFLB_TLS=On \
+      ..; \
+    cmake --build . --parallel "$(nproc)"; \
+    cmake --install . --prefix /out/fluent-bit; \
+    mkdir -p /out/fluent-bit/etc; \
+    cp -a \
+      ../conf/fluent-bit.conf \
+      ../conf/parsers.conf \
+      ../conf/parsers_ambassador.conf \
+      ../conf/parsers_cinder.conf \
+      ../conf/parsers_extra.conf \
+      ../conf/parsers_java.conf \
+      ../conf/parsers_openstack.conf \
+      ../conf/plugins.conf \
+      /out/fluent-bit/etc/
+
+FROM atum_go AS configmap-reload-build
+COPY --from=configmap_reload_source / /src/configmap-reload
+WORKDIR /src/configmap-reload
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' \
+      -o /out/configmap-reload .
+
+FROM atum_go AS tempo-build
+COPY --from=tempo_source / /src/tempo
+WORKDIR /src/tempo
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+      -ldflags='-s -w -X github.com/grafana/tempo/pkg/build.Version=2.10.1 -X github.com/grafana/tempo/pkg/build.Revision=f3dd275820487ab5aebe42ddd96203665da2d453' \
+      -o /out/tempo ./cmd/tempo
+
+FROM atum_node AS prometheus-ui-build
+COPY --from=prometheus_source / /src/prometheus
+WORKDIR /src/prometheus/web/ui
+RUN --mount=type=cache,id=atum-prometheus-npm,target=/root/.npm,sharing=locked \
+    set -eux; \
+    npm ci --no-audit --no-fund; \
+    npm --prefix react-app ci --no-audit --no-fund; \
+    CI='' npm run build; \
+    cd /src/prometheus; \
+    scripts/compress_assets.sh; \
+    test -s web/ui/embed.go; \
+    test -n "$(find web/ui/static -type f -name '*.gz' -print -quit)"
+
+FROM atum_go AS prometheus-build
+COPY --from=prometheus_source / /src/prometheus
+COPY --from=prometheus-ui-build /src/prometheus/web/ui/embed.go /src/prometheus/web/ui/embed.go
+COPY --from=prometheus-ui-build /src/prometheus/web/ui/static /src/prometheus/web/ui/static
+WORKDIR /src/prometheus
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags='netgo builtinassets' \
+      -ldflags='-s -w -X github.com/prometheus/common/version.Version=3.11.1 -X github.com/prometheus/common/version.Revision=1bd2f3a9fdedf52e6f613449cc4c50e86ca24676 -X github.com/prometheus/common/version.Branch=HEAD -X github.com/prometheus/common/version.BuildUser=atum -X github.com/prometheus/common/version.BuildDate=19700101-00:00:00' \
+      -o /out/prometheus ./cmd/prometheus
+
+FROM atum_node AS alertmanager-ui-build
+COPY --from=alertmanager_source / /src/alertmanager
+WORKDIR /src/alertmanager/ui/app
+RUN --mount=type=cache,id=atum-alertmanager-npm,target=/root/.npm,sharing=locked \
+    set -eux; \
+    npm ci --no-audit --no-fund; \
+    npm run build; \
+    test -s dist/index.html.gz; \
+    test -s dist/index.html.br
+
+FROM atum_go AS alertmanager-build
+COPY --from=alertmanager_source / /src/alertmanager
+COPY --from=alertmanager-ui-build /src/alertmanager/ui/app/dist /src/alertmanager/ui/app/dist
+WORKDIR /src/alertmanager
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags=netgo \
+      -ldflags='-s -w -X github.com/prometheus/common/version.Version=0.32.0 -X github.com/prometheus/common/version.Revision=685a2a1c6bb01b2c17bc1bfae995cb3416c1115e -X github.com/prometheus/common/version.Branch=HEAD -X github.com/prometheus/common/version.BuildUser=atum -X github.com/prometheus/common/version.BuildDate=19700101-00:00:00' \
+      -o /out/alertmanager ./cmd/alertmanager
+
+FROM atum_go AS prometheus-operator-build
+COPY --from=prometheus_operator_source / /src/prometheus-operator
+WORKDIR /src/prometheus-operator
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    mkdir -p /out; \
+    atum_ldflags='-s -w -X github.com/prometheus/common/version.Version=0.90.1 -X github.com/prometheus/common/version.Revision=32d1b3dfa05d070762450efe9624bb2483c782be -X github.com/prometheus/common/version.Branch=HEAD -X github.com/prometheus/common/version.BuildUser=atum -X github.com/prometheus/common/version.BuildDate=19700101-00:00:00'; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="$atum_ldflags" \
+      -o /out/prometheus-operator ./cmd/operator & \
+    atum_operator_pid=$!; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="$atum_ldflags" \
+      -o /out/prometheus-config-reloader ./cmd/prometheus-config-reloader; \
+    wait "$atum_operator_pid"
+
+FROM atum_go AS thanos-build
+COPY --from=thanos_source / /src/thanos
+WORKDIR /src/thanos
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags=netgo \
+      -ldflags='-s -w -X github.com/prometheus/common/version.Version=0.41.0 -X github.com/prometheus/common/version.Revision=cb1396b916241f63fff75e4f5362ea65f18f2303 -X github.com/prometheus/common/version.Branch=HEAD -X github.com/prometheus/common/version.BuildUser=atum -X github.com/prometheus/common/version.BuildDate=19700101-00:00:00' \
+      -o /out/thanos ./cmd/thanos
+
+FROM atum_go AS kube-state-metrics-build
+COPY --from=kube_state_metrics_source / /src/kube-state-metrics
+WORKDIR /src/kube-state-metrics
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+      -ldflags='-s -w -X k8s.io/component-base/version.gitVersion=v2.18.0 -X k8s.io/component-base/version.gitCommit=ab562f78ebf4cb97cc2f87c1235e457076035d16 -X k8s.io/component-base/version.gitTreeState=clean' \
+      -o /out/kube-state-metrics .
+
+FROM atum_go AS node-exporter-build
+COPY --from=node_exporter_source / /src/node-exporter
+WORKDIR /src/node-exporter
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags=netgo \
+      -ldflags='-s -w -X github.com/prometheus/common/version.Version=1.11.1 -X github.com/prometheus/common/version.Revision=0dd664dece3f8319f6bec5a221acd2c7ad13a23d -X github.com/prometheus/common/version.Branch=HEAD -X github.com/prometheus/common/version.BuildUser=atum -X github.com/prometheus/common/version.BuildDate=19700101-00:00:00' \
+      -o /out/node_exporter .
+
+FROM atum_node AS grafana-ui-build
+COPY --from=grafana_source / /src/grafana
+WORKDIR /src/grafana
+ENV NODE_ENV=production NODE_OPTIONS=--max_old_space_size=8000
+RUN --mount=type=cache,id=atum-yarn,target=/root/.cache/yarn,sharing=shared \
+    set -eux; \
+    corepack enable; \
+    YARN_ENABLE_PROGRESS_BARS=false yarn install --immutable; \
+    yarn build
+
+FROM atum_go AS grafana-build
+COPY --from=grafana_source / /src/grafana
+WORKDIR /src/grafana
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    COMMIT_SHA=ebade4c739e1aface4ce094934ad85374887a680 \
+      BUILD_BRANCH=v12.4.x \
+      make build-go GO_BUILD_TAGS=oss WIRE_TAGS=oss; \
+    install -D -m 0755 bin/linux-amd64/grafana /out/grafana
+
+FROM atum_python AS k8s-sidecar-build
+COPY --from=k8s_sidecar_source / /src/k8s-sidecar
+WORKDIR /src/k8s-sidecar
+RUN --mount=type=cache,id=atum-pip,target=/root/.cache/pip,sharing=shared \
+    set -eux; \
+    python3.12 -m venv /out/venv; \
+    /out/venv/bin/pip install --disable-pip-version-check --no-cache-dir .; \
+    find /out/venv -type d \( -name test -o -name tests \) -prune -exec rm -rf '{}' +; \
+    find /out/venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+
+FROM atum_runtime AS observability-runtime
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSES
+ARG ATUM_IMAGE_REVISION
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_TITLE
+ARG ATUM_IMAGE_VERSION
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSES}" \
+      org.opencontainers.image.revision="${ATUM_IMAGE_REVISION}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="${ATUM_IMAGE_TITLE}" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+
+FROM observability-runtime AS fluent-bit
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      libatomic1 libcurl4t64 libpq5 libsasl2-2 libssl3t64 libsystemd0 libyaml-0-2 zlib1g; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=fluent-bit-build /out/fluent-bit /fluent-bit
+ENTRYPOINT ["/fluent-bit/bin/fluent-bit"]
+CMD ["-c", "/fluent-bit/etc/fluent-bit.conf"]
+
+FROM observability-runtime AS configmap-reload
+COPY --from=configmap-reload-build /out/configmap-reload /usr/local/bin/configmap-reload
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/configmap-reload"]
+
+FROM observability-runtime AS tempo
+RUN set -eux; mkdir -p /var/tempo; chown 65532:65532 /var/tempo
+COPY --from=tempo-build /out/tempo /usr/local/bin/tempo
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/tempo"]
+
+FROM observability-runtime AS prometheus
+RUN set -eux; mkdir -p /etc/prometheus /prometheus; chown -R 65532:65532 /etc/prometheus /prometheus
+COPY --from=prometheus-build /out/prometheus /usr/local/bin/prometheus
+COPY --from=prometheus_source /documentation/examples/prometheus.yml /etc/prometheus/prometheus.yml
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/prometheus"]
+CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+
+FROM observability-runtime AS alertmanager
+RUN set -eux; mkdir -p /etc/alertmanager /alertmanager; chown -R 65532:65532 /etc/alertmanager /alertmanager
+COPY --from=alertmanager-build /out/alertmanager /usr/local/bin/alertmanager
+COPY --from=alertmanager_source /examples/ha/alertmanager.yml /etc/alertmanager/alertmanager.yml
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/alertmanager"]
+CMD ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+
+FROM observability-runtime AS prometheus-operator
+COPY --from=prometheus-operator-build /out/prometheus-operator /usr/local/bin/prometheus-operator
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/prometheus-operator"]
+
+FROM observability-runtime AS prometheus-config-reloader
+COPY --from=prometheus-operator-build /out/prometheus-config-reloader /bin/prometheus-config-reloader
+RUN ln -s /bin/prometheus-config-reloader /usr/local/bin/prometheus-config-reloader
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/bin/prometheus-config-reloader"]
+
+FROM observability-runtime AS thanos
+RUN set -eux; mkdir -p /data; chown 65532:65532 /data
+COPY --from=thanos-build /out/thanos /usr/local/bin/thanos
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/thanos"]
+
+FROM observability-runtime AS kube-state-metrics
+COPY --from=kube-state-metrics-build /out/kube-state-metrics /usr/local/bin/kube-state-metrics
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kube-state-metrics"]
+
+FROM observability-runtime AS node-exporter
+COPY --from=node-exporter-build /out/node_exporter /usr/local/bin/node_exporter
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/node_exporter"]
+
+FROM observability-runtime AS grafana
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y bash curl tzdata; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 472 grafana; \
+    useradd --no-create-home --home-dir /usr/share/grafana --shell /usr/sbin/nologin --uid 472 --gid 472 grafana; \
+    mkdir -p /etc/grafana/provisioning /usr/share/grafana /var/lib/grafana/plugins /var/log/grafana; \
+    chown -R 472:472 /etc/grafana /usr/share/grafana /var/lib/grafana /var/log/grafana
+COPY --from=grafana-build /out/grafana /usr/share/grafana/bin/grafana
+COPY --from=grafana_source /conf /usr/share/grafana/conf
+COPY --from=grafana_source /packaging/docker/run.sh /run.sh
+COPY --from=grafana-ui-build /src/grafana/public /usr/share/grafana/public
+COPY --chmod=0755 compat/grafana/entrypoint.sh /usr/local/bin/grafana-entrypoint
+RUN set -eux; \
+    cp /usr/share/grafana/conf/sample.ini /etc/grafana/grafana.ini; \
+    cp /usr/share/grafana/conf/ldap.toml /etc/grafana/ldap.toml; \
+    mkdir -p /opt/bitnami/grafana/conf /opt/bitnami/grafana/conf.default \
+      /opt/bitnami/grafana/dashboards /opt/bitnami/grafana/data /opt/bitnami/grafana/tmp; \
+    cp -a /usr/share/grafana/conf/. /opt/bitnami/grafana/conf.default/; \
+    ln -s /tmp/grafana-logs /opt/bitnami/grafana/logs; \
+    chmod 0755 /run.sh; \
+    chown -R 472:472 /etc/grafana /opt/bitnami/grafana /usr/share/grafana; \
+    chmod -R g=u /opt/bitnami/grafana
+ENV GF_PATHS_CONFIG=/etc/grafana/grafana.ini \
+    GF_PATHS_DATA=/var/lib/grafana \
+    GF_PATHS_HOME=/usr/share/grafana \
+    GF_PATHS_LOGS=/var/log/grafana \
+    GF_PATHS_PLUGINS=/var/lib/grafana/plugins \
+    GF_PATHS_PROVISIONING=/etc/grafana/provisioning \
+    PATH=/usr/share/grafana/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WORKDIR /usr/share/grafana
+USER 472:472
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/grafana-entrypoint"]
+
+FROM observability-runtime AS k8s-sidecar
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      libbz2-1.0 libffi8 liblzma5 libreadline8t64 libsqlite3-0 libssl3t64 zlib1g; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /app
+COPY --from=atum_python /opt/atum/python /opt/atum/python
+COPY --from=k8s-sidecar-build /out/venv /app/venv
+ENV LD_LIBRARY_PATH=/opt/atum/python/lib \
+    PATH=/app/venv/bin:/opt/atum/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PYTHONUNBUFFERED=1
+WORKDIR /app
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-u", "-m", "sidecar"]

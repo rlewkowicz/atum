@@ -1,0 +1,12 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+    name: bigbang
+    namespace: bigbang
+spec:
+    interval: 10m
+    ref:
+        commit: 1d5a436945aa24316b21b88f74d555e9d3559655
+        tag: 3.30.0
+    timeout: 5m
+    url: http://10.77.0.9:3000/atum-upstreams/bigbang.git

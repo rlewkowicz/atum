@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atum.dev/schema/lock/v1",
+  "title": "Atum resolved state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "desiredSha256", "resolved", "compatibility", "delivery", "bundle"],
+  "properties": {
+    "$schema": {"const": "./atum.lock.schema.json"},
+    "schemaVersion": {"const": "atum.dev/lock/v1"},
+    "desiredSha256": {"$ref": "#/$defs/hexSha256"},
+    "resolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clusterReleases", "bigBang", "flux", "packages", "charts", "vendors", "bootstrap"],
+      "properties": {
+        "clusterReleases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/clusterRelease"}
+        },
+        "bigBang": {"$ref": "https://atum.dev/schema/config/v1#/$defs/gitSource"},
+        "flux": {"$ref": "https://atum.dev/schema/config/v1#/$defs/gitSource"},
+        "packages": {
+          "type": "array",
+          "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/package"}
+        },
+        "supportSources": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/supportSource"}
+        },
+        "charts": {
+          "type": "array",
+          "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/trackedChart"}
+        },
+        "vendors": {
+          "type": "array",
+          "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/vendor"}
+        },
+        "bootstrap": {"$ref": "https://atum.dev/schema/config/v1#/$defs/bootstrap"}
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kubernetesVersion", "bigBangConstraint", "status", "constraints", "checksums"],
+      "properties": {
+        "kubernetesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "bigBangConstraint": {"type": "string", "minLength": 1},
+        "status": {"const": "compatible"},
+        "constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "constraint"],
+            "properties": {
+              "id": {"$ref": "#/$defs/nonEmpty"},
+              "constraint": {"$ref": "#/$defs/nonEmpty"}
+            }
+          }
+        },
+        "checksums": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kubelet", "kubeadm", "kubectl"],
+          "properties": {
+            "kubelet": {"$ref": "#/$defs/sha256"},
+            "kubeadm": {"$ref": "#/$defs/sha256"},
+            "kubectl": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      }
+    },
+    "delivery": {"$ref": "#/$defs/imageLock"},
+    "bundle": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/bundle"}
+      ]
+    }
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "supportSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valuesPath", "chartPath", "source"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "valuesPath": {"$ref": "#/$defs/nonEmpty"},
+        "chartPath": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "https://atum.dev/schema/config/v1#/$defs/gitSource"}
+      }
+    },
+    "hexSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "mirrored", "built"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "mirrored": {"type": "integer", "minimum": 0},
+        "built": {"type": "integer", "minimum": 0}
+      }
+    },
+    "imageLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "profile", "platform", "inventorySha256", "graphSha256", "counts", "images"],
+      "properties": {
+        "schemaVersion": {"const": "atum.dev/image-lock/v3"},
+        "profile": {"$ref": "#/$defs/nonEmpty"},
+        "platform": {"const": "linux/amd64"},
+        "inventorySha256": {"$ref": "#/$defs/hexSha256"},
+        "graphSha256": {"$ref": "#/$defs/hexSha256"},
+        "counts": {"$ref": "#/$defs/counts"},
+        "images": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/lockedImage"}
+        }
+      }
+    },
+    "lockedImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "target", "digest", "inputSha256", "delivery"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "target": {"$ref": "#/$defs/nonEmpty"},
+        "digest": {"$ref": "#/$defs/sha256"},
+        "inputSha256": {"$ref": "#/$defs/hexSha256"},
+        "delivery": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "source", "digest", "sourceProfile"],
+              "properties": {
+                "type": {"const": "mirror"},
+                "source": {"$ref": "#/$defs/nonEmpty"},
+                "digest": {"$ref": "#/$defs/sha256"},
+                "sourceProfile": {"$ref": "#/$defs/nonEmpty"}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "bakeTarget", "materials", "sourceProfile"],
+              "properties": {
+                "type": {"const": "build"},
+                "bakeTarget": {"$ref": "#/$defs/nonEmpty"},
+                "materials": {"type": "array", "items": {"$ref": "#/$defs/nonEmpty"}},
+                "sourceProfile": {"$ref": "#/$defs/nonEmpty"}
+              }
+            }
+          ]
+        }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256", "size", "atumSourceSha256"],
+      "properties": {
+        "file": {"$ref": "#/$defs/nonEmpty"},
+        "sha256": {"$ref": "#/$defs/hexSha256"},
+        "size": {"type": "integer", "minimum": 1},
+        "atumSourceSha256": {"$ref": "#/$defs/hexSha256"},
+        "ociReference": {"$ref": "#/$defs/nonEmpty"},
+        "ociDigest": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

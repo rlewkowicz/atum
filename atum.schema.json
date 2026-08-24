@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atum.dev/schema/config/v1",
+  "title": "Atum desired state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "project", "updates", "infrastructure", "orchestration", "platform", "secrets", "delivery"],
+  "properties": {
+    "$schema": {"const": "./atum.schema.json"},
+    "schemaVersion": {"const": "atum.dev/config/v1"},
+    "project": {"$ref": "#/$defs/project"},
+    "updates": {"$ref": "#/$defs/updatePolicy"},
+    "infrastructure": {"$ref": "#/$defs/infrastructure"},
+    "orchestration": {"$ref": "#/$defs/orchestration"},
+    "platform": {"$ref": "#/$defs/platform"},
+    "secrets": {"$ref": "#/$defs/secrets"},
+    "delivery": {"$ref": "#/$defs/delivery"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "hexSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gitCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "stringArray": {"type": "array", "items": {"$ref": "#/$defs/nonEmpty"}},
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cluster", "platform"],
+      "properties": {
+        "name": {"$ref": "#/$defs/nonEmpty"},
+        "cluster": {"$ref": "#/$defs/nonEmpty"},
+        "platform": {"const": "linux/amd64"}
+      }
+    },
+    "updatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parallelism", "stableOnly"],
+      "properties": {
+        "parallelism": {"type": "integer", "minimum": 1, "maximum": 64},
+        "stableOnly": {"const": true}
+      }
+    },
+    "infrastructure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "targets"],
+      "properties": {
+        "active": {"$ref": "#/$defs/nonEmpty"},
+        "targets": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/infrastructureTarget"}
+        }
+      }
+    },
+    "infrastructureTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "directory", "autoApprove", "platformProfile"],
+      "properties": {
+        "driver": {"const": "terraform"},
+        "directory": {"$ref": "#/$defs/nonEmpty"},
+        "autoApprove": {"type": "boolean"},
+        "platformProfile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "localAccess": {"$ref": "#/$defs/localAccess"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"platformProfile": {"const": "local"}},
+            "required": ["platformProfile"]
+          },
+          "then": {"required": ["localAccess"]},
+          "else": {"not": {"required": ["localAccess"]}}
+        }
+      ]
+    },
+    "localAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "dnsServer", "publicIngressVIP", "passthroughIngressVIP", "loadBalancerRange", "passthroughHosts"],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "dnsServer": {"type": "string", "format": "ipv4"},
+        "publicIngressVIP": {"type": "string", "format": "ipv4"},
+        "passthroughIngressVIP": {"type": "string", "format": "ipv4"},
+        "loadBalancerRange": {
+          "type": "string",
+          "pattern": "^[0-9]{1,3}(?:\\.[0-9]{1,3}){3}-[0-9]{1,3}(?:\\.[0-9]{1,3}){3}$"
+        },
+        "passthroughHosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 63,
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+          }
+        }
+      }
+    },
+    "orchestration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory", "inventory", "ansibleUser", "forks", "automaticUpgrade", "releases"],
+      "properties": {
+        "directory": {"$ref": "#/$defs/nonEmpty"},
+        "inventory": {"$ref": "#/$defs/nonEmpty"},
+        "ansibleUser": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+        "forks": {"type": "integer", "minimum": 2, "maximum": 64},
+        "automaticUpgrade": {"type": "boolean"},
+        "releases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/clusterRelease"}
+        }
+      }
+    },
+    "clusterRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kubernetes", "kubespray", "checksums"],
+      "properties": {
+        "kubernetes": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "kubespray": {"$ref": "#/$defs/gitSource"},
+        "checksums": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kubelet", "kubeadm", "kubectl"],
+          "properties": {
+            "kubelet": {"$ref": "#/$defs/sha256"},
+            "kubeadm": {"$ref": "#/$defs/sha256"},
+            "kubectl": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      }
+    },
+    "gitSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "version", "commit"],
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "ref": {"$ref": "#/$defs/nonEmpty"},
+        "branch": {"$ref": "#/$defs/nonEmpty"},
+        "commit": {"$ref": "#/$defs/gitCommit"},
+        "patches": {"$ref": "#/$defs/stringArray"},
+        "kubeVersion": {"$ref": "#/$defs/nonEmpty"},
+        "assets": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/asset"}
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url", "file", "sourceSha256", "sha256"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "url": {"type": "string", "format": "uri"},
+        "file": {"$ref": "#/$defs/nonEmpty"},
+        "sourceSha256": {"$ref": "#/$defs/hexSha256"},
+        "sha256": {"$ref": "#/$defs/hexSha256"}
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory", "sources", "packageSelection", "bigBang", "flux", "packages", "charts", "vendors", "values", "bootstrap"],
+      "properties": {
+        "directory": {"$ref": "#/$defs/nonEmpty"},
+        "sources": {"$ref": "#/$defs/sourceRegistry"},
+        "packageSelection": {"$ref": "#/$defs/nonEmpty"},
+        "bigBang": {"$ref": "#/$defs/gitSource"},
+        "flux": {"$ref": "#/$defs/gitSource"},
+        "packages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/package"}
+        },
+        "charts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/trackedChart"}
+        },
+        "vendors": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/vendor"}
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operational", "generated", "profiles"],
+          "properties": {
+            "operational": {"$ref": "#/$defs/nonEmpty"},
+            "generated": {"$ref": "#/$defs/nonEmpty"},
+            "profiles": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {"pattern": "^[a-z0-9][a-z0-9-]*$"},
+              "additionalProperties": {"$ref": "#/$defs/nonEmpty"}
+            }
+          }
+        },
+        "bootstrap": {"$ref": "#/$defs/bootstrap"}
+      }
+    },
+    "sourceRegistry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["externalUrl", "clusterUrl", "organization", "repository", "upstreamOrganization"],
+      "properties": {
+        "externalUrl": {"type": "string", "format": "uri"},
+        "clusterUrl": {"type": "string", "format": "uri"},
+        "organization": {"$ref": "#/$defs/nonEmpty"},
+        "repository": {"$ref": "#/$defs/nonEmpty"},
+        "upstreamOrganization": {"$ref": "#/$defs/nonEmpty"}
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valuesPath", "license", "source"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "valuesPath": {"$ref": "#/$defs/nonEmpty"},
+        "license": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "#/$defs/gitSource"}
+      }
+    },
+    "trackedChart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "valuesPath", "fluxSource", "version", "appVersion", "license", "source", "archiveSha256"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "name": {"$ref": "#/$defs/nonEmpty"},
+        "valuesPath": {"$ref": "#/$defs/nonEmpty"},
+        "fluxSource": {"$ref": "#/$defs/nonEmpty"},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "appVersion": {"$ref": "#/$defs/nonEmpty"},
+        "license": {"$ref": "#/$defs/nonEmpty"},
+        "kubeVersion": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "#/$defs/chartSource"},
+        "archiveSha256": {"$ref": "#/$defs/hexSha256"}
+      }
+    },
+    "vendor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "owner", "directory", "source", "subpath", "patches", "treeSha256"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "owner": {"$ref": "#/$defs/nonEmpty"},
+        "directory": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "#/$defs/gitSource"},
+        "subpath": {"$ref": "#/$defs/nonEmpty"},
+        "patches": {"$ref": "#/$defs/stringArray"},
+        "treeSha256": {"$ref": "#/$defs/hexSha256"}
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "registry", "immutableTags", "charts"],
+      "properties": {
+        "schemaVersion": {"const": "atum.dev/bootstrap-charts/v1"},
+        "immutableTags": {"const": true},
+        "registry": {"$ref": "#/$defs/registry"},
+        "charts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/chart"}
+        }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "appVersion", "imageBindings", "license", "source", "values", "fluxSource", "file", "archiveSha256", "target"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "name": {"$ref": "#/$defs/nonEmpty"},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "appVersion": {"$ref": "#/$defs/nonEmpty"},
+        "imageBindings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/chartImageBinding"}
+        },
+        "kubeVersion": {"$ref": "#/$defs/nonEmpty"},
+        "license": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "#/$defs/chartSource"},
+        "values": {"$ref": "#/$defs/nonEmpty"},
+        "fluxSource": {"$ref": "#/$defs/nonEmpty"},
+        "file": {"$ref": "#/$defs/nonEmpty"},
+        "archiveSha256": {"$ref": "#/$defs/hexSha256"},
+        "target": {"$ref": "#/$defs/nonEmpty"},
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+        }
+      }
+    },
+    "chartImageBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "valuesPath"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "valuesPath": {"$ref": "#/$defs/nonEmpty"},
+        "imageRepository": {"type": "string", "pattern": "^[^@ ]+/[^@: ]+$"},
+        "tagSuffix": {"$ref": "#/$defs/nonEmpty"}
+      }
+    },
+    "chartSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "url", "digest"],
+          "properties": {
+            "type": {"const": "oci"},
+            "url": {"type": "string", "pattern": "^oci://"},
+            "digest": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "url", "indexUrl"],
+          "properties": {
+            "type": {"const": "https"},
+            "url": {"type": "string", "format": "uri"},
+            "indexUrl": {"type": "string", "format": "uri"}
+          }
+        }
+      ]
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sopsFile", "localFile"],
+      "properties": {
+        "sopsFile": {"$ref": "#/$defs/nonEmpty"},
+        "localFile": {"type": "string", "pattern": "^\\.atum/.+"}
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "seed", "profiles", "policy", "images", "renderedBaseline", "legacyCrosswalk"],
+      "properties": {
+        "registry": {"$ref": "#/$defs/registry"},
+        "seed": {"$ref": "#/$defs/seedPlane"},
+        "profiles": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/profile"}
+        },
+        "policy": {"$ref": "#/$defs/policy"},
+        "images": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/image"}
+        },
+        "renderedBaseline": {"$ref": "#/$defs/renderedBaseline"},
+        "legacyCrosswalk": {"$ref": "#/$defs/legacyCrosswalk"}
+      }
+    },
+    "seedPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forgejo", "harbor"],
+      "properties": {
+        "forgejo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "image"],
+          "properties": {
+            "url": {"type": "string", "format": "uri"},
+            "image": {"$ref": "#/$defs/seedImage"}
+          }
+        },
+        "harbor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "version", "installer", "images"],
+          "properties": {
+            "url": {"type": "string", "format": "uri"},
+            "version": {"$ref": "#/$defs/nonEmpty"},
+            "installer": {"$ref": "#/$defs/seedAsset"},
+            "images": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"$ref": "#/$defs/seedImage"}
+            }
+          }
+        }
+      }
+    },
+    "seedAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "file", "sha256", "size"],
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "file": {"$ref": "#/$defs/nonEmpty"},
+        "sha256": {"$ref": "#/$defs/hexSha256"},
+        "size": {"type": "integer", "minimum": 1, "maximum": 16777216}
+      }
+    },
+    "seedImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "digest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"$ref": "#/$defs/nonEmpty"},
+        "digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "project", "tlsVerify"],
+      "properties": {
+        "host": {"$ref": "#/$defs/nonEmpty"},
+        "project": {"$ref": "#/$defs/nonEmpty"},
+        "tlsVerify": {"type": "boolean"}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "preferSourceBuild"],
+      "properties": {
+        "description": {"$ref": "#/$defs/nonEmpty"},
+        "preferSourceBuild": {"type": "boolean"}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultProfile", "buildBase", "buildParallelism", "debianSnapshot", "forbiddenArtifactPrefixes", "runtimeRegistryPrefix", "mutableTagsForbidden", "mirrorDigestRequired"],
+      "properties": {
+        "defaultProfile": {"$ref": "#/$defs/nonEmpty"},
+        "buildBase": {"$ref": "#/$defs/nonEmpty"},
+        "buildParallelism": {"type": "integer", "minimum": 1, "maximum": 64},
+        "debianSnapshot": {"$ref": "#/$defs/nonEmpty"},
+        "forbiddenArtifactPrefixes": {"$ref": "#/$defs/stringArray"},
+        "runtimeRegistryPrefix": {"$ref": "#/$defs/nonEmpty"},
+        "mutableTagsForbidden": {"type": "boolean"},
+        "mirrorDigestRequired": {"type": "boolean"}
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "family", "version", "target", "scopes", "runtime", "license", "consumers", "bigBangRefs", "delivery"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "family": {"$ref": "#/$defs/nonEmpty"},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "target": {"$ref": "#/$defs/nonEmpty"},
+        "scopes": {"$ref": "#/$defs/stringArray"},
+        "runtime": {"type": "boolean"},
+        "license": {"$ref": "#/$defs/nonEmpty"},
+        "consumers": {"$ref": "#/$defs/stringArray"},
+        "bigBangRefs": {"$ref": "#/$defs/stringArray"},
+        "versionMapping": {"$ref": "#/$defs/imageVersionMapping"},
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default"],
+          "properties": {
+            "default": {"$ref": "#/$defs/deliveryChoice"},
+            "fullBuildTarget": {"$ref": "#/$defs/nonEmpty"}
+          }
+        }
+      }
+    },
+    "imageVersionMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "source"],
+      "properties": {
+        "artifact": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"enum": ["chartAppVersion", "upstreamImageTag"]},
+        "upstreamTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
+        "tagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
+        "tagSuffix": {"type": "string", "pattern": "^[^:@/]*$"},
+        "build": {"$ref": "#/$defs/imageBuildVersionMapping"}
+      }
+    },
+    "imageBuildVersionMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gitUrl", "gitContext", "fullTagSuffix"],
+      "properties": {
+        "imageRepository": {"$ref": "#/$defs/nonEmpty"},
+        "imageTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
+        "bakeContext": {"$ref": "#/$defs/nonEmpty"},
+        "gitUrl": {"type": "string", "format": "uri"},
+        "gitTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
+        "gitContext": {"$ref": "#/$defs/nonEmpty"},
+        "fullTagSuffix": {"type": "string", "pattern": "^[^:@/]+$"}
+      }
+    },
+    "deliveryChoice": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "source", "digest"],
+          "properties": {
+            "type": {"const": "mirror"},
+            "source": {"$ref": "#/$defs/nonEmpty"},
+            "digest": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "bakeTarget", "materials"],
+          "properties": {
+            "type": {"const": "build"},
+            "bakeTarget": {"$ref": "#/$defs/nonEmpty"},
+            "materials": {"$ref": "#/$defs/stringArray"}
+          }
+        }
+      ]
+    },
+    "renderedBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "bigBang", "counts", "normalization", "entries"],
+      "properties": {
+        "schemaVersion": {"const": "atum.dev/rendered-image-baseline/v2"},
+        "bigBang": {"$ref": "#/$defs/versionedCommit"},
+        "counts": {"$ref": "#/$defs/scopeCounts"},
+        "normalization": {"$ref": "#/$defs/nonEmpty"},
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["imageId", "target", "scopes", "evidence"],
+            "properties": {
+              "imageId": {"$ref": "#/$defs/nonEmpty"},
+              "target": {"$ref": "#/$defs/nonEmpty"},
+              "scopes": {"$ref": "#/$defs/stringArray"},
+              "evidence": {"enum": ["rendered", "configuration", "controller-generated"]}
+            }
+          }
+        }
+      }
+    },
+    "legacyCrosswalk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "bigBang", "strategy", "defaultCounts", "compatibilityBuilds", "entries"],
+      "properties": {
+        "schemaVersion": {"const": "atum.dev/bigbang-public-crosswalk/v2"},
+        "bigBang": {"$ref": "#/$defs/versionedCommit"},
+        "strategy": {"$ref": "#/$defs/nonEmpty"},
+        "defaultCounts": {"$ref": "#/$defs/deliveryCounts"},
+        "compatibilityBuilds": {"$ref": "#/$defs/stringArray"},
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["imageId", "family", "scopes", "consumers", "bigBangRefs", "replacement", "defaultDelivery"],
+            "properties": {
+              "imageId": {"$ref": "#/$defs/nonEmpty"},
+              "family": {"$ref": "#/$defs/nonEmpty"},
+              "scopes": {"$ref": "#/$defs/stringArray"},
+              "consumers": {"$ref": "#/$defs/stringArray"},
+              "bigBangRefs": {"$ref": "#/$defs/stringArray"},
+              "replacement": {"$ref": "#/$defs/nonEmpty"},
+              "defaultDelivery": {"enum": ["mirror", "build"]},
+              "officialSource": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["reference", "digest"],
+                "properties": {
+                  "reference": {"$ref": "#/$defs/nonEmpty"},
+                  "digest": {"$ref": "#/$defs/sha256"}
+                }
+              },
+              "compatibilityBuild": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["bakeTarget", "materials"],
+                "properties": {
+                  "bakeTarget": {"$ref": "#/$defs/nonEmpty"},
+                  "materials": {"$ref": "#/$defs/stringArray"}
+                }
+              }
+            },
+            "oneOf": [
+              {"required": ["officialSource"]},
+              {"required": ["compatibilityBuild"]}
+            ]
+          }
+        }
+      }
+    },
+    "versionedCommit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "commit"],
+      "properties": {
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "commit": {"$ref": "#/$defs/gitCommit"}
+      }
+    },
+    "scopeCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prep", "bigbang", "unique"],
+      "properties": {
+        "prep": {"type": "integer", "minimum": 0},
+        "bigbang": {"type": "integer", "minimum": 0},
+        "unique": {"type": "integer", "minimum": 0}
+      }
+    },
+    "deliveryCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "mirrored", "built"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "mirrored": {"type": "integer", "minimum": 0},
+        "built": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+# Upstream/local payloads. Do not commit nested repositories or vendored charts.
+/bigbang/
+/bitnamilegacy-charts/
+/kubespray/
+/charts/
+/actionplan.md
+remediationplan.md
+
+# If a chart must be vendored, keep it scoped under platform/charts/.
+!/platform/charts/
+
+# Terraform state and cache
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local builds and reports
+/atum
+/.atum/
+/.cache/
+/dist/
+/coverage.out
+/coverage/
+/cleanup/
+*.coverprofile
+/platform/seeds/
+/platform/seed-export-*/
+/platform/seed-restore-*/
+/platform-seed-*.bin
+
+# Generated orchestration inputs, credentials, and local VM scratch data
+/orchestration/inventory/*/hosts.yaml
+/orchestration/inventory/*/artifacts/
+/orchestration/inventory/*/credentials/
+/infra/libvirt/images/
+/infra/libvirt/ssh/
+pw.txt

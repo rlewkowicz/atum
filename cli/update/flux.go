@@ -1,0 +1,356 @@
+package update
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"atum/cli/config"
+	"atum/cli/fssecure"
+
+	fluxkustomize "github.com/fluxcd/pkg/kustomize"
+	fluxtar "github.com/fluxcd/pkg/tar"
+)
+
+const fluxAssetLimit = 64 << 20
+
+var fluxOverlayFiles = map[string]string{
+	"namespace.yaml": `---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+  labels:
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+`,
+	"node-selector.yaml": `---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: all
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+`,
+	"roles/kustomization.yaml": `---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - rbac.yaml
+nameSuffix: -flux-system
+`,
+	"kustomization.yaml": `---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+
+transformers:
+  - labels.yaml
+
+resources:
+  - namespace.yaml
+  - policies.yaml
+  - roles
+  - source-controller.yaml
+  - kustomize-controller.yaml
+  - helm-controller.yaml
+  - notification-controller.yaml
+
+images:
+  - name: fluxcd/source-controller
+    newName: ghcr.io/fluxcd/source-controller
+  - name: fluxcd/kustomize-controller
+    newName: ghcr.io/fluxcd/kustomize-controller
+  - name: fluxcd/helm-controller
+    newName: ghcr.io/fluxcd/helm-controller
+  - name: fluxcd/notification-controller
+    newName: ghcr.io/fluxcd/notification-controller
+
+patches:
+- path: node-selector.yaml
+  target:
+    kind: Deployment
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: source-controller
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/args/0
+      value: --events-addr=http://notification-controller.$(RUNTIME_NAMESPACE).svc.cluster.local./
+    - op: replace
+      path: /spec/template/spec/containers/0/args/1
+      value: --watch-all-namespaces=true
+    - op: replace
+      path: /spec/template/spec/containers/0/args/2
+      value: --log-level=info
+    - op: replace
+      path: /spec/template/spec/containers/0/args/6
+      value: --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: kustomize-controller
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/args/0
+      value: --events-addr=http://notification-controller.$(RUNTIME_NAMESPACE).svc.cluster.local./
+    - op: replace
+      path: /spec/template/spec/containers/0/args/1
+      value: --watch-all-namespaces=true
+    - op: replace
+      path: /spec/template/spec/containers/0/args/2
+      value: --log-level=info
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: helm-controller
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/args/0
+      value: --events-addr=http://notification-controller.$(RUNTIME_NAMESPACE).svc.cluster.local./
+    - op: replace
+      path: /spec/template/spec/containers/0/args/1
+      value: --watch-all-namespaces=true
+    - op: replace
+      path: /spec/template/spec/containers/0/args/2
+      value: --log-level=info
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: notification-controller
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/args/0
+      value: --watch-all-namespaces=true
+    - op: replace
+      path: /spec/template/spec/containers/0/args/1
+      value: --log-level=info
+`,
+}
+
+func (service *Service) resolveFluxAsset(
+	ctx context.Context,
+	current config.GitSource,
+	candidate *config.GitSource,
+	assetFile string,
+) ([]byte, error) {
+	ref := candidate.Ref
+	if ref == "" {
+		ref = "v" + strings.TrimPrefix(candidate.Version, "v")
+	}
+	sourceURL := fmt.Sprintf("https://github.com/fluxcd/flux2/releases/download/%s/manifests.tar.gz", ref)
+	sourceData, err := service.charts.readHTTPS(ctx, sourceURL, fluxAssetLimit)
+	if err != nil {
+		return nil, err
+	}
+	content, err := service.renderFluxInstall(sourceData, ref)
+	if err != nil {
+		return nil, err
+	}
+	asset := config.Asset{
+		ID:           "install-manifest",
+		URL:          sourceURL,
+		File:         assetFile,
+		SourceSHA256: config.SHA256(sourceData),
+		SHA256:       config.SHA256(content),
+	}
+	if sourceGitTag(current) == ref {
+		if len(current.Assets) != 1 || current.Assets[0] != asset {
+			return nil, fmt.Errorf("Flux %s release material changed without a Git tag change (source %s, rendered %s)",
+				ref, asset.SourceSHA256, asset.SHA256)
+		}
+	}
+	candidate.Assets = []config.Asset{asset}
+	return content, nil
+}
+
+func (service *Service) selectCompatibleFlux(
+	ctx context.Context,
+	current config.GitSource,
+	latest resolvedGit,
+	currentInspection chartInspection,
+	desired config.Document,
+) (resolvedGit, []byte, chartInspection, error) {
+	failures := make([]string, 0, len(latest.Releases))
+	assetFile := filepath.ToSlash(filepath.Join(
+		desired.Platform.Directory,
+		"clusters",
+		desired.Project.Cluster,
+		"flux-system",
+		"gotk-components.yaml",
+	))
+	for index := range latest.Releases {
+		candidate := latest
+		if index != 0 {
+			var err error
+			candidate, err = resolveGitRelease(ctx, service.cache, "flux", current, latest.Releases, index)
+			if err != nil {
+				return resolvedGit{}, nil, chartInspection{}, err
+			}
+		}
+		manifest, err := service.resolveFluxAsset(ctx, current, &candidate.Source, assetFile)
+		if err != nil {
+			return resolvedGit{}, nil, chartInspection{}, err
+		}
+		inspection, err := inspectManifestData("flux", manifest)
+		if err != nil {
+			failures = append(failures, candidate.Source.Version+": "+err.Error())
+			continue
+		}
+		if err := validateImageContract(&desired, "flux", currentInspection, inspection, nil, false); err != nil {
+			service.logger.WarnContext(ctx, "candidate Flux contract changed; trying the next compatible release",
+				"version", candidate.Source.Version,
+				"error", err,
+			)
+			failures = append(failures, candidate.Source.Version+": "+err.Error())
+			continue
+		}
+		return candidate, manifest, inspection, nil
+	}
+	return resolvedGit{}, nil, chartInspection{}, fmt.Errorf("no compatible Flux release: %s", strings.Join(failures, "; "))
+}
+
+func (service *Service) renderFluxInstall(source []byte, version string) ([]byte, error) {
+	stateRoot, err := fssecure.EnsureDirectory(service.root, filepath.Join(".atum", "state"), 0o700)
+	if err != nil {
+		return nil, fmt.Errorf("create Flux render state: %w", err)
+	}
+	directory, err := os.MkdirTemp(stateRoot, ".flux-")
+	if err != nil {
+		return nil, fmt.Errorf("create Flux render directory: %w", err)
+	}
+	defer os.RemoveAll(directory)
+	if err := fluxtar.Untar(
+		bytes.NewReader(source),
+		directory,
+		fluxtar.WithMaxUntarSize(fluxAssetLimit),
+		fluxtar.WithSkipSymlinks(),
+	); err != nil {
+		return nil, fmt.Errorf("extract Flux release manifests: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(directory, "roles"), 0o755); err != nil {
+		return nil, fmt.Errorf("create Flux role overlay: %w", err)
+	}
+	rbac, err := readBounded(filepath.Join(directory, "rbac.yaml"), fluxAssetLimit)
+	if err != nil {
+		return nil, fmt.Errorf("read Flux RBAC manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "roles", "rbac.yaml"), rbac, 0o644); err != nil {
+		return nil, fmt.Errorf("write Flux RBAC overlay: %w", err)
+	}
+	for relative, content := range fluxOverlayFiles {
+		path := filepath.Join(directory, filepath.FromSlash(relative))
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("write Flux overlay %s: %w", relative, err)
+		}
+	}
+	labels := fmt.Sprintf(`---
+apiVersion: builtin
+kind: LabelTransformer
+metadata:
+  name: labels
+labels:
+  app.kubernetes.io/instance: flux-system
+  app.kubernetes.io/version: %q
+  app.kubernetes.io/part-of: flux
+fieldSpecs:
+  - path: metadata/labels
+    create: true
+  - kind: Deployment
+    path: spec/template/metadata/labels
+    create: true
+`, version)
+	if err := os.WriteFile(filepath.Join(directory, "labels.yaml"), []byte(labels), 0o644); err != nil {
+		return nil, fmt.Errorf("write Flux label overlay: %w", err)
+	}
+	resources, err := fluxkustomize.SecureBuild(directory, directory, false)
+	if err != nil {
+		return nil, fmt.Errorf("render Flux %s manifests: %w", version, err)
+	}
+	manifest, err := resources.AsYaml()
+	if err != nil {
+		return nil, fmt.Errorf("encode Flux %s manifests: %w", version, err)
+	}
+	warning := fmt.Sprintf("---\n# This manifest was generated by flux. DO NOT EDIT.\n# Flux Version: %s\n# Components: source-controller,kustomize-controller,helm-controller,notification-controller", version)
+	return append([]byte(warning+"\n"), manifest...), nil
+}
+
+func (service *Service) renderFluxOverlay(
+	sourceDirectory string,
+	manifestName string,
+	manifest []byte,
+	kustomization []byte,
+	profilePatchName string,
+	profilePatch []byte,
+) ([]byte, error) {
+	stateRoot, err := fssecure.EnsureDirectory(service.root, filepath.Join(".atum", "state"), 0o700)
+	if err != nil {
+		return nil, fmt.Errorf("create Flux overlay state: %w", err)
+	}
+	directory, err := os.MkdirTemp(stateRoot, ".flux-overlay-")
+	if err != nil {
+		return nil, fmt.Errorf("create Flux overlay directory: %w", err)
+	}
+	defer os.RemoveAll(directory)
+	if err := copyTree(sourceDirectory, directory); err != nil {
+		return nil, fmt.Errorf("copy Flux overlay: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, manifestName), manifest, 0o644); err != nil {
+		return nil, fmt.Errorf("write Flux overlay manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "kustomization.yaml"), kustomization, 0o644); err != nil {
+		return nil, fmt.Errorf("write Flux overlay Kustomization: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, profilePatchName), profilePatch, 0o644); err != nil {
+		return nil, fmt.Errorf("write Flux profile patch: %w", err)
+	}
+	resources, err := fluxkustomize.SecureBuild(directory, directory, false)
+	if err != nil {
+		return nil, err
+	}
+	return resources.AsYaml()
+}
+
+func fluxProfilePatch(current map[string]any, target config.InfrastructureTarget) (map[string]any, error) {
+	apiVersion, _ := current["apiVersion"].(string)
+	kind, _ := current["kind"].(string)
+	metadata, _ := current["metadata"].(map[string]any)
+	name, _ := metadata["name"].(string)
+	namespace, _ := metadata["namespace"].(string)
+	if apiVersion != "kustomize.toolkit.fluxcd.io/v1" || kind != "Kustomization" ||
+		name != "flux-system" || namespace != "flux-system" {
+		return nil, fmt.Errorf("Flux profile patch does not target kustomize.toolkit.fluxcd.io/v1 Kustomization flux-system/flux-system")
+	}
+	domain := ""
+	if target.LocalAccess != nil {
+		domain = target.LocalAccess.Domain
+	}
+	return map[string]any{
+		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+		"kind":       "Kustomization",
+		"metadata": map[string]any{
+			"name":      "flux-system",
+			"namespace": "flux-system",
+		},
+		"spec": map[string]any{
+			"postBuild": map[string]any{
+				"substitute": map[string]any{
+					"ATUM_PLATFORM_DOMAIN":  domain,
+					"ATUM_PLATFORM_PROFILE": target.PlatformProfile,
+				},
+			},
+		},
+	}, nil
+}

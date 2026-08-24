@@ -1,0 +1,28 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: local-path-provisioner
+  namespace: local-path-storage
+spec:
+  releaseName: local-path-provisioner
+  targetNamespace: local-path-storage
+  interval: 10m
+  timeout: 10m
+  chartRef:
+    kind: OCIRepository
+    name: local-path-provisioner
+    namespace: local-path-storage
+  install:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 1m
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 1m
+  driftDetection:
+    mode: enabled
+  valuesFrom:
+    - kind: ConfigMap
+      name: local-path-provisioner-values
+      valuesKey: values.yaml

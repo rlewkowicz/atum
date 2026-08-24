@@ -1,0 +1,4942 @@
+{
+  "$schema": "./atum.schema.json",
+  "schemaVersion": "atum.dev/config/v1",
+  "project": {
+    "name": "atum",
+    "cluster": "atum",
+    "platform": "linux/amd64"
+  },
+  "updates": {
+    "parallelism": 8,
+    "stableOnly": true
+  },
+  "infrastructure": {
+    "active": "local",
+    "targets": {
+      "local": {
+        "driver": "terraform",
+        "directory": "infra/libvirt",
+        "autoApprove": true,
+        "platformProfile": "local",
+        "localAccess": {
+          "domain": "atum.test",
+          "dnsServer": "10.77.0.1",
+          "publicIngressVIP": "10.77.0.20",
+          "passthroughIngressVIP": "10.77.0.21",
+          "loadBalancerRange": "10.77.0.22-10.77.0.39",
+          "passthroughHosts": [
+            "keycloak"
+          ]
+        }
+      },
+      "vultr": {
+        "driver": "terraform",
+        "directory": "infra/vultr",
+        "autoApprove": false,
+        "platformProfile": "cloud"
+      }
+    }
+  },
+  "orchestration": {
+    "directory": "orchestration",
+    "inventory": "orchestration/inventory/atum",
+    "ansibleUser": "root",
+    "forks": 8,
+    "automaticUpgrade": true,
+    "releases": [
+      {
+        "kubernetes": "1.33.5",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.29.1",
+          "commit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29"
+        },
+        "checksums": {
+          "kubelet": "sha256:8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
+          "kubeadm": "sha256:6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
+          "kubectl": "sha256:6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc"
+        }
+      },
+      {
+        "kubernetes": "1.34.3",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.30.0",
+          "commit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a"
+        },
+        "checksums": {
+          "kubelet": "sha256:0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
+          "kubeadm": "sha256:f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
+          "kubectl": "sha256:ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212"
+        }
+      },
+      {
+        "kubernetes": "1.35.4",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.31.0",
+          "commit": "1c9add48975060f45396b34d8e022c30d7f80dab"
+        },
+        "checksums": {
+          "kubelet": "sha256:983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
+          "kubeadm": "sha256:0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
+          "kubectl": "sha256:b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd"
+        }
+      }
+    ]
+  },
+  "platform": {
+    "directory": "platform",
+    "sources": {
+      "externalUrl": "http://10.77.0.9:3000",
+      "clusterUrl": "http://10.77.0.9:3000",
+      "organization": "atum",
+      "repository": "atum",
+      "upstreamOrganization": "atum-upstreams"
+    },
+    "packageSelection": "platform/docs/finalpackages.md",
+    "bigBang": {
+      "url": "https://repo1.dso.mil/big-bang/bigbang.git",
+      "version": "3.30.0",
+      "commit": "1d5a436945aa24316b21b88f74d555e9d3559655",
+      "kubeVersion": "\u003e=1.34.0-0"
+    },
+    "flux": {
+      "url": "https://github.com/fluxcd/flux2.git",
+      "version": "2.9.4",
+      "ref": "v2.9.4",
+      "commit": "889be9d6cc8afa8ed639e1e1ba4ab678e3b38d8c",
+      "assets": [
+        {
+          "id": "install-manifest",
+          "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
+          "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
+          "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
+          "sha256": "97da4654bc11de5637d7f506b0a73707e1e6a1f7a8e9fa8e307063c0b9befa1f"
+        }
+      ]
+    },
+    "packages": [
+      {
+        "id": "istio-crds",
+        "valuesPath": "istioCRDs",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istio-crds.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "bf478aca88cbeaaa9a6b74579d339333e0e17bb6"
+        }
+      },
+      {
+        "id": "istiod",
+        "valuesPath": "istiod",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istiod.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "31fe272d29c84e3c88b586891bde1e00322090a9"
+        }
+      },
+      {
+        "id": "istio-gateway",
+        "valuesPath": "istioGateway",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istio-gateway.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "4e0520ebbed7b8be114602a8f7e9993b4a75a9b2"
+        }
+      },
+      {
+        "id": "kiali",
+        "valuesPath": "kiali",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kiali.git",
+          "version": "2.28.0-bb.1",
+          "branch": "main",
+          "commit": "118b3c8c677aaae7cf77d09ca3d3ff563711e7a6"
+        }
+      },
+      {
+        "id": "kyverno",
+        "valuesPath": "kyverno",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno.git",
+          "version": "3.8.2-bb.0",
+          "branch": "main",
+          "commit": "b447db7750b8151631adb50c030ee8eec7d068f8",
+          "kubeVersion": "\u003e=1.25.0-0"
+        }
+      },
+      {
+        "id": "kyverno-policies",
+        "valuesPath": "kyvernoPolicies",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno-policies.git",
+          "version": "3.3.4-bb.87",
+          "branch": "main",
+          "commit": "4a5b32d4b3dda100b661ca04a9f4608705c9224e"
+        }
+      },
+      {
+        "id": "kyverno-reporter",
+        "valuesPath": "kyvernoReporter",
+        "license": "MIT",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno-reporter.git",
+          "version": "3.9.0-bb.0",
+          "branch": "main",
+          "commit": "da6a9440e6e236b3eb75ade632852aa5f1045c5f"
+        }
+      },
+      {
+        "id": "fluent-bit",
+        "valuesPath": "fluentbit",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/fluentbit.git",
+          "version": "0.57.9-bb.0",
+          "branch": "main",
+          "commit": "c85d4ca665b9a59645c68f1246ff653d68e5d82b"
+        }
+      },
+      {
+        "id": "tempo",
+        "valuesPath": "tempo",
+        "license": "AGPL-3.0-only",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/tempo.git",
+          "version": "2.1.0-bb.2",
+          "branch": "main",
+          "commit": "00e3261d933da31330be94e44a36c19dafaaa865"
+        }
+      },
+      {
+        "id": "prometheus-operator-crds",
+        "valuesPath": "prometheusOperatorCRDs",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/prometheus-operator-crds.git",
+          "version": "30.0.1-bb.0",
+          "branch": "main",
+          "commit": "52443c44cd5f5eabc8932f8823d90ce9544833ce",
+          "kubeVersion": "\u003e=1.16.0-0"
+        }
+      },
+      {
+        "id": "monitoring",
+        "valuesPath": "monitoring",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/monitoring.git",
+          "version": "87.10.1-bb.3",
+          "branch": "main",
+          "commit": "f80a08770eac2d6f7928965b25987fc15b96a2bd",
+          "kubeVersion": "\u003e=1.19.0-0"
+        }
+      },
+      {
+        "id": "grafana",
+        "valuesPath": "grafana",
+        "license": "AGPL-3.0-only",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/grafana.git",
+          "version": "10.5.15-bb.6",
+          "branch": "main",
+          "commit": "70293e4da4fbbfda8ee8676ca70cce67f1b8b381",
+          "kubeVersion": "^1.25.0-0"
+        }
+      },
+      {
+        "id": "authservice",
+        "valuesPath": "addons.authservice",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/authservice.git",
+          "version": "1.1.5-bb.5",
+          "branch": "main",
+          "commit": "a5e8736bbb8219c7d66e066bb844626b38e35434"
+        }
+      },
+      {
+        "id": "gitlab",
+        "valuesPath": "addons.gitlab",
+        "license": "MIT",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/gitlab.git",
+          "version": "9.11.8-bb.0",
+          "branch": "main",
+          "commit": "e1afa3518e4c3e7a329369a73158a14224593192"
+        }
+      },
+      {
+        "id": "harbor",
+        "valuesPath": "addons.harbor",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/harbor.git",
+          "version": "1.19.1-bb.2",
+          "branch": "main",
+          "commit": "a0bb9f16e81dd7f4b44ce6e23ece1336883af676"
+        }
+      },
+      {
+        "id": "headlamp",
+        "valuesPath": "addons.headlamp",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/headlamp.git",
+          "version": "0.40.0-bb.2",
+          "branch": "main",
+          "commit": "376b0d52d5397c01a33434de11d9dd97d8d8d0bd"
+        }
+      },
+      {
+        "id": "keycloak",
+        "valuesPath": "addons.keycloak",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git",
+          "version": "7.2.2-bb.1",
+          "branch": "main",
+          "commit": "63f3f02f4b5d32f970bb9d4525331cc8e96cd832"
+        }
+      },
+      {
+        "id": "vault",
+        "valuesPath": "addons.vault",
+        "license": "MPL-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/vault.git",
+          "version": "0.33.0-bb.4",
+          "branch": "main",
+          "commit": "59a5a25b1e0490a746da65f441d5ce9620b1c38f"
+        }
+      },
+      {
+        "id": "velero",
+        "valuesPath": "addons.velero",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/velero.git",
+          "version": "12.1.0-bb.2",
+          "branch": "main",
+          "commit": "b6948838ee216bfe2fa854ec2322d116c8853c3d",
+          "kubeVersion": "\u003e=1.18.0-0"
+        }
+      }
+    ],
+    "charts": [
+      {
+        "id": "opensearch-operator",
+        "name": "opensearch-operator",
+        "valuesPath": "packages.opensearch-operator",
+        "fluxSource": "platform/apps/bigbang/source-opensearch-operator.yaml",
+        "version": "2.8.0",
+        "appVersion": "2.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/opensearch-k8s-operator/releases/download/opensearch-operator-2.8.0/opensearch-operator-2.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/opensearch-k8s-operator/index.yaml"
+        },
+        "archiveSha256": "f289e27e553c45b55e20952c78971b19a1b5defe9f89bea1f6910f3ee3da81eb"
+      },
+      {
+        "id": "opensearch",
+        "name": "opensearch",
+        "valuesPath": "packages.opensearch",
+        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
+        "version": "3.8.0",
+        "appVersion": "3.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-3.8.0/opensearch-3.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/helm-charts/index.yaml"
+        },
+        "archiveSha256": "cad6c77d04ec2389be6f61b5422ce61e7264eb7145e42b4c78dbc00e9d7dbe4d"
+      },
+      {
+        "id": "opensearch-dashboards",
+        "name": "opensearch-dashboards",
+        "valuesPath": "packages.opensearch-dashboards",
+        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
+        "version": "3.8.0",
+        "appVersion": "3.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-dashboards-3.8.0/opensearch-dashboards-3.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/helm-charts/index.yaml"
+        },
+        "archiveSha256": "d932c62d60743f2837c7b9a4248ef7719c3049fe11b2dd8d44bc6ede43641a0e"
+      }
+    ],
+    "vendors": [],
+    "values": {
+      "operational": "platform/apps/bigbang/values.yaml",
+      "generated": "platform/apps/bigbang/generated-values.yaml",
+      "profiles": {
+        "cloud": "platform/profiles/cloud/prep/values.yaml",
+        "local": "platform/profiles/local/prep/values.yaml"
+      }
+    },
+    "bootstrap": {
+      "schemaVersion": "atum.dev/bootstrap-charts/v1",
+      "registry": {
+        "host": "10.77.0.9:32443",
+        "project": "charts",
+        "tlsVerify": false
+      },
+      "immutableTags": true,
+      "charts": [
+        {
+          "id": "local-path-provisioner",
+          "name": "local-path-provisioner",
+          "version": "0.0.37",
+          "appVersion": "v0.0.37",
+          "imageBindings": [
+            {
+              "id": "local-path-provisioner",
+              "valuesPath": "image"
+            }
+          ],
+          "kubeVersion": "\u003e=1.12.0-r0",
+          "license": "Apache-2.0",
+          "source": {
+            "type": "oci",
+            "url": "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner",
+            "digest": "sha256:81033683ce790e593524b2105945ee0d81bf6608f0c85eb5e0c1082cc74ff03d"
+          },
+          "values": "platform/apps/prep/storage/values.yaml",
+          "fluxSource": "platform/apps/prep/storage/source-local-path-provisioner.yaml",
+          "file": "local-path-provisioner-0.0.37.tgz",
+          "archiveSha256": "5fdbc13018711551041bb7112a2f9f7b5a2d9cad534866e389efe1b015871068",
+          "target": "10.77.0.9:32443/charts/local-path-provisioner:0.0.37"
+        },
+        {
+          "id": "cert-manager",
+          "name": "cert-manager",
+          "version": "v1.21.1",
+          "appVersion": "v1.21.1",
+          "imageBindings": [
+            {
+              "id": "cert-manager-controller",
+              "valuesPath": "image"
+            },
+            {
+              "id": "cert-manager-webhook",
+              "valuesPath": "webhook.image"
+            },
+            {
+              "id": "cert-manager-cainjector",
+              "valuesPath": "cainjector.image"
+            },
+            {
+              "id": "cert-manager-startupapicheck",
+              "valuesPath": "startupapicheck.image"
+            },
+            {
+              "id": "cert-manager-acmesolver",
+              "valuesPath": "acmesolver.image"
+            }
+          ],
+          "kubeVersion": "\u003e= 1.22.0-0",
+          "license": "Apache-2.0",
+          "source": {
+            "type": "oci",
+            "url": "oci://quay.io/jetstack/charts/cert-manager",
+            "digest": "sha256:15c0b46d9006ce8eb9ff14d1bf54d1bbfcc587bb9e24cd9fe186fb8fec56af1f"
+          },
+          "values": "platform/apps/prep/cert-manager/values.yaml",
+          "fluxSource": "platform/apps/prep/cert-manager/source.yaml",
+          "file": "cert-manager-v1.21.1.tgz",
+          "archiveSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
+          "target": "10.77.0.9:32443/charts/cert-manager:v1.21.1"
+        },
+        {
+          "id": "kube-vip",
+          "name": "kube-vip",
+          "version": "0.11.0",
+          "appVersion": "v1.2.2",
+          "imageBindings": [
+            {
+              "id": "kube-vip",
+              "valuesPath": "image",
+              "imageRepository": "ghcr.io/kube-vip/kube-vip"
+            }
+          ],
+          "license": "Apache-2.0",
+          "source": {
+            "type": "https",
+            "url": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-0.11.0/kube-vip-0.11.0.tgz",
+            "indexUrl": "https://kube-vip.github.io/helm-charts/index.yaml"
+          },
+          "values": "platform/profiles/local/prep/load-balancer/kube-vip/values.yaml",
+          "fluxSource": "platform/profiles/local/prep/load-balancer/kube-vip/source.yaml",
+          "file": "kube-vip-0.11.0.tgz",
+          "archiveSha256": "5703d415869ed03cc46721ff33e09c801f217ebcafe11496510870327bd1aeea",
+          "target": "10.77.0.9:32443/charts/kube-vip:0.11.0",
+          "profiles": [
+            "local"
+          ]
+        },
+        {
+          "id": "kube-vip-cloud-provider",
+          "name": "kube-vip-cloud-provider",
+          "version": "0.2.10",
+          "appVersion": "v0.0.12",
+          "imageBindings": [
+            {
+              "id": "kube-vip-cloud-provider",
+              "valuesPath": "image",
+              "imageRepository": "ghcr.io/kube-vip/kube-vip-cloud-provider"
+            }
+          ],
+          "license": "Apache-2.0",
+          "source": {
+            "type": "https",
+            "url": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-cloud-provider-0.2.10/kube-vip-cloud-provider-0.2.10.tgz",
+            "indexUrl": "https://kube-vip.github.io/helm-charts/index.yaml"
+          },
+          "values": "platform/profiles/local/prep/load-balancer/kube-vip-cloud-provider/values.yaml",
+          "fluxSource": "platform/profiles/local/prep/load-balancer/kube-vip-cloud-provider/source.yaml",
+          "file": "kube-vip-cloud-provider-0.2.10.tgz",
+          "archiveSha256": "6a9c9d7540cd3d7a4ebfaf205c4df07c809b19b463e6a764d59c011387d2695e",
+          "target": "10.77.0.9:32443/charts/kube-vip-cloud-provider:0.2.10",
+          "profiles": [
+            "local"
+          ]
+        }
+      ]
+    }
+  },
+  "secrets": {
+    "sopsFile": "secrets/atum.sops.yaml",
+    "localFile": ".atum/secrets.local.json"
+  },
+  "delivery": {
+    "registry": {
+      "host": "10.77.0.9:32443",
+      "project": "atum",
+      "tlsVerify": false
+    },
+    "seed": {
+      "forgejo": {
+        "url": "http://10.77.0.9:3000",
+        "image": {
+          "id": "forgejo",
+          "source": "code.forgejo.org/forgejo/forgejo:15.0.6-rootless",
+          "digest": "sha256:a724dff39aa939b78ce8b62f34bcea5a76980cbf7bf76bbe505ca1bf410720cd"
+        }
+      },
+      "harbor": {
+        "url": "http://10.77.0.9:32443",
+        "version": "v2.15.2",
+        "installer": {
+          "url": "https://github.com/goharbor/harbor/releases/download/v2.15.2/harbor-online-installer-v2.15.2.tgz",
+          "file": "harbor-online-installer-v2.15.2.tgz",
+          "sha256": "88f6a7436b31890e8e472972a7433d36b7d6a36de9adeb86337fdc9fe7fb5fa3",
+          "size": 11763
+        },
+        "images": [
+          {
+            "id": "harbor-prepare",
+            "source": "docker.io/goharbor/prepare:v2.15.2",
+            "digest": "sha256:5b9428fb649b3a0e0fe497189a880d7c9f1281538b85de9ad377cb524e427bd5"
+          },
+          {
+            "id": "harbor-log",
+            "source": "docker.io/goharbor/harbor-log:v2.15.2",
+            "digest": "sha256:dad88aa27590f7b7018533f500bd2bb43e64144f5d4abe0e5f23fba88d36332c"
+          },
+          {
+            "id": "harbor-nginx",
+            "source": "docker.io/goharbor/nginx-photon:v2.15.2",
+            "digest": "sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f"
+          },
+          {
+            "id": "harbor-portal",
+            "source": "docker.io/goharbor/harbor-portal:v2.15.2",
+            "digest": "sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d"
+          },
+          {
+            "id": "harbor-core",
+            "source": "docker.io/goharbor/harbor-core:v2.15.2",
+            "digest": "sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7"
+          },
+          {
+            "id": "harbor-jobservice",
+            "source": "docker.io/goharbor/harbor-jobservice:v2.15.2",
+            "digest": "sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598"
+          },
+          {
+            "id": "harbor-registry",
+            "source": "docker.io/goharbor/registry-photon:v2.15.2",
+            "digest": "sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855"
+          },
+          {
+            "id": "harbor-registryctl",
+            "source": "docker.io/goharbor/harbor-registryctl:v2.15.2",
+            "digest": "sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362"
+          },
+          {
+            "id": "harbor-database",
+            "source": "docker.io/goharbor/harbor-db:v2.15.2",
+            "digest": "sha256:5ebfb345b33d673fa8483ffc997013113b7d14ea56abfa65cfcb621b4acf3039"
+          },
+          {
+            "id": "harbor-redis",
+            "source": "docker.io/goharbor/valkey-photon:v2.15.2",
+            "digest": "sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0"
+          }
+        ]
+      }
+    },
+    "profiles": {
+      "full-build": {
+        "description": "Prefer an exact pinned public-source Bake recipe when maintained; mirror images without one.",
+        "preferSourceBuild": true
+      },
+      "platform": {
+        "description": "Mirror official public linux/amd64 manifests and build only Atum compatibility images.",
+        "preferSourceBuild": false
+      }
+    },
+    "policy": {
+      "defaultProfile": "platform",
+      "buildBase": "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
+      "buildParallelism": 2,
+      "debianSnapshot": "20260801T000000Z",
+      "forbiddenArtifactPrefixes": [
+        "registry1.dso.mil/",
+        "docker.io/bitnami/",
+        "docker.io/bitnamilegacy/",
+        "registry-1.docker.io/bitnami/",
+        "registry-1.docker.io/bitnamilegacy/",
+        "ghcr.io/bitnami/",
+        "ghcr.io/bitnamilegacy/"
+      ],
+      "runtimeRegistryPrefix": "10.77.0.9:32443/atum/",
+      "mutableTagsForbidden": true,
+      "mirrorDigestRequired": true
+    },
+    "images": [
+      {
+        "id": "buildkit",
+        "family": "build-system",
+        "version": "0.25.2",
+        "target": "10.77.0.9:32443/atum/buildkit:v0.25.2",
+        "scopes": [
+          "build-system"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Local Buildx builder"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/moby/buildkit:v0.25.2",
+            "digest": "sha256:72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bbf108088caf810f05"
+          },
+          "fullBuildTarget": "buildkit"
+        }
+      },
+      {
+        "id": "sbom-scanner",
+        "family": "build-system",
+        "version": "1.11.0",
+        "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0",
+        "scopes": [
+          "build-system"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "BuildKit SBOM attestations"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/docker/buildkit-syft-scanner:1.11.0",
+            "digest": "sha256:13864237fb990943433f89d698590aad1de38d4a7e13d38e7b12f2488c1952e7"
+          },
+          "fullBuildTarget": "sbom-scanner"
+        }
+      },
+      {
+        "id": "busybox",
+        "family": "foundation",
+        "version": "1.37.0",
+        "target": "10.77.0.9:32443/atum/busybox:1.37.0",
+        "scopes": [
+          "prep",
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "GPL-2.0-only",
+        "consumers": [
+          "Local Path Provisioner",
+          "Forgejo tests",
+          "Grafana helpers",
+          "OpenSearch persistence"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/frontiertechnology/cortex/busybox:v1.37.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/library/busybox:1.37.0",
+            "digest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0"
+          },
+          "fullBuildTarget": "busybox"
+        }
+      },
+      {
+        "id": "flux-source-controller",
+        "family": "flux",
+        "version": "v1.9.4",
+        "target": "10.77.0.9:32443/atum/flux-source-controller:v1.9.4",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Flux bootstrap"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/fluxcd/source-controller:v1.9.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/fluxcd/source-controller:v1.9.4",
+            "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316"
+          }
+        }
+      },
+      {
+        "id": "flux-kustomize-controller",
+        "family": "flux",
+        "version": "1.9.4",
+        "target": "10.77.0.9:32443/atum/flux-kustomize-controller:v1.9.4",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Flux bootstrap"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/fluxcd/kustomize-controller:v1.9.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
+            "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd"
+          }
+        }
+      },
+      {
+        "id": "flux-helm-controller",
+        "family": "flux",
+        "version": "1.6.3",
+        "target": "10.77.0.9:32443/atum/flux-helm-controller:v1.6.3",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Flux bootstrap"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/fluxcd/helm-controller:v1.6.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/fluxcd/helm-controller:v1.6.3",
+            "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2"
+          }
+        }
+      },
+      {
+        "id": "flux-notification-controller",
+        "family": "flux",
+        "version": "v1.9.3",
+        "target": "10.77.0.9:32443/atum/flux-notification-controller:v1.9.3",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Flux bootstrap"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/fluxcd/notification-controller:v1.9.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/fluxcd/notification-controller:v1.9.3",
+            "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7"
+          }
+        }
+      },
+      {
+        "id": "cert-manager-controller",
+        "family": "cert-manager",
+        "version": "1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "cert-manager"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/jetstack/cert-manager-controller:v1.21.1",
+            "digest": "sha256:4c2b5201fd66085b777dc6b256d96d7d346b6445404cec34db5f8aea86182cc5"
+          }
+        }
+      },
+      {
+        "id": "cert-manager-webhook",
+        "family": "cert-manager",
+        "version": "1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "cert-manager"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/jetstack/cert-manager-webhook:v1.21.1",
+            "digest": "sha256:741084291faf115a2909bfe3515458b54926c67f039ac20effd821bac69817a4"
+          }
+        }
+      },
+      {
+        "id": "cert-manager-cainjector",
+        "family": "cert-manager",
+        "version": "1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "cert-manager"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/jetstack/cert-manager-cainjector:v1.21.1",
+            "digest": "sha256:1910ad7e134880e27d229e07affb43da1b07841a77f70c364f17467cb4e49bd9"
+          }
+        }
+      },
+      {
+        "id": "cert-manager-startupapicheck",
+        "family": "cert-manager",
+        "version": "1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "cert-manager startup job"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/jetstack/cert-manager-startupapicheck:v1.21.1",
+            "digest": "sha256:15cafecd3d23a4fa2226185f78c4792914010b2713f59060a1b9b484029041e4"
+          }
+        }
+      },
+      {
+        "id": "cert-manager-acmesolver",
+        "family": "cert-manager",
+        "version": "1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "cert-manager generated solver pods"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/jetstack/cert-manager-acmesolver:v1.21.1",
+            "digest": "sha256:e5a8da10354cdd0225eb039c84ad3696d47282de18c21905a25bb3a392542b34"
+          }
+        }
+      },
+      {
+        "id": "local-path-provisioner",
+        "family": "prep",
+        "version": "0.0.37",
+        "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "prep storage"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/rancher/local-path-provisioner:v0.0.37",
+            "digest": "sha256:c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2dfc36a7e66fe99c08"
+          }
+        }
+      },
+      {
+        "id": "kube-vip",
+        "family": "kube-vip",
+        "version": "1.2.2",
+        "target": "10.77.0.9:32443/atum/kube-vip:v1.2.2",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "local Service load balancer"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kube-vip/kube-vip:v1.2.2",
+            "digest": "sha256:1057c6b204f8e82d157cfa5ea70e2b9562ac8b7647424fa3eed0dbf3fe2244c9"
+          }
+        }
+      },
+      {
+        "id": "kube-vip-cloud-provider",
+        "family": "kube-vip",
+        "version": "0.0.12",
+        "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12",
+        "scopes": [
+          "prep"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "local Service address allocator"
+        ],
+        "bigBangRefs": [],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.12",
+            "digest": "sha256:33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55e4bbab5e4793ed7b"
+          }
+        }
+      },
+      {
+        "id": "harbor-nginx",
+        "family": "harbor",
+        "version": "2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-nginx:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/nginx/nginx:1.30.1",
+          "registry1.dso.mil/ironbank/opensource/nginx/nginx:1.30.4"
+        ],
+        "versionMapping": {
+          "artifact": "package/harbor",
+          "source": "chartAppVersion",
+          "tagPrefix": "v"
+        },
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/nginx-photon:v2.15.2",
+            "digest": "sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f"
+          }
+        }
+      },
+      {
+        "id": "harbor-portal",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-portal:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-portal:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-portal:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/harbor-portal:v2.15.2",
+            "digest": "sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d"
+          }
+        }
+      },
+      {
+        "id": "harbor-core",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-core:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-core:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-core:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/harbor-core:v2.15.2",
+            "digest": "sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7"
+          }
+        }
+      },
+      {
+        "id": "harbor-jobservice",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-jobservice:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-jobservice:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-jobservice:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/harbor-jobservice:v2.15.2",
+            "digest": "sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598"
+          }
+        }
+      },
+      {
+        "id": "harbor-registry",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/registry:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/registry:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/registry-photon:v2.15.2",
+            "digest": "sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855"
+          }
+        }
+      },
+      {
+        "id": "harbor-registryctl",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-registryctl:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-registryctl:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-registryctl:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/harbor-registryctl:v2.15.2",
+            "digest": "sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362"
+          }
+        }
+      },
+      {
+        "id": "harbor-exporter",
+        "family": "harbor",
+        "version": "v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-exporter:v2.15.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang Harbor metrics"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-exporter:v2.15.1",
+          "registry1.dso.mil/ironbank/opensource/goharbor/harbor-exporter:v2.15.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/goharbor/harbor-exporter:v2.15.2",
+            "digest": "sha256:e1b0a248f61aad5084c5d1612d5f1da89f99c23ce743eaf8cba913d6d00c0547"
+          }
+        }
+      },
+      {
+        "id": "kubectl",
+        "family": "bigbang-helper",
+        "version": "1.35.0",
+        "target": "10.77.0.9:32443/atum/kubectl:1.35.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Big Bang package jobs",
+          "Vault auto-init secret creation"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/big-bang/base:2.1.0",
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35",
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.5",
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.6",
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.7"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/alpine/k8s:1.35.0",
+            "digest": "sha256:a63c7306fb8099c3b4f3f322113f85db863fc36d99e21808aacd773a4e86aa43"
+          }
+        }
+      },
+      {
+        "id": "istio-pilot",
+        "family": "mesh",
+        "version": "1.30.3",
+        "target": "10.77.0.9:32443/atum/pilot:1.30.3",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Istiod"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/istio/pilot:1.30.3",
+          "registry1.dso.mil/ironbank/opensource/istio/pilot:1.30.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/istio/pilot:1.30.3",
+            "digest": "sha256:73d3a30729dd741f72979a9fe9a7cc9072e67eb8099c47fc85450a0510f93b89"
+          }
+        }
+      },
+      {
+        "id": "istio-proxy",
+        "family": "mesh",
+        "version": "1.30.3",
+        "target": "10.77.0.9:32443/atum/proxyv2:1.30.3",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Istiod",
+          "Istio Gateway"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/istio/proxyv2:1.30.3",
+          "registry1.dso.mil/ironbank/opensource/istio/proxyv2:1.30.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/istio/proxyv2:1.30.3",
+            "digest": "sha256:dadeba31ff2b92dfa9b73ce6cf41d09d62448dba149fe11b162b6a1e5474147f"
+          }
+        }
+      },
+      {
+        "id": "kiali-operator",
+        "family": "mesh",
+        "version": "v2.28.0",
+        "target": "10.77.0.9:32443/atum/kiali-operator:v2.28.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kiali"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator:v2.28.0",
+          "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator:v2.27.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/kiali/kiali-operator:v2.28.0",
+            "digest": "sha256:97ac28ae12ae54a3366aa4398ec62534e422464944d583c913ec6be1d398da83"
+          }
+        }
+      },
+      {
+        "id": "kiali-server",
+        "family": "mesh",
+        "version": "v2.28.0",
+        "target": "10.77.0.9:32443/atum/kiali-server:v2.28.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kiali operator generated CR"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kiali/kiali:v2.28.0",
+          "registry1.dso.mil/ironbank/opensource/kiali/kiali:v2.27.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/kiali/kiali:v2.28.0",
+            "digest": "sha256:4bd462071d53f6498dd5c4f67523ddeec5ee4264b0b729a3c5d58e5d0bdf7b0a"
+          }
+        }
+      },
+      {
+        "id": "headlamp",
+        "family": "cluster-console",
+        "version": "v0.40.0",
+        "target": "10.77.0.9:32443/atum/headlamp:v0.40.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Headlamp"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/headlamp-k8s/headlamp:v0.40.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/headlamp-k8s/headlamp:v0.40.0",
+            "digest": "sha256:bdb44cd854576b3f402c9c17f099a980fb7c9b6d86ed99ea3e70d94f7848f840"
+          }
+        }
+      },
+      {
+        "id": "authservice",
+        "family": "identity",
+        "version": "1.1.5",
+        "target": "10.77.0.9:32443/atum/authservice:1.1.5",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Authservice"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/istio-ecosystem/authservice:1.1.5"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/istio-ecosystem/authservice/authservice:1.1.5",
+            "digest": "sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82"
+          }
+        }
+      },
+      {
+        "id": "kyverno-admission-controller",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/kyverno:v1.18.2",
+            "digest": "sha256:11cc08bf7116e0881c00412729dc25c299f29fa3dc6b8e1e53fc623d5158c182"
+          }
+        }
+      },
+      {
+        "id": "kyverno-preflight",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/kyvernopre:v1.18.2",
+            "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b"
+          }
+        }
+      },
+      {
+        "id": "kyverno-cli",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno CRD jobs"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/kyverno-cli:v1.18.2",
+            "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194"
+          }
+        }
+      },
+      {
+        "id": "kyverno-background-controller",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/background-controller:v1.18.2",
+            "digest": "sha256:92193ee48d319d86692673b38abbb10177d5d13bdcb50e85feb97b03b4bf4920"
+          }
+        }
+      },
+      {
+        "id": "kyverno-cleanup-controller",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/cleanup-controller:v1.18.2",
+            "digest": "sha256:2084dacbfc3365cdbeb8b3ccb4a768d3a94b2d1a243f0f36c3d02cc5ce26d5df"
+          }
+        }
+      },
+      {
+        "id": "kyverno-reports-controller",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/reports-controller:v1.18.2",
+            "digest": "sha256:207138d7a52ca4f8ebfcefae203ec22ff57ac21a5bc9437ee428882ca69dbcf2"
+          }
+        }
+      },
+      {
+        "id": "kyverno-readiness-checker",
+        "family": "policy",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno lifecycle jobs"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/readiness-checker:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/readiness-checker:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kyverno/readiness-checker:v1.18.2",
+            "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70"
+          }
+        }
+      },
+      {
+        "id": "policy-reporter",
+        "family": "policy",
+        "version": "3.9.0",
+        "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "Kyverno Reporter"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter:3.9.0",
+          "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter:3.7.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kyverno/policy-reporter:3.9.0",
+            "digest": "sha256:f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7afdf37bb52743654a"
+          }
+        }
+      },
+      {
+        "id": "policy-reporter-ui",
+        "family": "policy",
+        "version": "2.7.0",
+        "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "Kyverno Reporter"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui:2.7.0",
+          "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui:2.5.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kyverno/policy-reporter-ui:2.7.0",
+            "digest": "sha256:30ecd16e52212bb8b015e4ccb5ea8c70536687dcc80219bab8e22e2189e743fe"
+          }
+        }
+      },
+      {
+        "id": "policy-reporter-kyverno-plugin",
+        "family": "policy",
+        "version": "0.6.2",
+        "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Kyverno Reporter"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter/kyverno-plugin:0.6.2",
+          "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter/kyverno-plugin:0.6.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kyverno/policy-reporter/kyverno-plugin:0.6.2",
+            "digest": "sha256:082c10f8f02bb2c59612a29f08005852367bee07795d3e53f5387b52c8a9cf57"
+          }
+        }
+      },
+      {
+        "id": "fluent-bit",
+        "family": "observability",
+        "version": "5.0.9",
+        "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Fluent Bit"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/fluent/fluent-bit:v5.0.9",
+          "registry1.dso.mil/ironbank/opensource/fluent/fluent-bit:v5.0.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "cr.fluentbit.io/fluent/fluent-bit:5.0.9",
+            "digest": "sha256:1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f655cdbb2fd75f563c"
+          }
+        }
+      },
+      {
+        "id": "tempo",
+        "family": "observability",
+        "version": "2.10.5",
+        "target": "10.77.0.9:32443/atum/tempo:2.10.5",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "Tempo"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/grafana/tempo:2.10.5"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/grafana/tempo:2.10.5",
+            "digest": "sha256:7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3be21e97fe83de502"
+          }
+        }
+      },
+      {
+        "id": "alertmanager",
+        "family": "observability",
+        "version": "v0.33.1",
+        "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus/alertmanager:v0.33.1",
+          "registry1.dso.mil/ironbank/opensource/prometheus/alertmanager:v0.32.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus/alertmanager:v0.33.1",
+            "digest": "sha256:a89f8d4520954079275441eecdb71444328bd90633dd4eddfc33b9ed657f349b"
+          }
+        }
+      },
+      {
+        "id": "prometheus",
+        "family": "observability",
+        "version": "v3.13.0",
+        "target": "10.77.0.9:32443/atum/prometheus:v3.13.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus/prometheus:v3.13.0",
+          "registry1.dso.mil/ironbank/opensource/prometheus/prometheus:v3.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus/prometheus:v3.13.0",
+            "digest": "sha256:0e698e35e50d1ddc2d11a4a55b089fe62eb71358a5c204dfafd21bdf8ffe04b8"
+          }
+        }
+      },
+      {
+        "id": "prometheus-operator",
+        "family": "observability",
+        "version": "v0.92.1",
+        "target": "10.77.0.9:32443/atum/prometheus-operator:v0.92.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-operator:v0.92.1",
+          "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-operator:v0.91.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus-operator/prometheus-operator:v0.92.1",
+            "digest": "sha256:5835318d3506dd6d8676f2a1316776ac70f1b0b7cc0bce861213559ea855b8f2"
+          }
+        }
+      },
+      {
+        "id": "prometheus-config-reloader",
+        "family": "observability",
+        "version": "v0.92.1",
+        "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.92.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Prometheus operator generated pods"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-config-reloader:v0.92.1",
+          "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-config-reloader:v0.91.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus-operator/prometheus-config-reloader:v0.92.1",
+            "digest": "sha256:bf6f3527663207af1d936e4f3f27c7a4aab703c0de2a82844f95c14af35dfe19"
+          }
+        }
+      },
+      {
+        "id": "thanos",
+        "family": "observability",
+        "version": "0.41.0",
+        "target": "10.77.0.9:32443/atum/thanos:v0.41.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Prometheus operator generated pods"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/thanos/thanos:v0.41.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/thanos/thanos:v0.41.0",
+            "digest": "sha256:c2f322e5ea9727bce5153730da133820235844bd5ba72da7e9428c3739a73cab"
+          },
+          "fullBuildTarget": "thanos"
+        }
+      },
+      {
+        "id": "kube-state-metrics",
+        "family": "observability",
+        "version": "v2.19.1",
+        "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kube-state-metrics:v2.19.1",
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kube-state-metrics:v2.19.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1",
+            "digest": "sha256:7661da8c99b733d43117e4cba12bd9865d335e5777191d0af3d789807aded9f4"
+          }
+        }
+      },
+      {
+        "id": "node-exporter",
+        "family": "observability",
+        "version": "1.11.1",
+        "target": "10.77.0.9:32443/atum/node-exporter:v1.11.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus/node-exporter:v1.11.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus/node-exporter:v1.11.1",
+            "digest": "sha256:fbd8062b4529e166e902bd62cd93de2f48b36d50af942620d419657265bc20b1"
+          },
+          "fullBuildTarget": "node-exporter"
+        }
+      },
+      {
+        "id": "kube-webhook-certgen",
+        "family": "observability",
+        "version": "1.6.9",
+        "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Monitoring admission jobs"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/ingress-nginx/kube-webhook-certgen:v1.6.9"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9",
+            "digest": "sha256:f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd93f664883d481331"
+          },
+          "fullBuildTarget": "kube-webhook-certgen"
+        }
+      },
+      {
+        "id": "grafana-plugins",
+        "family": "observability",
+        "version": "13.0.1",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:13.0.1-atum1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "Grafana"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/big-bang/grafana/grafana-plugins:13.0.1",
+          "registry1.dso.mil/ironbank/big-bang/grafana/grafana-plugins:12.4.2"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "grafana-plugins",
+            "materials": [
+              "docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455",
+              "https://github.com/grafana/grafana-polystat-panel/releases/download/v2.1.16/grafana-polystat-panel-2.1.16.zip#sha256:3e1791f83b4db03134dac24521a52407c1990a1b56356dc440580ee4664f214c",
+              "https://github.com/RedisGrafana/grafana-redis-datasource/releases/download/v2.2.0/redis-datasource-2.2.0.zip#sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f501a8ab"
+            ]
+          }
+        }
+      },
+      {
+        "id": "k8s-sidecar",
+        "family": "observability",
+        "version": "2.8.1",
+        "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "Grafana"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/kiwigrid/k8s-sidecar:2.8.1",
+          "registry1.dso.mil/ironbank/kiwigrid/k8s-sidecar:2.5.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/kiwigrid/k8s-sidecar:2.8.1",
+            "digest": "sha256:44065fae116464099acd5bfddb62dcb2cf53c8fa18948d215109d64a5560306e"
+          }
+        }
+      },
+      {
+        "id": "keycloak",
+        "family": "identity",
+        "version": "26.7.0",
+        "target": "10.77.0.9:32443/atum/keycloak:26.7.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Keycloak"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/keycloak/keycloak:26.7.0",
+          "registry1.dso.mil/ironbank/opensource/keycloak/keycloak:26.6.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/keycloak/keycloak:26.7.0",
+            "digest": "sha256:26939e1318d6f008fc2ee6e10cec1cf8f1ba8a21846c1bc81b91ed0506bc2a7a"
+          }
+        }
+      },
+      {
+        "id": "postgresql-18",
+        "family": "data",
+        "version": "18.4",
+        "target": "10.77.0.9:32443/atum/postgresql:18.4",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "PostgreSQL",
+        "consumers": [
+          "Harbor Bitnami PostgreSQL subchart",
+          "Keycloak Bitnami PostgreSQL subchart"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/postgres/postgresql:18.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "postgresql-18-compat",
+            "materials": [
+              "docker.io/library/postgres@sha256:4cc13dede823cab4e05290c7fb3350fb4e599ecabd9b07e6706b5d5e8f5bc929",
+              "platform/build/compat/postgresql"
+            ]
+          }
+        }
+      },
+      {
+        "id": "redis-8-4",
+        "family": "data",
+        "version": "8.4.0",
+        "target": "10.77.0.9:32443/atum/redis:8.4.0-atum1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "GitLab Bitnami Redis subchart"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/bitnami/redis:8.4.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "redis-compat",
+            "materials": [
+              "docker.io/library/redis@sha256:0a0f28c99ae50da4e0504499d2cd5b41746135c64f28ec42c88dafad93f60d41",
+              "platform/build/compat/redis"
+            ]
+          },
+          "fullBuildTarget": "redis-8-4"
+        }
+      },
+      {
+        "id": "bigbang-harbor-redis",
+        "family": "data",
+        "version": "8.8.1",
+        "target": "10.77.0.9:32443/atum/redis:8.8.1-atum1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "Harbor Bitnami Redis subchart"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/redis/redis8-slim:8.6.3",
+          "registry1.dso.mil/ironbank/opensource/redis/redis8-slim:8.8.1"
+        ],
+        "versionMapping": {
+          "artifact": "package/harbor",
+          "source": "upstreamImageTag",
+          "tagSuffix": "-atum1",
+          "build": {
+            "imageRepository": "docker.io/library/redis",
+            "bakeContext": "atum_redis_upstream",
+            "gitUrl": "https://github.com/redis/redis.git",
+            "gitContext": "redis_source",
+            "fullTagSuffix": "-debian13-r1"
+          }
+        },
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "bigbang-harbor-redis-compat",
+            "materials": [
+              "docker.io/library/redis@sha256:4e070415a5713188624f93815e62d6c6a1fcbb416d2e0b578ab3db627db3a93a",
+              "platform/build/compat/redis"
+            ]
+          },
+          "fullBuildTarget": "bigbang-harbor-redis"
+        }
+      },
+      {
+        "id": "redis-exporter",
+        "family": "data",
+        "version": "1.86.0",
+        "target": "10.77.0.9:32443/atum/redis-exporter:v1.86.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab Bitnami Redis metrics sidecar"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/bitnami/analytics/redis-exporter:v1.86.0",
+          "registry1.dso.mil/ironbank/bitnami/analytics/redis-exporter:v1.83.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "redis-exporter-compat",
+            "materials": [
+              "docker.io/oliver006/redis_exporter:v1.86.0@sha256:9e19fc77b9c5cb138a9ec9335b8bbcbbed620c4df54f7eb29329cdd8db148f1d",
+              "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
+              "platform/build/docker/Dockerfile.delivery"
+            ]
+          },
+          "fullBuildTarget": "redis-exporter"
+        }
+      },
+      {
+        "id": "postgresql-17",
+        "family": "data",
+        "version": "17.4",
+        "target": "10.77.0.9:32443/atum/postgresql:17.4",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "PostgreSQL",
+        "consumers": [
+          "GitLab Bitnami PostgreSQL subchart"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/bitnami/postgres:17.4.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "postgresql-17-compat",
+            "materials": [
+              "docker.io/library/postgres@sha256:d4eceb7552a57997fff2e9ceb1a624210e61b6432a2a1f7934a418c27bfe1406",
+              "platform/build/compat/postgresql"
+            ]
+          },
+          "fullBuildTarget": "postgresql-17"
+        }
+      },
+      {
+        "id": "minio",
+        "family": "data",
+        "version": "2024-06-04",
+        "target": "10.77.0.9:32443/atum/minio:RELEASE.2024-06-04T19-20-08Z",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "GitLab object storage"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/minio/minio:RELEASE.2024-06-04T19-20-08Z"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/minio/minio:RELEASE.2024-06-04T19-20-08Z",
+            "digest": "sha256:9ac302fcb9b65733a830b2431526a7890265f20b4edaf800ce33a4de90bf7558"
+          },
+          "fullBuildTarget": "minio"
+        }
+      },
+      {
+        "id": "minio-client",
+        "family": "data",
+        "version": "2024-10-02",
+        "target": "10.77.0.9:32443/atum/minio-client:RELEASE.2024-10-02T08-27-28Z",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "AGPL-3.0-only",
+        "consumers": [
+          "GitLab object storage initialization"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/minio/mc:RELEASE.2024-10-02T08-27-28Z"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/minio/mc:RELEASE.2024-10-02T08-27-28Z",
+            "digest": "sha256:527cbc0927356b67ab00269b6fc514d6910c158ed75ef796eee1b81ccd2298a5"
+          },
+          "fullBuildTarget": "minio-client"
+        }
+      },
+      {
+        "id": "ubi9",
+        "family": "data",
+        "version": "9.8",
+        "target": "10.77.0.9:32443/atum/ubi9:9.8",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0 AND BSD AND MIT",
+        "consumers": [
+          "GitLab upgrade check"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/redhat/ubi/ubi9:9.8",
+          "registry1.dso.mil/ironbank/redhat/ubi/ubi9:9.7"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.access.redhat.com/ubi9/ubi:9.8",
+            "digest": "sha256:7a069592145703a5e202a6e23a0ac3cf89737f89f2b26343b88ca3358a53f5de"
+          }
+        }
+      },
+      {
+        "id": "gitlab-certificates",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-certificates:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/certificates:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/certificates:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/certificates:v18.11.7",
+            "digest": "sha256:ccc6b3a8d23d1d4f0bacc8f54d332ddbad110e0d7ccfe400d7ecef749c648b5c"
+          }
+        }
+      },
+      {
+        "id": "gitlab-base",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-base:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab init containers"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-base:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-base:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-base:v18.11.7",
+            "digest": "sha256:2650b9b29eb032028147e8bc6756e6f5f46c9656440fa3faef3a8791eb83e7e2"
+          }
+        }
+      },
+      {
+        "id": "gitlab-container-registry",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-container-registry:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab registry"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-container-registry:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-container-registry:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-container-registry:v18.11.7",
+            "digest": "sha256:b7822177cdfed5bb1b164db3950e89e7d04042d2c16b08f9a542b8d2b0b43798"
+          }
+        }
+      },
+      {
+        "id": "gitlab-toolbox",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-toolbox-ce:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab toolbox and migrations"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-toolbox:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-toolbox:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-toolbox-ce:v18.11.7",
+            "digest": "sha256:8d9fcdb21a1a882b8544b2b1331af10d92db42f172a62b6e335aad9b64b70b80"
+          }
+        }
+      },
+      {
+        "id": "gitlab-webservice",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-webservice-ce:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab webservice"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-webservice:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-webservice:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-webservice-ce:v18.11.7",
+            "digest": "sha256:b2d22833385457e5aec0728eb580c390fd329bdbbcd748748d447cda97b722f3"
+          }
+        }
+      },
+      {
+        "id": "gitlab-workhorse",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-workhorse-ce:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab webservice"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-workhorse:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-workhorse:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-workhorse-ce:v18.11.7",
+            "digest": "sha256:c6f1b6d2e14c52508a020f5f28c54ae13523377b47dc071443e24e1322f1d23e"
+          }
+        }
+      },
+      {
+        "id": "gitlab-sidekiq",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-sidekiq-ce:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab Sidekiq"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-sidekiq:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-sidekiq:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-sidekiq-ce:v18.11.7",
+            "digest": "sha256:98c5b7f03de2b84375f409ceb25ded49aa15e04ee87010b349ace56a3ed7de7c"
+          }
+        }
+      },
+      {
+        "id": "gitlab-shell",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-shell:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab Shell"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-shell:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-shell:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-shell:v18.11.7",
+            "digest": "sha256:907f3e2981a9f52cd3be9d8683ed38cd462faa9260fc8ea29c672a33422225c9"
+          }
+        }
+      },
+      {
+        "id": "gitaly",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitaly:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab Gitaly"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitaly:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/gitaly:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitaly:v18.11.7",
+            "digest": "sha256:86c3de3a3826c91e995b607cd771bac9a49fe4e4a8190e2b6592a6dd55a8238c"
+          }
+        }
+      },
+      {
+        "id": "gitlab-kas",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-kas:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MIT",
+        "consumers": [
+          "GitLab KAS"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/kas:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/kas:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-kas:v18.11.7",
+            "digest": "sha256:83ba932c5a76d30e7253a1c4c79682c9318aef7acf196e08d9d1827e6e2f4ef7"
+          }
+        }
+      },
+      {
+        "id": "cfssl-self-sign",
+        "family": "gitlab",
+        "version": "1.6.1",
+        "target": "10.77.0.9:32443/atum/cfssl-self-sign:1.6.1",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "BSD-2-Clause AND MIT",
+        "consumers": [
+          "GitLab shared secrets"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/cfssl-self-sign:1.6.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/cfssl-self-sign:1.6.1",
+            "digest": "sha256:7f57c628402c4a3fbd83d31fd4be19a2a3638b2327089b801c3a65b16e322dce"
+          }
+        }
+      },
+      {
+        "id": "gitlab-kubectl",
+        "family": "gitlab",
+        "version": "v18.11.7",
+        "target": "10.77.0.9:32443/atum/gitlab-kubectl:v18.11.7",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0 AND MIT",
+        "consumers": [
+          "GitLab jobs"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/gitlab/gitlab/kubectl:18.11.7",
+          "registry1.dso.mil/ironbank/gitlab/gitlab/kubectl:18.11.3"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.gitlab.com/gitlab-org/build/cng/kubectl:v18.11.7",
+            "digest": "sha256:c4db8adfb0728289258cfd4f26df5714df1bcf84f959c15f54b051e942f9f507"
+          }
+        }
+      },
+      {
+        "id": "velero",
+        "family": "recovery",
+        "version": "v1.18.2",
+        "target": "10.77.0.9:32443/atum/velero:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Velero"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/velero/velero:v1.18.2",
+          "registry1.dso.mil/ironbank/opensource/velero/velero:v1.18.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/velero/velero:v1.18.2",
+            "digest": "sha256:a77d493b80f622e0bed1b9a19fea40a48d427de24e82be3f64824528b1ab7ecb"
+          }
+        }
+      },
+      {
+        "id": "velero-aws",
+        "family": "recovery",
+        "version": "v1.14.2",
+        "target": "10.77.0.9:32443/atum/velero-plugin-for-aws:v1.14.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Velero AWS plugin init container"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/velero/velero-plugin-for-aws:v1.14.2",
+          "registry1.dso.mil/ironbank/opensource/velero/velero-plugin-for-aws:v1.14.1"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/velero/velero-plugin-for-aws:v1.14.2",
+            "digest": "sha256:abe29a7b360231e359f7aaee79668141bd619ab6989c7cc78d041110987f6ca2"
+          }
+        }
+      },
+      {
+        "id": "openbao",
+        "family": "secrets",
+        "version": "2.5.3",
+        "target": "10.77.0.9:32443/atum/openbao:2.5.3",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MPL-2.0",
+        "consumers": [
+          "Big Bang Vault server and agent"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/hashicorp/vault:1.21.4"
+        ],
+        "delivery": {
+          "default": {
+            "type": "build",
+            "bakeTarget": "openbao",
+            "materials": [
+              "platform/build/docker",
+              "platform/build/compat/openbao"
+            ]
+          },
+          "fullBuildTarget": "openbao"
+        }
+      },
+      {
+        "id": "vault-k8s",
+        "family": "secrets",
+        "version": "1.7.5",
+        "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "MPL-2.0",
+        "consumers": [
+          "Big Bang Vault agent injector"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/hashicorp/vault/vault-k8s:v1.7.3",
+          "registry1.dso.mil/ironbank/hashicorp/vault/vault-k8s:v1.7.5"
+        ],
+        "versionMapping": {
+          "artifact": "package/vault",
+          "source": "upstreamImageTag",
+          "upstreamTagPrefix": "v",
+          "build": {
+            "gitUrl": "https://github.com/hashicorp/vault-k8s.git",
+            "gitTagPrefix": "v",
+            "gitContext": "vault_k8s_source",
+            "fullTagSuffix": "-debian13-r1"
+          }
+        },
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/hashicorp/vault-k8s:1.7.5",
+            "digest": "sha256:cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06fac033c9b9cbf35d"
+          },
+          "fullBuildTarget": "vault-k8s"
+        }
+      },
+      {
+        "id": "opensearch",
+        "family": "search",
+        "version": "3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch:3.8.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "OpenSearch"
+        ],
+        "bigBangRefs": [],
+        "versionMapping": {
+          "artifact": "chart/opensearch",
+          "source": "upstreamImageTag",
+          "build": {
+            "gitUrl": "https://github.com/opensearch-project/OpenSearch.git",
+            "gitContext": "opensearch_source",
+            "fullTagSuffix": "-debian13-r1"
+          }
+        },
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/opensearchproject/opensearch:3.8.0",
+            "digest": "sha256:39a8f8c63028e8b5d6b70539af1d0339b15a6729002dd5b3f4a65f520376fd30"
+          },
+          "fullBuildTarget": "opensearch"
+        }
+      },
+      {
+        "id": "opensearch-dashboards",
+        "family": "search",
+        "version": "3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "OpenSearch Dashboards"
+        ],
+        "bigBangRefs": [],
+        "versionMapping": {
+          "artifact": "chart/opensearch-dashboards",
+          "source": "upstreamImageTag",
+          "build": {
+            "gitUrl": "https://github.com/opensearch-project/OpenSearch-Dashboards.git",
+            "gitContext": "opensearch_dashboards_source",
+            "fullTagSuffix": "-debian13-r1"
+          }
+        },
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/opensearchproject/opensearch-dashboards:3.8.0",
+            "digest": "sha256:803638a32d12d585d705cdb623948614d748dda9356a4565c8745fe125077777"
+          },
+          "fullBuildTarget": "opensearch-dashboards"
+        }
+      },
+      {
+        "id": "opensearch-operator",
+        "family": "search",
+        "version": "2.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch-operator:2.8.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "OpenSearch Operator"
+        ],
+        "bigBangRefs": [
+          "docker.io/opensearchproject/opensearch-operator:2.8.0"
+        ],
+        "versionMapping": {
+          "artifact": "chart/opensearch-operator",
+          "source": "chartAppVersion",
+          "build": {
+            "imageRepository": "docker.io/opensearchproject/opensearch-operator",
+            "gitUrl": "https://github.com/opensearch-project/opensearch-k8s-operator.git",
+            "gitTagPrefix": "v",
+            "gitContext": "opensearch_operator_source",
+            "fullTagSuffix": "-debian13-r1"
+          }
+        },
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "docker.io/opensearchproject/opensearch-operator:2.8.0",
+            "digest": "sha256:833271fe2367b076414fd0dbb23d1cdf62a0630fbfaea65a9af54e74105601d9"
+          },
+          "fullBuildTarget": "opensearch-operator"
+        }
+      },
+      {
+        "id": "kube-rbac-proxy",
+        "family": "opensearch-operator",
+        "version": "0.15.0",
+        "target": "10.77.0.9:32443/atum/kube-rbac-proxy:v0.15.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "consumers": [
+          "Tracked chart opensearch-operator"
+        ],
+        "bigBangRefs": [
+          "gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0"
+        ],
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.15.0",
+            "digest": "sha256:a3768b8f9d259df714ebbf176798c380f4d929216e656dc30754eafa03a74c41"
+          }
+        }
+      }
+    ],
+    "renderedBaseline": {
+      "schemaVersion": "atum.dev/rendered-image-baseline/v2",
+      "bigBang": {
+        "version": "3.30.0",
+        "commit": "1d5a436945aa24316b21b88f74d555e9d3559655"
+      },
+      "counts": {
+        "prep": 13,
+        "bigbang": 66,
+        "unique": 80
+      },
+      "normalization": "The baseline records Harbor-qualified runtime targets after Big Bang and prep overrides. Controller-generated and configuration-only images remain required inventory entries but are not required in a direct Helm render.",
+      "entries": [
+        {
+          "imageId": "buildkit",
+          "target": "10.77.0.9:32443/atum/buildkit:v0.25.2",
+          "scopes": [
+            "build-system"
+          ],
+          "evidence": "configuration"
+        },
+        {
+          "imageId": "sbom-scanner",
+          "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0",
+          "scopes": [
+            "build-system"
+          ],
+          "evidence": "configuration"
+        },
+        {
+          "imageId": "busybox",
+          "target": "10.77.0.9:32443/atum/busybox:1.37.0",
+          "scopes": [
+            "prep",
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "flux-source-controller",
+          "target": "10.77.0.9:32443/atum/flux-source-controller:v1.9.4",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "flux-kustomize-controller",
+          "target": "10.77.0.9:32443/atum/flux-kustomize-controller:v1.9.4",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "flux-helm-controller",
+          "target": "10.77.0.9:32443/atum/flux-helm-controller:v1.6.3",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "flux-notification-controller",
+          "target": "10.77.0.9:32443/atum/flux-notification-controller:v1.9.3",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cert-manager-controller",
+          "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cert-manager-webhook",
+          "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cert-manager-cainjector",
+          "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cert-manager-startupapicheck",
+          "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cert-manager-acmesolver",
+          "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "controller-generated"
+        },
+        {
+          "imageId": "local-path-provisioner",
+          "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kube-vip",
+          "target": "10.77.0.9:32443/atum/kube-vip:v1.2.2",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kube-vip-cloud-provider",
+          "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12",
+          "scopes": [
+            "prep"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-nginx",
+          "target": "10.77.0.9:32443/atum/harbor-nginx:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-portal",
+          "target": "10.77.0.9:32443/atum/harbor-portal:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-core",
+          "target": "10.77.0.9:32443/atum/harbor-core:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-jobservice",
+          "target": "10.77.0.9:32443/atum/harbor-jobservice:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-registry",
+          "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-registryctl",
+          "target": "10.77.0.9:32443/atum/harbor-registryctl:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "harbor-exporter",
+          "target": "10.77.0.9:32443/atum/harbor-exporter:v2.15.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kubectl",
+          "target": "10.77.0.9:32443/atum/kubectl:1.35.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "istio-pilot",
+          "target": "10.77.0.9:32443/atum/pilot:1.30.3",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "istio-proxy",
+          "target": "10.77.0.9:32443/atum/proxyv2:1.30.3",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "controller-generated"
+        },
+        {
+          "imageId": "kiali-operator",
+          "target": "10.77.0.9:32443/atum/kiali-operator:v2.28.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kiali-server",
+          "target": "10.77.0.9:32443/atum/kiali-server:v2.28.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "controller-generated"
+        },
+        {
+          "imageId": "headlamp",
+          "target": "10.77.0.9:32443/atum/headlamp:v0.40.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "authservice",
+          "target": "10.77.0.9:32443/atum/authservice:1.1.5",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-admission-controller",
+          "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-preflight",
+          "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-cli",
+          "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-background-controller",
+          "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-cleanup-controller",
+          "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-reports-controller",
+          "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kyverno-readiness-checker",
+          "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "policy-reporter",
+          "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "policy-reporter-ui",
+          "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "policy-reporter-kyverno-plugin",
+          "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "fluent-bit",
+          "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "tempo",
+          "target": "10.77.0.9:32443/atum/tempo:2.10.5",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "alertmanager",
+          "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "prometheus",
+          "target": "10.77.0.9:32443/atum/prometheus:v3.13.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "prometheus-operator",
+          "target": "10.77.0.9:32443/atum/prometheus-operator:v0.92.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "prometheus-config-reloader",
+          "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.92.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "controller-generated"
+        },
+        {
+          "imageId": "thanos",
+          "target": "10.77.0.9:32443/atum/thanos:v0.41.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "controller-generated"
+        },
+        {
+          "imageId": "kube-state-metrics",
+          "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "node-exporter",
+          "target": "10.77.0.9:32443/atum/node-exporter:v1.11.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kube-webhook-certgen",
+          "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "grafana-plugins",
+          "target": "10.77.0.9:32443/atum/grafana-plugins:13.0.1-atum1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "k8s-sidecar",
+          "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "keycloak",
+          "target": "10.77.0.9:32443/atum/keycloak:26.7.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "postgresql-18",
+          "target": "10.77.0.9:32443/atum/postgresql:18.4",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "redis-8-4",
+          "target": "10.77.0.9:32443/atum/redis:8.4.0-atum1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "bigbang-harbor-redis",
+          "target": "10.77.0.9:32443/atum/redis:8.8.1-atum1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "redis-exporter",
+          "target": "10.77.0.9:32443/atum/redis-exporter:v1.86.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "postgresql-17",
+          "target": "10.77.0.9:32443/atum/postgresql:17.4",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "minio",
+          "target": "10.77.0.9:32443/atum/minio:RELEASE.2024-06-04T19-20-08Z",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "minio-client",
+          "target": "10.77.0.9:32443/atum/minio-client:RELEASE.2024-10-02T08-27-28Z",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "ubi9",
+          "target": "10.77.0.9:32443/atum/ubi9:9.8",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-certificates",
+          "target": "10.77.0.9:32443/atum/gitlab-certificates:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-base",
+          "target": "10.77.0.9:32443/atum/gitlab-base:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-container-registry",
+          "target": "10.77.0.9:32443/atum/gitlab-container-registry:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-toolbox",
+          "target": "10.77.0.9:32443/atum/gitlab-toolbox-ce:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-webservice",
+          "target": "10.77.0.9:32443/atum/gitlab-webservice-ce:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-workhorse",
+          "target": "10.77.0.9:32443/atum/gitlab-workhorse-ce:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-sidekiq",
+          "target": "10.77.0.9:32443/atum/gitlab-sidekiq-ce:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-shell",
+          "target": "10.77.0.9:32443/atum/gitlab-shell:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitaly",
+          "target": "10.77.0.9:32443/atum/gitaly:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-kas",
+          "target": "10.77.0.9:32443/atum/gitlab-kas:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "cfssl-self-sign",
+          "target": "10.77.0.9:32443/atum/cfssl-self-sign:1.6.1",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "gitlab-kubectl",
+          "target": "10.77.0.9:32443/atum/gitlab-kubectl:v18.11.7",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "velero",
+          "target": "10.77.0.9:32443/atum/velero:v1.18.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "velero-aws",
+          "target": "10.77.0.9:32443/atum/velero-plugin-for-aws:v1.14.2",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "openbao",
+          "target": "10.77.0.9:32443/atum/openbao:2.5.3",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "vault-k8s",
+          "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "opensearch",
+          "target": "10.77.0.9:32443/atum/opensearch:3.8.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "opensearch-dashboards",
+          "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "opensearch-operator",
+          "target": "10.77.0.9:32443/atum/opensearch-operator:2.8.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        },
+        {
+          "imageId": "kube-rbac-proxy",
+          "target": "10.77.0.9:32443/atum/kube-rbac-proxy:v0.15.0",
+          "scopes": [
+            "bigbang"
+          ],
+          "evidence": "rendered"
+        }
+      ]
+    },
+    "legacyCrosswalk": {
+      "schemaVersion": "atum.dev/bigbang-public-crosswalk/v2",
+      "bigBang": {
+        "version": "3.30.0",
+        "commit": "1d5a436945aa24316b21b88f74d555e9d3559655"
+      },
+      "strategy": "Preserve each enabled Big Bang or prep chart runtime contract. Mirror the exact official public image when Big Bang uses its publisher-native contract; build an Atum replacement whenever Big Bang selects a Bitnami variant or otherwise requires compatibility content. Iron Bank references are comparison metadata only and are never pulled.",
+      "defaultCounts": {
+        "total": 80,
+        "mirrored": 73,
+        "built": 7
+      },
+      "compatibilityBuilds": [
+        "bigbang-harbor-redis",
+        "grafana-plugins",
+        "openbao",
+        "postgresql-17",
+        "postgresql-18",
+        "redis-8-4",
+        "redis-exporter"
+      ],
+      "entries": [
+        {
+          "imageId": "buildkit",
+          "family": "build-system",
+          "scopes": [
+            "build-system"
+          ],
+          "consumers": [
+            "Local Buildx builder"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/buildkit:v0.25.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/moby/buildkit:v0.25.2",
+            "digest": "sha256:72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bbf108088caf810f05"
+          }
+        },
+        {
+          "imageId": "sbom-scanner",
+          "family": "build-system",
+          "scopes": [
+            "build-system"
+          ],
+          "consumers": [
+            "BuildKit SBOM attestations"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/sbom-scanner:1.11.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/docker/buildkit-syft-scanner:1.11.0",
+            "digest": "sha256:13864237fb990943433f89d698590aad1de38d4a7e13d38e7b12f2488c1952e7"
+          }
+        },
+        {
+          "imageId": "busybox",
+          "family": "foundation",
+          "scopes": [
+            "prep",
+            "bigbang"
+          ],
+          "consumers": [
+            "Local Path Provisioner",
+            "Forgejo tests",
+            "Grafana helpers",
+            "OpenSearch persistence"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/frontiertechnology/cortex/busybox:v1.37.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/busybox:1.37.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/library/busybox:1.37.0",
+            "digest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0"
+          }
+        },
+        {
+          "imageId": "flux-source-controller",
+          "family": "flux",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "Flux bootstrap"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/fluxcd/source-controller:v1.9.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/flux-source-controller:v1.9.4",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/fluxcd/source-controller:v1.9.4",
+            "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316"
+          }
+        },
+        {
+          "imageId": "flux-kustomize-controller",
+          "family": "flux",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "Flux bootstrap"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/fluxcd/kustomize-controller:v1.9.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/flux-kustomize-controller:v1.9.4",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
+            "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd"
+          }
+        },
+        {
+          "imageId": "flux-helm-controller",
+          "family": "flux",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "Flux bootstrap"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/fluxcd/helm-controller:v1.6.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/flux-helm-controller:v1.6.3",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/fluxcd/helm-controller:v1.6.3",
+            "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2"
+          }
+        },
+        {
+          "imageId": "flux-notification-controller",
+          "family": "flux",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "Flux bootstrap"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/fluxcd/notification-controller:v1.9.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/flux-notification-controller:v1.9.3",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/fluxcd/notification-controller:v1.9.3",
+            "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7"
+          }
+        },
+        {
+          "imageId": "cert-manager-controller",
+          "family": "cert-manager",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "cert-manager"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/jetstack/cert-manager-controller:v1.21.1",
+            "digest": "sha256:4c2b5201fd66085b777dc6b256d96d7d346b6445404cec34db5f8aea86182cc5"
+          }
+        },
+        {
+          "imageId": "cert-manager-webhook",
+          "family": "cert-manager",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "cert-manager"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/jetstack/cert-manager-webhook:v1.21.1",
+            "digest": "sha256:741084291faf115a2909bfe3515458b54926c67f039ac20effd821bac69817a4"
+          }
+        },
+        {
+          "imageId": "cert-manager-cainjector",
+          "family": "cert-manager",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "cert-manager"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/jetstack/cert-manager-cainjector:v1.21.1",
+            "digest": "sha256:1910ad7e134880e27d229e07affb43da1b07841a77f70c364f17467cb4e49bd9"
+          }
+        },
+        {
+          "imageId": "cert-manager-startupapicheck",
+          "family": "cert-manager",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "cert-manager startup job"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/jetstack/cert-manager-startupapicheck:v1.21.1",
+            "digest": "sha256:15cafecd3d23a4fa2226185f78c4792914010b2713f59060a1b9b484029041e4"
+          }
+        },
+        {
+          "imageId": "cert-manager-acmesolver",
+          "family": "cert-manager",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "cert-manager generated solver pods"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/jetstack/cert-manager-acmesolver:v1.21.1",
+            "digest": "sha256:e5a8da10354cdd0225eb039c84ad3696d47282de18c21905a25bb3a392542b34"
+          }
+        },
+        {
+          "imageId": "local-path-provisioner",
+          "family": "prep",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "prep storage"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/rancher/local-path-provisioner:v0.0.37",
+            "digest": "sha256:c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2dfc36a7e66fe99c08"
+          }
+        },
+        {
+          "imageId": "kube-vip",
+          "family": "kube-vip",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "local Service load balancer"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/kube-vip:v1.2.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kube-vip/kube-vip:v1.2.2",
+            "digest": "sha256:1057c6b204f8e82d157cfa5ea70e2b9562ac8b7647424fa3eed0dbf3fe2244c9"
+          }
+        },
+        {
+          "imageId": "kube-vip-cloud-provider",
+          "family": "kube-vip",
+          "scopes": [
+            "prep"
+          ],
+          "consumers": [
+            "local Service address allocator"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.12",
+            "digest": "sha256:33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55e4bbab5e4793ed7b"
+          }
+        },
+        {
+          "imageId": "harbor-nginx",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/nginx/nginx:1.30.1",
+            "registry1.dso.mil/ironbank/opensource/nginx/nginx:1.30.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-nginx:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/nginx-photon:v2.15.2",
+            "digest": "sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f"
+          }
+        },
+        {
+          "imageId": "harbor-portal",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-portal:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-portal:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-portal:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/harbor-portal:v2.15.2",
+            "digest": "sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d"
+          }
+        },
+        {
+          "imageId": "harbor-core",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-core:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-core:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-core:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/harbor-core:v2.15.2",
+            "digest": "sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7"
+          }
+        },
+        {
+          "imageId": "harbor-jobservice",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-jobservice:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-jobservice:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-jobservice:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/harbor-jobservice:v2.15.2",
+            "digest": "sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598"
+          }
+        },
+        {
+          "imageId": "harbor-registry",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/registry:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/registry:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-registry:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/registry-photon:v2.15.2",
+            "digest": "sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855"
+          }
+        },
+        {
+          "imageId": "harbor-registryctl",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-registryctl:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-registryctl:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-registryctl:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/harbor-registryctl:v2.15.2",
+            "digest": "sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362"
+          }
+        },
+        {
+          "imageId": "harbor-exporter",
+          "family": "harbor",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Harbor metrics"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-exporter:v2.15.1",
+            "registry1.dso.mil/ironbank/opensource/goharbor/harbor-exporter:v2.15.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/harbor-exporter:v2.15.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/goharbor/harbor-exporter:v2.15.2",
+            "digest": "sha256:e1b0a248f61aad5084c5d1612d5f1da89f99c23ce743eaf8cba913d6d00c0547"
+          }
+        },
+        {
+          "imageId": "kubectl",
+          "family": "bigbang-helper",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang package jobs",
+            "Vault auto-init secret creation"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/big-bang/base:2.1.0",
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35",
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.5",
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.6",
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.7"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kubectl:1.35.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/alpine/k8s:1.35.0",
+            "digest": "sha256:a63c7306fb8099c3b4f3f322113f85db863fc36d99e21808aacd773a4e86aa43"
+          }
+        },
+        {
+          "imageId": "istio-pilot",
+          "family": "mesh",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Istiod"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/istio/pilot:1.30.3",
+            "registry1.dso.mil/ironbank/opensource/istio/pilot:1.30.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/pilot:1.30.3",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/istio/pilot:1.30.3",
+            "digest": "sha256:73d3a30729dd741f72979a9fe9a7cc9072e67eb8099c47fc85450a0510f93b89"
+          }
+        },
+        {
+          "imageId": "istio-proxy",
+          "family": "mesh",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Istiod",
+            "Istio Gateway"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/istio/proxyv2:1.30.3",
+            "registry1.dso.mil/ironbank/opensource/istio/proxyv2:1.30.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/proxyv2:1.30.3",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/istio/proxyv2:1.30.3",
+            "digest": "sha256:dadeba31ff2b92dfa9b73ce6cf41d09d62448dba149fe11b162b6a1e5474147f"
+          }
+        },
+        {
+          "imageId": "kiali-operator",
+          "family": "mesh",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kiali"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator:v2.28.0",
+            "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator:v2.27.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kiali-operator:v2.28.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/kiali/kiali-operator:v2.28.0",
+            "digest": "sha256:97ac28ae12ae54a3366aa4398ec62534e422464944d583c913ec6be1d398da83"
+          }
+        },
+        {
+          "imageId": "kiali-server",
+          "family": "mesh",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kiali operator generated CR"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kiali/kiali:v2.28.0",
+            "registry1.dso.mil/ironbank/opensource/kiali/kiali:v2.27.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kiali-server:v2.28.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/kiali/kiali:v2.28.0",
+            "digest": "sha256:4bd462071d53f6498dd5c4f67523ddeec5ee4264b0b729a3c5d58e5d0bdf7b0a"
+          }
+        },
+        {
+          "imageId": "headlamp",
+          "family": "cluster-console",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Headlamp"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/headlamp-k8s/headlamp:v0.40.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/headlamp:v0.40.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/headlamp-k8s/headlamp:v0.40.0",
+            "digest": "sha256:bdb44cd854576b3f402c9c17f099a980fb7c9b6d86ed99ea3e70d94f7848f840"
+          }
+        },
+        {
+          "imageId": "authservice",
+          "family": "identity",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Authservice"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/istio-ecosystem/authservice:1.1.5"
+          ],
+          "replacement": "10.77.0.9:32443/atum/authservice:1.1.5",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/istio-ecosystem/authservice/authservice:1.1.5",
+            "digest": "sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82"
+          }
+        },
+        {
+          "imageId": "kyverno-admission-controller",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/kyverno:v1.18.2",
+            "digest": "sha256:11cc08bf7116e0881c00412729dc25c299f29fa3dc6b8e1e53fc623d5158c182"
+          }
+        },
+        {
+          "imageId": "kyverno-preflight",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/kyvernopre:v1.18.2",
+            "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b"
+          }
+        },
+        {
+          "imageId": "kyverno-cli",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno CRD jobs"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/kyverno-cli:v1.18.2",
+            "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194"
+          }
+        },
+        {
+          "imageId": "kyverno-background-controller",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/background-controller:v1.18.2",
+            "digest": "sha256:92193ee48d319d86692673b38abbb10177d5d13bdcb50e85feb97b03b4bf4920"
+          }
+        },
+        {
+          "imageId": "kyverno-cleanup-controller",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/cleanup-controller:v1.18.2",
+            "digest": "sha256:2084dacbfc3365cdbeb8b3ccb4a768d3a94b2d1a243f0f36c3d02cc5ce26d5df"
+          }
+        },
+        {
+          "imageId": "kyverno-reports-controller",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "reg.kyverno.io/kyverno/reports-controller:v1.18.2",
+            "digest": "sha256:207138d7a52ca4f8ebfcefae203ec22ff57ac21a5bc9437ee428882ca69dbcf2"
+          }
+        },
+        {
+          "imageId": "kyverno-readiness-checker",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno lifecycle jobs"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/readiness-checker:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/readiness-checker:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kyverno/readiness-checker:v1.18.2",
+            "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70"
+          }
+        },
+        {
+          "imageId": "policy-reporter",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno Reporter"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter:3.9.0",
+            "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter:3.7.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/policy-reporter:3.9.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kyverno/policy-reporter:3.9.0",
+            "digest": "sha256:f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7afdf37bb52743654a"
+          }
+        },
+        {
+          "imageId": "policy-reporter-ui",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno Reporter"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui:2.7.0",
+            "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui:2.5.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kyverno/policy-reporter-ui:2.7.0",
+            "digest": "sha256:30ecd16e52212bb8b015e4ccb5ea8c70536687dcc80219bab8e22e2189e743fe"
+          }
+        },
+        {
+          "imageId": "policy-reporter-kyverno-plugin",
+          "family": "policy",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Kyverno Reporter"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter/kyverno-plugin:0.6.2",
+            "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter/kyverno-plugin:0.6.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "ghcr.io/kyverno/policy-reporter/kyverno-plugin:0.6.2",
+            "digest": "sha256:082c10f8f02bb2c59612a29f08005852367bee07795d3e53f5387b52c8a9cf57"
+          }
+        },
+        {
+          "imageId": "fluent-bit",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Fluent Bit"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/fluent/fluent-bit:v5.0.9",
+            "registry1.dso.mil/ironbank/opensource/fluent/fluent-bit:v5.0.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/fluent-bit:5.0.9",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "cr.fluentbit.io/fluent/fluent-bit:5.0.9",
+            "digest": "sha256:1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f655cdbb2fd75f563c"
+          }
+        },
+        {
+          "imageId": "tempo",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Tempo"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/grafana/tempo:2.10.5"
+          ],
+          "replacement": "10.77.0.9:32443/atum/tempo:2.10.5",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/grafana/tempo:2.10.5",
+            "digest": "sha256:7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3be21e97fe83de502"
+          }
+        },
+        {
+          "imageId": "alertmanager",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/prometheus/alertmanager:v0.33.1",
+            "registry1.dso.mil/ironbank/opensource/prometheus/alertmanager:v0.32.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/alertmanager:v0.33.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/prometheus/alertmanager:v0.33.1",
+            "digest": "sha256:a89f8d4520954079275441eecdb71444328bd90633dd4eddfc33b9ed657f349b"
+          }
+        },
+        {
+          "imageId": "prometheus",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/prometheus/prometheus:v3.13.0",
+            "registry1.dso.mil/ironbank/opensource/prometheus/prometheus:v3.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/prometheus:v3.13.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/prometheus/prometheus:v3.13.0",
+            "digest": "sha256:0e698e35e50d1ddc2d11a4a55b089fe62eb71358a5c204dfafd21bdf8ffe04b8"
+          }
+        },
+        {
+          "imageId": "prometheus-operator",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-operator:v0.92.1",
+            "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-operator:v0.91.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/prometheus-operator:v0.92.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/prometheus-operator/prometheus-operator:v0.92.1",
+            "digest": "sha256:5835318d3506dd6d8676f2a1316776ac70f1b0b7cc0bce861213559ea855b8f2"
+          }
+        },
+        {
+          "imageId": "prometheus-config-reloader",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Prometheus operator generated pods"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-config-reloader:v0.92.1",
+            "registry1.dso.mil/ironbank/opensource/prometheus-operator/prometheus-config-reloader:v0.91.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.92.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/prometheus-operator/prometheus-config-reloader:v0.92.1",
+            "digest": "sha256:bf6f3527663207af1d936e4f3f27c7a4aab703c0de2a82844f95c14af35dfe19"
+          }
+        },
+        {
+          "imageId": "thanos",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Prometheus operator generated pods"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/thanos/thanos:v0.41.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/thanos:v0.41.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/thanos/thanos:v0.41.0",
+            "digest": "sha256:c2f322e5ea9727bce5153730da133820235844bd5ba72da7e9428c3739a73cab"
+          }
+        },
+        {
+          "imageId": "kube-state-metrics",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kube-state-metrics:v2.19.1",
+            "registry1.dso.mil/ironbank/opensource/kubernetes/kube-state-metrics:v2.19.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1",
+            "digest": "sha256:7661da8c99b733d43117e4cba12bd9865d335e5777191d0af3d789807aded9f4"
+          }
+        },
+        {
+          "imageId": "node-exporter",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/prometheus/node-exporter:v1.11.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/node-exporter:v1.11.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/prometheus/node-exporter:v1.11.1",
+            "digest": "sha256:fbd8062b4529e166e902bd62cd93de2f48b36d50af942620d419657265bc20b1"
+          }
+        },
+        {
+          "imageId": "kube-webhook-certgen",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Monitoring admission jobs"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/ingress-nginx/kube-webhook-certgen:v1.6.9"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9",
+            "digest": "sha256:f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd93f664883d481331"
+          }
+        },
+        {
+          "imageId": "grafana-plugins",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Grafana"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/big-bang/grafana/grafana-plugins:13.0.1",
+            "registry1.dso.mil/ironbank/big-bang/grafana/grafana-plugins:12.4.2"
+          ],
+          "replacement": "10.77.0.9:32443/atum/grafana-plugins:13.0.1-atum1",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "grafana-plugins",
+            "materials": [
+              "docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455",
+              "https://github.com/grafana/grafana-polystat-panel/releases/download/v2.1.16/grafana-polystat-panel-2.1.16.zip#sha256:3e1791f83b4db03134dac24521a52407c1990a1b56356dc440580ee4664f214c",
+              "https://github.com/RedisGrafana/grafana-redis-datasource/releases/download/v2.2.0/redis-datasource-2.2.0.zip#sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f501a8ab"
+            ]
+          }
+        },
+        {
+          "imageId": "k8s-sidecar",
+          "family": "observability",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Grafana"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/kiwigrid/k8s-sidecar:2.8.1",
+            "registry1.dso.mil/ironbank/kiwigrid/k8s-sidecar:2.5.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/kiwigrid/k8s-sidecar:2.8.1",
+            "digest": "sha256:44065fae116464099acd5bfddb62dcb2cf53c8fa18948d215109d64a5560306e"
+          }
+        },
+        {
+          "imageId": "keycloak",
+          "family": "identity",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Keycloak"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/keycloak/keycloak:26.7.0",
+            "registry1.dso.mil/ironbank/opensource/keycloak/keycloak:26.6.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/keycloak:26.7.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/keycloak/keycloak:26.7.0",
+            "digest": "sha256:26939e1318d6f008fc2ee6e10cec1cf8f1ba8a21846c1bc81b91ed0506bc2a7a"
+          }
+        },
+        {
+          "imageId": "postgresql-18",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Harbor Bitnami PostgreSQL subchart",
+            "Keycloak Bitnami PostgreSQL subchart"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/postgres/postgresql:18.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/postgresql:18.4",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "postgresql-18-compat",
+            "materials": [
+              "docker.io/library/postgres@sha256:4cc13dede823cab4e05290c7fb3350fb4e599ecabd9b07e6706b5d5e8f5bc929",
+              "platform/build/compat/postgresql"
+            ]
+          }
+        },
+        {
+          "imageId": "redis-8-4",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Bitnami Redis subchart"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/bitnami/redis:8.4.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/redis:8.4.0-atum1",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "redis-compat",
+            "materials": [
+              "docker.io/library/redis@sha256:0a0f28c99ae50da4e0504499d2cd5b41746135c64f28ec42c88dafad93f60d41",
+              "platform/build/compat/redis"
+            ]
+          }
+        },
+        {
+          "imageId": "bigbang-harbor-redis",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Harbor Bitnami Redis subchart"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/redis/redis8-slim:8.6.3",
+            "registry1.dso.mil/ironbank/opensource/redis/redis8-slim:8.8.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/redis:8.8.1-atum1",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "bigbang-harbor-redis-compat",
+            "materials": [
+              "docker.io/library/redis@sha256:4e070415a5713188624f93815e62d6c6a1fcbb416d2e0b578ab3db627db3a93a",
+              "platform/build/compat/redis"
+            ]
+          }
+        },
+        {
+          "imageId": "redis-exporter",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Bitnami Redis metrics sidecar"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/bitnami/analytics/redis-exporter:v1.86.0",
+            "registry1.dso.mil/ironbank/bitnami/analytics/redis-exporter:v1.83.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/redis-exporter:v1.86.0",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "redis-exporter-compat",
+            "materials": [
+              "docker.io/oliver006/redis_exporter:v1.86.0@sha256:9e19fc77b9c5cb138a9ec9335b8bbcbbed620c4df54f7eb29329cdd8db148f1d",
+              "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
+              "platform/build/docker/Dockerfile.delivery"
+            ]
+          }
+        },
+        {
+          "imageId": "postgresql-17",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Bitnami PostgreSQL subchart"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/bitnami/postgres:17.4.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/postgresql:17.4",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "postgresql-17-compat",
+            "materials": [
+              "docker.io/library/postgres@sha256:d4eceb7552a57997fff2e9ceb1a624210e61b6432a2a1f7934a418c27bfe1406",
+              "platform/build/compat/postgresql"
+            ]
+          }
+        },
+        {
+          "imageId": "minio",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab object storage"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/minio/minio:RELEASE.2024-06-04T19-20-08Z"
+          ],
+          "replacement": "10.77.0.9:32443/atum/minio:RELEASE.2024-06-04T19-20-08Z",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/minio/minio:RELEASE.2024-06-04T19-20-08Z",
+            "digest": "sha256:9ac302fcb9b65733a830b2431526a7890265f20b4edaf800ce33a4de90bf7558"
+          }
+        },
+        {
+          "imageId": "minio-client",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab object storage initialization"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/minio/mc:RELEASE.2024-10-02T08-27-28Z"
+          ],
+          "replacement": "10.77.0.9:32443/atum/minio-client:RELEASE.2024-10-02T08-27-28Z",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "quay.io/minio/mc:RELEASE.2024-10-02T08-27-28Z",
+            "digest": "sha256:527cbc0927356b67ab00269b6fc514d6910c158ed75ef796eee1b81ccd2298a5"
+          }
+        },
+        {
+          "imageId": "ubi9",
+          "family": "data",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab upgrade check"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/redhat/ubi/ubi9:9.8",
+            "registry1.dso.mil/ironbank/redhat/ubi/ubi9:9.7"
+          ],
+          "replacement": "10.77.0.9:32443/atum/ubi9:9.8",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.access.redhat.com/ubi9/ubi:9.8",
+            "digest": "sha256:7a069592145703a5e202a6e23a0ac3cf89737f89f2b26343b88ca3358a53f5de"
+          }
+        },
+        {
+          "imageId": "gitlab-certificates",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/certificates:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/certificates:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-certificates:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/certificates:v18.11.7",
+            "digest": "sha256:ccc6b3a8d23d1d4f0bacc8f54d332ddbad110e0d7ccfe400d7ecef749c648b5c"
+          }
+        },
+        {
+          "imageId": "gitlab-base",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab init containers"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-base:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-base:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-base:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-base:v18.11.7",
+            "digest": "sha256:2650b9b29eb032028147e8bc6756e6f5f46c9656440fa3faef3a8791eb83e7e2"
+          }
+        },
+        {
+          "imageId": "gitlab-container-registry",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab registry"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-container-registry:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-container-registry:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-container-registry:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-container-registry:v18.11.7",
+            "digest": "sha256:b7822177cdfed5bb1b164db3950e89e7d04042d2c16b08f9a542b8d2b0b43798"
+          }
+        },
+        {
+          "imageId": "gitlab-toolbox",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab toolbox and migrations"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-toolbox:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-toolbox:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-toolbox-ce:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-toolbox-ce:v18.11.7",
+            "digest": "sha256:8d9fcdb21a1a882b8544b2b1331af10d92db42f172a62b6e335aad9b64b70b80"
+          }
+        },
+        {
+          "imageId": "gitlab-webservice",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab webservice"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-webservice:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-webservice:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-webservice-ce:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-webservice-ce:v18.11.7",
+            "digest": "sha256:b2d22833385457e5aec0728eb580c390fd329bdbbcd748748d447cda97b722f3"
+          }
+        },
+        {
+          "imageId": "gitlab-workhorse",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab webservice"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-workhorse:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-workhorse:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-workhorse-ce:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-workhorse-ce:v18.11.7",
+            "digest": "sha256:c6f1b6d2e14c52508a020f5f28c54ae13523377b47dc071443e24e1322f1d23e"
+          }
+        },
+        {
+          "imageId": "gitlab-sidekiq",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Sidekiq"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-sidekiq:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-sidekiq:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-sidekiq-ce:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-sidekiq-ce:v18.11.7",
+            "digest": "sha256:98c5b7f03de2b84375f409ceb25ded49aa15e04ee87010b349ace56a3ed7de7c"
+          }
+        },
+        {
+          "imageId": "gitlab-shell",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Shell"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-shell:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitlab-shell:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-shell:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-shell:v18.11.7",
+            "digest": "sha256:907f3e2981a9f52cd3be9d8683ed38cd462faa9260fc8ea29c672a33422225c9"
+          }
+        },
+        {
+          "imageId": "gitaly",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab Gitaly"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitaly:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/gitaly:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitaly:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitaly:v18.11.7",
+            "digest": "sha256:86c3de3a3826c91e995b607cd771bac9a49fe4e4a8190e2b6592a6dd55a8238c"
+          }
+        },
+        {
+          "imageId": "gitlab-kas",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab KAS"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/kas:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/kas:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-kas:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/gitlab-kas:v18.11.7",
+            "digest": "sha256:83ba932c5a76d30e7253a1c4c79682c9318aef7acf196e08d9d1827e6e2f4ef7"
+          }
+        },
+        {
+          "imageId": "cfssl-self-sign",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab shared secrets"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/cfssl-self-sign:1.6.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/cfssl-self-sign:1.6.1",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/cfssl-self-sign:1.6.1",
+            "digest": "sha256:7f57c628402c4a3fbd83d31fd4be19a2a3638b2327089b801c3a65b16e322dce"
+          }
+        },
+        {
+          "imageId": "gitlab-kubectl",
+          "family": "gitlab",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "GitLab jobs"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/gitlab/gitlab/kubectl:18.11.7",
+            "registry1.dso.mil/ironbank/gitlab/gitlab/kubectl:18.11.3"
+          ],
+          "replacement": "10.77.0.9:32443/atum/gitlab-kubectl:v18.11.7",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.gitlab.com/gitlab-org/build/cng/kubectl:v18.11.7",
+            "digest": "sha256:c4db8adfb0728289258cfd4f26df5714df1bcf84f959c15f54b051e942f9f507"
+          }
+        },
+        {
+          "imageId": "velero",
+          "family": "recovery",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Velero"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/velero/velero:v1.18.2",
+            "registry1.dso.mil/ironbank/opensource/velero/velero:v1.18.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/velero:v1.18.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/velero/velero:v1.18.2",
+            "digest": "sha256:a77d493b80f622e0bed1b9a19fea40a48d427de24e82be3f64824528b1ab7ecb"
+          }
+        },
+        {
+          "imageId": "velero-aws",
+          "family": "recovery",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Velero AWS plugin init container"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/opensource/velero/velero-plugin-for-aws:v1.14.2",
+            "registry1.dso.mil/ironbank/opensource/velero/velero-plugin-for-aws:v1.14.1"
+          ],
+          "replacement": "10.77.0.9:32443/atum/velero-plugin-for-aws:v1.14.2",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/velero/velero-plugin-for-aws:v1.14.2",
+            "digest": "sha256:abe29a7b360231e359f7aaee79668141bd619ab6989c7cc78d041110987f6ca2"
+          }
+        },
+        {
+          "imageId": "openbao",
+          "family": "secrets",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Vault server and agent"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/hashicorp/vault:1.21.4"
+          ],
+          "replacement": "10.77.0.9:32443/atum/openbao:2.5.3",
+          "defaultDelivery": "build",
+          "compatibilityBuild": {
+            "bakeTarget": "openbao",
+            "materials": [
+              "platform/build/docker",
+              "platform/build/compat/openbao"
+            ]
+          }
+        },
+        {
+          "imageId": "vault-k8s",
+          "family": "secrets",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Big Bang Vault agent injector"
+          ],
+          "bigBangRefs": [
+            "registry1.dso.mil/ironbank/hashicorp/vault/vault-k8s:v1.7.3",
+            "registry1.dso.mil/ironbank/hashicorp/vault/vault-k8s:v1.7.5"
+          ],
+          "replacement": "10.77.0.9:32443/atum/vault-k8s:1.7.5",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/hashicorp/vault-k8s:1.7.5",
+            "digest": "sha256:cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06fac033c9b9cbf35d"
+          }
+        },
+        {
+          "imageId": "opensearch",
+          "family": "search",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "OpenSearch"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/opensearch:3.8.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/opensearchproject/opensearch:3.8.0",
+            "digest": "sha256:39a8f8c63028e8b5d6b70539af1d0339b15a6729002dd5b3f4a65f520376fd30"
+          }
+        },
+        {
+          "imageId": "opensearch-dashboards",
+          "family": "search",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "OpenSearch Dashboards"
+          ],
+          "bigBangRefs": [],
+          "replacement": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/opensearchproject/opensearch-dashboards:3.8.0",
+            "digest": "sha256:803638a32d12d585d705cdb623948614d748dda9356a4565c8745fe125077777"
+          }
+        },
+        {
+          "imageId": "opensearch-operator",
+          "family": "search",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "OpenSearch Operator"
+          ],
+          "bigBangRefs": [
+            "docker.io/opensearchproject/opensearch-operator:2.8.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/opensearch-operator:2.8.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "docker.io/opensearchproject/opensearch-operator:2.8.0",
+            "digest": "sha256:833271fe2367b076414fd0dbb23d1cdf62a0630fbfaea65a9af54e74105601d9"
+          }
+        },
+        {
+          "imageId": "kube-rbac-proxy",
+          "family": "opensearch-operator",
+          "scopes": [
+            "bigbang"
+          ],
+          "consumers": [
+            "Tracked chart opensearch-operator"
+          ],
+          "bigBangRefs": [
+            "gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0"
+          ],
+          "replacement": "10.77.0.9:32443/atum/kube-rbac-proxy:v0.15.0",
+          "defaultDelivery": "mirror",
+          "officialSource": {
+            "reference": "registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.15.0",
+            "digest": "sha256:a3768b8f9d259df714ebbf176798c380f4d929216e656dc30754eafa03a74c41"
+          }
+        }
+      ]
+    }
+  }
+}

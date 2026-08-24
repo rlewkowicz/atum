@@ -1,0 +1,748 @@
+domain: atum.test
+registryCredentials: null
+imagePullPolicy: IfNotPresent
+openshift: false
+flux:
+  interval: 2m
+  timeout: 30m
+  install:
+    crds: CreateReplace
+    disableWait: true
+    disableWaitForJobs: true
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 5m
+  upgrade:
+    crds: CreateReplace
+    disableWait: true
+    disableWaitForJobs: true
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 5m
+  driftDetection:
+    mode: enabled
+wrapper:
+  sourceType: git
+networkPolicies:
+  enabled: true
+  controlPlaneCidr: 0.0.0.0/0
+istio:
+  ambient:
+    enabled: false
+istioCNI:
+  enabled: false
+gatewayAPI:
+  enabled: false
+istioCRDs:
+  enabled: true
+  sourceType: git
+  git: {}
+istiod:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    networkPolicies:
+      egress:
+        defaults:
+          allowInNamespace:
+            enabled: true
+      ingress:
+        to:
+          "istiod:[443,15017]":
+            from:
+              cidr:
+                0.0.0.0/0: false
+              definition:
+                kubeAPI: true
+    upstream:
+      global: {}
+      pilot:
+        autoscaleEnabled: false
+        replicaCount: 1
+istioGateway:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    gateways:
+      public:
+        waitJob:
+          enabled: false
+        upstream:
+          replicaCount: 1
+          autoscaling:
+            enabled: false
+          global: {}
+      passthrough:
+        waitJob:
+          enabled: false
+        upstream:
+          replicaCount: 1
+          autoscaling:
+            enabled: false
+          global: {}
+ztunnel:
+  enabled: false
+kiali:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    waitJob:
+      enabled: false
+    upstream:
+      image: {}
+      cr:
+        spec:
+          deployment:
+            replicas: 1
+gatekeeper:
+  enabled: false
+kyverno:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    global:
+      image: {}
+    waitJob:
+      enabled: false
+    upstream:
+      features:
+        forceFailurePolicyIgnore:
+          enabled: true
+        logging:
+          verbosity: 0
+      config: {}
+      crds:
+        groups:
+          image: {}
+        migration:
+          image: {}
+      webhooksCleanup:
+        image: {}
+      policyReportsCleanup:
+        image: {}
+      cleanupJobs:
+        admissionReports:
+          image: {}
+        clusterAdmissionReports:
+          image: {}
+        updateRequests:
+          image: {}
+        ephemeralReports:
+          image: {}
+        clusterEphemeralReports:
+          image: {}
+      admissionController:
+        replicas: 1
+        apiPriorityAndFairness: true
+        initContainer:
+          image: {}
+        container:
+          image: {}
+      backgroundController:
+        replicas: 1
+        image: {}
+      cleanupController:
+        replicas: 1
+        image: {}
+      reportsController:
+        replicas: 1
+        image: {}
+      test:
+        image: {}
+kyvernoPolicies:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    bbtests:
+      enabled: false
+    validationFailureAction: Audit
+    waitJob:
+      enabled: false
+    policies:
+      add-default-securitycontext:
+        exclude:
+          any:
+            - resources:
+                namespaces:
+                  - local-path-storage
+      update-automountserviceaccounttokens:
+        enabled: false
+      restrict-image-registries:
+        skipOverlayMerge: true
+        parameters:
+          allow:
+            - 10.77.0.9:32443
+kyvernoReporter:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    waitJob:
+      enabled: false
+    upstream:
+      replicaCount: 1
+      image: {}
+      ui:
+        enabled: true
+        replicaCount: 1
+        image: {}
+      plugin:
+        kyverno:
+          enabled: true
+          replicaCount: 1
+          image: {}
+elasticsearchKibana:
+  enabled: false
+eckOperator:
+  enabled: false
+fluentbit:
+  enabled: true
+  sourceType: git
+  git: {}
+  istio:
+    injection: enabled
+  values:
+    waitJob:
+      enabled: false
+    bbtests:
+      enabled: false
+    networkPolicies:
+      egress:
+        from:
+          fluent-bit:
+            to:
+              k8s:
+                "opensearch/opensearch-cluster-master:9200":
+                  enabled: true
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: opensearch
+    upstream:
+      image: {}
+      hotReload:
+        enabled: false
+      config:
+        outputs: |
+          [OUTPUT]
+              Name                opensearch
+              Match               kube.*
+              Host                opensearch-cluster-master.opensearch.svc.cluster.local
+              Port                9200
+              Suppress_Type_Name  On
+              Retry_Limit         False
+              tls                 Off
+          [OUTPUT]
+              Name                opensearch
+              Match               host.*
+              Host                opensearch-cluster-master.opensearch.svc.cluster.local
+              Port                9200
+              Suppress_Type_Name  On
+              Logstash_Format     On
+              Logstash_Prefix     node
+              Retry_Limit         False
+              tls                 Off
+alloy:
+  enabled: false
+loki:
+  enabled: false
+neuvector:
+  enabled: false
+tempo:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    waitJob:
+      enabled: false
+    upgradeJob:
+      image:
+        imagePullPolicy: IfNotPresent
+    bbtests:
+      enabled: false
+    upstream:
+      replicas: 1
+      tempo: {}
+      tempoQuery:
+        enabled: false
+prometheusOperatorCRDs:
+  enabled: true
+  sourceType: git
+  git: {}
+monitoring:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    waitJob:
+      enabled: false
+    bbtests:
+      enabled: false
+    blackboxExporter:
+      enabled: false
+    snmpExporter:
+      enabled: false
+    upstream:
+      alertmanager:
+        alertmanagerSpec:
+          replicas: 1
+          image: {}
+      prometheus:
+        prometheusSpec:
+          replicas: 1
+          image: {}
+          podMetadata:
+            annotations:
+              traffic.sidecar.istio.io/includeOutboundIPRanges: "*"
+              vault.hashicorp.com/agent-init-first: "false"
+              vault.hashicorp.com/service: "http://vault-vault.vault.svc:8200"
+      prometheusOperator:
+        admissionWebhooks:
+          deployment:
+            replicas: 1
+          patch:
+            image: {}
+        image: {}
+        prometheusConfigReloader:
+          image: {}
+        thanosImage: {}
+        kubectlImage: {}
+        cleanupProxy:
+          image: {}
+      kube-state-metrics:
+        image: {}
+      prometheus-node-exporter:
+        image: {}
+grafana:
+  enabled: true
+  sourceType: git
+  git: {}
+  values:
+    global: {}
+    waitJob:
+      enabled: false
+    autoRollingUpgrade:
+      image: {}
+    upstream:
+      replicas: 1
+      autoscaling:
+        enabled: false
+      image: {}
+      livenessProbe:
+        initialDelaySeconds: 600
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+      downloadDashboardsImage: {}
+      initChownData:
+        image: {}
+      testFramework:
+        enabled: false
+      sidecar:
+        image: {}
+      imageRenderer:
+        enabled: false
+twistlock:
+  enabled: false
+bbctl:
+  enabled: false
+renovate:
+  enabled: false
+addons:
+  argocd:
+    enabled: false
+  anchoreEnterprise:
+    enabled: false
+  authservice:
+    enabled: true
+    sourceType: git
+    git: {}
+    chains:
+      local:
+        callback_uri: https://localhost/login
+        client_id: local_id
+        client_secret: local_secret
+        logout_path: /local
+        match:
+          header: :authority
+          prefix: localhost
+    values:
+      waitJob:
+        enabled: false
+      replicaCount: 1
+      autoscaling:
+        enabled: false
+      image: {}
+  externalSecrets:
+    enabled: false
+  fortify:
+    enabled: false
+  gitlab:
+    enabled: true
+    sourceType: git
+    git: {}
+    flux:
+      upgrade:
+        disableHooks: true
+    values:
+      waitJob:
+        enabled: false
+      global:
+        hosts:
+          domain: atum.test
+        kas:
+          enabled: true
+        certificates:
+          image: {}
+        kubectl:
+          image: {}
+        gitlabBase:
+          image: {}
+      upstream:
+        global:
+          hosts:
+            domain: atum.test
+          appConfig:
+            incomingEmail:
+              enabled: false
+          kas:
+            enabled: true
+          pages:
+            enabled: false
+        nginx-ingress:
+          enabled: false
+        upgradeCheck:
+          image: {}
+        redis:
+          global:
+            security:
+              allowInsecureImages: true
+          image: {}
+          metrics:
+            image: {}
+        postgresql:
+          global:
+            security:
+              allowInsecureImages: true
+          image: {}
+          postgresqlSharedPreloadLibraries: ""
+        registry:
+          hpa:
+            minReplicas: 1
+            maxReplicas: 1
+          image: {}
+        gitlab:
+          toolbox:
+            replicas: 1
+            image: {}
+          migrations:
+            image: {}
+          webservice:
+            minReplicas: 1
+            maxReplicas: 1
+            image: {}
+            workhorse: {}
+          sidekiq:
+            minReplicas: 1
+            maxReplicas: 1
+            image: {}
+          gitlab-shell:
+            minReplicas: 1
+            maxReplicas: 1
+            image: {}
+          gitaly:
+            image: {}
+          gitlab-exporter:
+            enabled: false
+          mailroom:
+            enabled: false
+          gitlab-pages:
+            enabled: false
+          kas:
+            image: {}
+          praefect:
+            image: {}
+        minio:
+          minioMc: {}
+        shared-secrets:
+          annotations:
+            sidecar.istio.io/inject: "false"
+          selfsign:
+            keySize: "2048"
+            image: {}
+        bbtests:
+          enabled: false
+  gitlabRunner:
+    enabled: false
+  harbor:
+    enabled: true
+    sourceType: git
+    git: {}
+    values:
+      bbtests:
+        enabled: false
+      postgresql:
+        global:
+          security:
+            allowInsecureImages: true
+        image: {}
+        postgresqlSharedPreloadLibraries: ""
+      redis-bb:
+        upstream:
+          global:
+            security:
+              allowInsecureImages: true
+          image: {}
+          metrics:
+            enabled: false
+      upstream:
+        nginx:
+          image: {}
+        portal:
+          image: {}
+        core:
+          image: {}
+        jobservice:
+          image: {}
+        registry:
+          registry:
+            image: {}
+          controller:
+            image: {}
+        trivy:
+          enabled: false
+        exporter:
+          image: {}
+  headlamp:
+    enabled: true
+    sourceType: git
+    git: {}
+    sso:
+      enabled: false
+    values:
+      waitJob:
+        enabled: false
+      upstream:
+        image: {}
+  keycloak:
+    enabled: true
+    sourceType: git
+    git: {}
+    values:
+      upstream:
+        global:
+          security:
+            allowInsecureImages: true
+        replicas: 1
+        image: {}
+      postgresql:
+        global:
+          security:
+            allowInsecureImages: true
+        image: {}
+        postgresqlSharedPreloadLibraries: ""
+      bbtests:
+        enabled: false
+  mattermost:
+    enabled: false
+  mattermostOperator:
+    enabled: false
+  metricsServer:
+    enabled: false
+  minio:
+    enabled: false
+  minioOperator:
+    enabled: false
+  sonarqube:
+    enabled: false
+  vault:
+    enabled: true
+    sourceType: git
+    git: {}
+    values:
+      autoInit:
+        enabled: true
+        image: {}
+      bbtests:
+        enabled: false
+      upstream:
+        global:
+          tlsDisable: true
+        injector:
+          replicas: 1
+          image: {}
+          agentImage: {}
+        server:
+          image: {}
+          updateStrategyType: RollingUpdate
+          auditStorage:
+            enabled: false
+        csi:
+          enabled: false
+  velero:
+    enabled: true
+    sourceType: git
+    git: {}
+    values:
+      waitJob:
+        enabled: false
+      upstream:
+        image: {}
+        credentials:
+          useSecret: true
+          secretContents:
+            cloud: |
+              [default]
+              aws_access_key_id=atum-placeholder
+              aws_secret_access_key=atum-placeholder
+        configuration:
+          backupStorageLocation:
+            - name: default
+              provider: aws
+              bucket: atum-velero
+              default: true
+              credential:
+                name: velero
+                key: cloud
+              config:
+                region: auto
+                s3ForcePathStyle: "true"
+                s3Url: https://ewr1.vultrobjects.com
+          volumeSnapshotLocation:
+            - name: default
+              provider: aws
+              credential:
+                name: velero
+                key: cloud
+              config:
+                region: auto
+          deployNodeAgent: true
+      kubectl:
+        image: {}
+      bbtests:
+        enabled: false
+packages:
+  opensearch-operator:
+    enabled: true
+    sourceType: helmRepo
+    namespace:
+      create: true
+      name: opensearch-operator
+    helmRepo:
+      repoName: opensearch-operator
+      chartName: opensearch-operator
+    includeDefaultDependsOn: true
+    wrapper:
+      enabled: true
+    istio:
+      injection: enabled
+      hardened:
+        enabled: true
+        matchLabels: {}
+    network:
+      allowControlPlaneEgress: true
+    dependsOn:
+      - name: opensearch-operator-wrapper
+        namespace: opensearch-operator
+    values:
+      manager:
+        image:
+          pullPolicy: IfNotPresent
+  opensearch:
+    enabled: true
+    sourceType: helmRepo
+    namespace:
+      create: true
+      name: opensearch
+    helmRepo:
+      repoName: opensearch
+      chartName: opensearch
+    includeDefaultDependsOn: true
+    wrapper:
+      enabled: true
+    istio:
+      injection: enabled
+      hardened:
+        enabled: true
+        matchLabels: {}
+        customAuthorizationPolicies:
+          - name: allow-fluentbit-opensearch
+            enabled: true
+            spec:
+              action: ALLOW
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: opensearch
+              rules:
+                - from:
+                    - source:
+                        principals:
+                          - cluster.local/ns/fluentbit/sa/fluentbit-fluent-bit
+                  to:
+                    - operation:
+                        ports:
+                          - "9200"
+    network:
+      additionalPolicies:
+        - name: allow-fluentbit-opensearch
+          spec:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: opensearch
+            policyTypes:
+              - Ingress
+            ingress:
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: fluentbit
+                    podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: fluent-bit
+                ports:
+                  - port: 9200
+                    protocol: TCP
+    dependsOn:
+      - name: opensearch-operator
+        namespace: opensearch-operator
+      - name: opensearch-wrapper
+        namespace: opensearch
+    values:
+      singleNode: true
+      replicas: 1
+      image: {}
+      extraEnvs:
+        - name: DISABLE_INSTALL_DEMO_CONFIG
+          value: "true"
+        - name: DISABLE_SECURITY_PLUGIN
+          value: "true"
+      persistence:
+        enableInitChown: false
+      sysctlInit:
+        enabled: false
+  opensearch-dashboards:
+    enabled: true
+    sourceType: helmRepo
+    namespace:
+      create: false
+      name: opensearch
+    helmRelease:
+      namespace: opensearch
+    helmRepo:
+      repoName: opensearch
+      chartName: opensearch-dashboards
+    includeDefaultDependsOn: true
+    dependsOn:
+      - name: opensearch
+        namespace: opensearch
+    values:
+      opensearchHosts: http://opensearch-cluster-master:9200
+      replicaCount: 1
+      autoscaling:
+        enabled: false
+      image: {}

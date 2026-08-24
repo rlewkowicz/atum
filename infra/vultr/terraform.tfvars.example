@@ -1,0 +1,17 @@
+namespace = "atum"
+stage     = "prod"
+name      = "atum"
+
+region       = "ewr"
+node_plan    = "vc2-2c-4gb"
+bastion_plan = "vc2-1c-1gb"
+os_id        = 2760
+
+ssh_key_ids = [
+  "00000000-0000-0000-0000-000000000000",
+]
+
+tags = {
+  managed-by = "terraform"
+  service    = "cluster"
+}

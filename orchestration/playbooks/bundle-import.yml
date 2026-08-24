@@ -1,0 +1,326 @@
+---
+- name: Verify the controller-side Atum deployment bundle once
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require controller-side deployment bundle inputs
+      ansible.builtin.assert:
+        that:
+          - atum_bundle_archive is defined
+          - atum_bundle_archive | length > 0
+          - atum_bundle_lock is defined
+          - atum_bundle_lock | length > 0
+
+    - name: Load the deployment bundle lock
+      ansible.builtin.set_fact:
+        atum_bundle_metadata: "{{ lookup('file', atum_bundle_lock) | from_json }}"
+
+    - name: Inspect the deployment bundle archive
+      ansible.builtin.stat:
+        path: "{{ atum_bundle_archive }}"
+        checksum_algorithm: sha256
+      register: atum_bundle_local_archive
+
+    - name: Read the embedded deployment bundle manifest
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -xOf
+          - "{{ atum_bundle_archive }}"
+          - bundle.json
+      register: atum_bundle_embedded_manifest
+      changed_when: false
+
+    - name: Verify the deployment bundle lock and archive
+      ansible.builtin.assert:
+        that:
+          - atum_bundle_metadata.schemaVersion == "atum.dev/bundle-lock/v2"
+          - atum_bundle_metadata.bundle.schemaVersion == "atum.dev/bundle/v2"
+          - atum_bundle_metadata.bundle.platform == "linux/amd64"
+          - (atum_bundle_metadata.artifact.file | basename) == (atum_bundle_archive | basename)
+          - atum_bundle_metadata.artifact.sha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.imagesOciSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.desiredSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.inventorySha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.graphSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.lockSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.source.atum.sha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.source.atum.commit is match('^[0-9a-f]{40}$')
+          - atum_bundle_metadata.bundle.source.snapshotSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle_metadata.bundle.source.repositories | length > 0
+          - atum_bundle_metadata.bundle.images | length > 0
+          - (atum_bundle_embedded_manifest.stdout | from_json) == atum_bundle_metadata.bundle
+          - atum_bundle_local_archive.stat.exists
+          - atum_bundle_local_archive.stat.isreg
+          - atum_bundle_local_archive.stat.checksum == atum_bundle_metadata.artifact.sha256
+          - atum_bundle_local_archive.stat.size == atum_bundle_metadata.artifact.size
+
+- name: Import the verified Atum deployment bundle on every Kubernetes node
+  hosts: k8s_cluster
+  become: true
+  gather_facts: false
+  strategy: free
+  any_errors_fatal: true
+  vars:
+    atum_bundle: "{{ hostvars['localhost'].atum_bundle_metadata }}"
+    atum_bundle_root: /var/lib/atum/bundle
+    atum_bundle_archive_remote: "{{ atum_bundle_root }}/{{ atum_bundle.artifact.file | basename }}"
+    atum_bundle_marker: "{{ atum_bundle_root }}/{{ atum_bundle.bundle.imagesOciSha256 }}.imported"
+    atum_harbor_registry: 10.77.0.9:32443
+    atum_harbor_url: "http://{{ atum_harbor_registry }}"
+  pre_tasks:
+    - name: Require deployment bundle inputs
+      ansible.builtin.assert:
+        that:
+          - atum_bundle.schemaVersion == "atum.dev/bundle-lock/v2"
+          - atum_bundle.bundle.schemaVersion == "atum.dev/bundle/v2"
+          - atum_bundle.bundle.platform == "linux/amd64"
+          - (atum_bundle.artifact.file | basename) == (atum_bundle_archive | basename)
+          - atum_bundle.artifact.sha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.imagesOciSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.desiredSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.inventorySha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.graphSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.lockSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.source.atum.sha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.source.atum.commit is match('^[0-9a-f]{40}$')
+          - atum_bundle.bundle.source.snapshotSha256 is match('^[0-9a-f]{64}$')
+          - atum_bundle.bundle.source.repositories | length > 0
+          - atum_bundle.bundle.images | length > 0
+
+    - name: Read the node kernel and architecture
+      ansible.builtin.command:
+        argv:
+          - uname
+          - -sm
+      register: atum_bundle_node_platform
+      changed_when: false
+
+    - name: Require an amd64 node
+      ansible.builtin.assert:
+        that:
+          - atum_bundle_node_platform.stdout in ["Linux x86_64", "Linux amd64"]
+        fail_msg: "The Atum deployment bundle supports only linux/amd64 nodes"
+
+  tasks:
+    - name: Create the direct Harbor registry configuration directory
+      ansible.builtin.file:
+        path: "/etc/containerd/certs.d/{{ atum_harbor_registry }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      register: atum_bundle_harbor_registry_directory
+
+    - name: Configure direct Harbor image resolution without an external fallback
+      ansible.builtin.copy:
+        dest: "/etc/containerd/certs.d/{{ atum_harbor_registry }}/hosts.toml"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          server = "{{ atum_harbor_url }}"
+
+          [host."{{ atum_harbor_url }}"]
+            capabilities = ["pull", "resolve"]
+            skip_verify = true
+      register: atum_bundle_harbor_registry_config
+
+    - name: Restart containerd after changing registry routes
+      ansible.builtin.systemd_service:
+        name: containerd
+        enabled: true
+        state: restarted
+      when: >-
+        atum_bundle_harbor_registry_directory is changed or
+        atum_bundle_harbor_registry_config is changed
+
+    - name: Create the deployment bundle work directory
+      ansible.builtin.file:
+        path: "{{ atum_bundle_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Check the content-addressed import marker
+      ansible.builtin.stat:
+        path: "{{ atum_bundle_marker }}"
+      register: atum_bundle_marker_stat
+
+    - name: Initialize the node import decision
+      ansible.builtin.set_fact:
+        atum_bundle_import_required: "{{ not atum_bundle_marker_stat.stat.exists }}"
+
+    - name: List marker-backed image references
+      ansible.builtin.command:
+        argv:
+          - ctr
+          - --namespace
+          - k8s.io
+          - images
+          - list
+      register: atum_bundle_preflight_images
+      changed_when: false
+      failed_when: false
+      when: atum_bundle_marker_stat.stat.exists
+
+    - name: Require import for a missing or changed marker-backed image
+      ansible.builtin.set_fact:
+        atum_bundle_import_required: true
+      loop: "{{ atum_bundle.bundle.images }}"
+      loop_control:
+        label: "{{ item.id }}"
+      when:
+        - atum_bundle_marker_stat.stat.exists
+        - >-
+          (atum_bundle_preflight_images.rc | default(1)) != 0 or
+          (atum_bundle_preflight_images.stdout_lines | default([]) |
+            select('match', '^' ~ (item.seedReference | regex_escape) ~ '\\s+\\S+\\s+' ~
+              (item.digest | regex_escape) ~ '(\\s|$)') | list | length) != 1
+
+    - name: Copying deployment bundle to Kubernetes nodes
+      ansible.builtin.debug:
+        msg: Copying the deployment bundle to this node
+      when: atum_bundle_import_required
+
+    - name: Copy the deployment bundle to the node
+      ansible.builtin.copy:
+        src: "{{ atum_bundle_archive }}"
+        dest: "{{ atum_bundle_archive_remote }}"
+        owner: root
+        group: root
+        mode: "0600"
+      when: atum_bundle_import_required
+
+    - name: Verifying deployment bundle checksums on Kubernetes nodes
+      ansible.builtin.debug:
+        msg: Verifying the deployment bundle checksum on this node
+      when: atum_bundle_import_required
+
+    - name: Verify the copied deployment bundle checksum
+      ansible.builtin.command:
+        argv:
+          - sha256sum
+          - "{{ atum_bundle_archive_remote }}"
+      register: atum_bundle_remote_checksum
+      changed_when: false
+      failed_when: >-
+        atum_bundle_remote_checksum.rc != 0 or
+        atum_bundle_remote_checksum.stdout.split()[0] != atum_bundle.artifact.sha256
+      when: atum_bundle_import_required
+
+    - name: Streaming OCI images into containerd on Kubernetes nodes
+      ansible.builtin.debug:
+        msg: Streaming the deployment bundle into containerd on this node
+      when: atum_bundle_import_required
+
+    - name: Stream the OCI layout into the Kubernetes containerd namespace
+      ansible.builtin.shell: |
+        set -o pipefail
+        tar -xOf {{ atum_bundle_archive_remote | quote }} images.oci.tar |
+          ctr --namespace k8s.io images import --all-platforms --no-unpack -
+      args:
+        executable: /bin/bash
+      when: atum_bundle_import_required
+
+    - name: Bind imported source references to their Harbor runtime names
+      ansible.builtin.command:
+        argv:
+          - ctr
+          - --namespace
+          - k8s.io
+          - images
+          - tag
+          - --force
+          - "{{ item.seedReference }}"
+          - "{{ item.target }}"
+      loop: "{{ atum_bundle.bundle.images }}"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: List every Harbor-qualified runtime image
+      ansible.builtin.command:
+        argv:
+          - ctr
+          - --namespace
+          - k8s.io
+          - images
+          - list
+      register: atum_bundle_runtime_images
+      changed_when: false
+
+    - name: Verify every Harbor-qualified runtime image digest
+      ansible.builtin.assert:
+        that:
+          - >-
+            (atum_bundle_runtime_images.stdout_lines |
+              select('match', '^' ~ (item.target | regex_escape) ~ '\\s+\\S+\\s+' ~
+                (item.digest | regex_escape) ~ '(\\s|$)') | list | length) == 1
+        fail_msg: "Image {{ item.target }} is absent or does not match {{ item.digest }}"
+      loop: "{{ atum_bundle.bundle.images }}"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: Record the completed content-addressed import
+      ansible.builtin.copy:
+        dest: "{{ atum_bundle_marker }}"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          {{ atum_bundle.bundle.imagesOciSha256 }}
+          {{ atum_bundle.bundle.inventorySha256 }}
+
+    - name: Remove the copied deployment bundle after verification
+      ansible.builtin.file:
+        path: "{{ atum_bundle_archive_remote }}"
+        state: absent
+
+    - name: Record successful node deployment bundle completion
+      ansible.builtin.set_fact:
+        atum_bundle_node_complete: true
+
+- name: Publish the cluster deployment bundle identity
+  hosts: kube_control_plane
+  become: true
+  gather_facts: false
+  run_once: true
+  vars:
+    atum_bundle: "{{ hostvars['localhost'].atum_bundle_metadata }}"
+  tasks:
+    - name: Require every Kubernetes node to finish the deployment bundle import
+      ansible.builtin.assert:
+        that:
+          - hostvars[item].atum_bundle_node_complete | default(false) | bool
+        fail_msg: "Deployment bundle import did not complete on {{ item }}"
+      loop: "{{ groups['k8s_cluster'] }}"
+
+    - name: Record the required deployment bundle in kube-system
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - apply
+          - --server-side
+          - --field-manager=atum-orchestration
+          - --filename=-
+        stdin: >-
+          {{ {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+              'name': 'atum-bundle',
+              'namespace': 'kube-system'
+            },
+            'data': {
+              'schemaVersion': atum_bundle.bundle.schemaVersion,
+              'archiveSha256': atum_bundle.artifact.sha256,
+              'desiredSha256': atum_bundle.bundle.desiredSha256,
+              'inventorySha256': atum_bundle.bundle.inventorySha256,
+              'graphSha256': atum_bundle.bundle.graphSha256,
+              'lockSha256': atum_bundle.bundle.lockSha256,
+              'sourceCommit': atum_bundle.bundle.source.atum.commit
+            }
+          } | to_json }}

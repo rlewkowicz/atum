@@ -1,0 +1,7 @@
+---
+containerd_registries_mirrors:
+  - prefix: 10.77.0.9:32443
+    mirrors:
+      - host: http://10.77.0.9:32443
+        capabilities: ["pull", "resolve"]
+        skip_verify: true

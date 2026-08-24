@@ -1,0 +1,74 @@
+---
+- name: Reconcile the exact Atum cluster identity
+  hosts: kube_control_plane
+  become: true
+  gather_facts: false
+  run_once: true
+  tasks:
+    - name: Require the complete identity projection
+      ansible.builtin.assert:
+        that:
+          - atum_identity is mapping
+          - atum_identity.schemaVersion == "atum.dev/cluster-identity/v1"
+          - atum_identity.cluster | length > 0
+          - atum_identity.desiredSha256 is match('^[0-9a-f]{64}$')
+          - atum_identity.kubernetes | length > 0
+          - atum_identity.kubesprayVersion | length > 0
+          - atum_identity.kubesprayCommit is match('^[0-9a-f]{40}$')
+          - >-
+            atum_identity.orchestrationSha256 | length == 0 or
+            atum_identity.orchestrationSha256 is match('^[0-9a-f]{64}$')
+          - atum_identity.phase in ["ready", "upgrading"]
+          - >-
+            (atum_identity.phase == "ready" and atum_identity.targetKubernetes | length == 0) or
+            (atum_identity.phase == "upgrading" and atum_identity.targetKubernetes | length > 0)
+          - >-
+            (atum_identity.bigBangVersion | length == 0 and atum_identity.bigBangCommit | length == 0) or
+            (atum_identity.bigBangVersion | length > 0 and
+             atum_identity.bigBangCommit is match('^[0-9a-f]{40}$'))
+          - (atum_identity.platformConstraints | from_json) is sequence
+          - >-
+            (atum_identity.bigBangVersion | length == 0 and
+             (atum_identity.platformConstraints | from_json) | length == 0) or
+            (atum_identity.bigBangVersion | length > 0 and
+             (atum_identity.platformConstraints | from_json) | length > 0)
+
+    - name: Apply the declarative cluster identity
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - apply
+          - --server-side
+          - --field-manager=atum-orchestration
+          - --filename=-
+        stdin: >-
+          {{ {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+              'name': 'atum-system',
+              'namespace': 'kube-system'
+            },
+            'data': atum_identity
+          } | to_json }}
+      register: atum_identity_apply
+      changed_when: "'configured' in atum_identity_apply.stdout or 'created' in atum_identity_apply.stdout"
+
+    - name: Read the reconciled cluster identity
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - get
+          - configmap
+          - atum-system
+          - --namespace=kube-system
+          - --output=json
+      register: atum_identity_live
+      changed_when: false
+
+    - name: Verify the exact cluster identity
+      ansible.builtin.assert:
+        that:
+          - (atum_identity_live.stdout | from_json).data == atum_identity

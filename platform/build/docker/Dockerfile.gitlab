@@ -1,0 +1,503 @@
+FROM atum_go AS gitlab-gomplate-build
+COPY --from=gitlab_gomplate_source / /src/gomplate
+WORKDIR /src/gomplate
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+      -ldflags='-s -w' -o /out/gomplate ./cmd/gomplate
+
+FROM atum_go AS gitlab-logger-build
+COPY --from=gitlab_logger_source / /src/gitlab-logger
+WORKDIR /src/gitlab-logger
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+      -ldflags='-s -w -X main.version=4.0.0 -X main.buildtime=19700101.000000' \
+      -o /out/gitlab-logger ./cmd/gitlab-logger
+
+FROM atum_ruby AS gitlab-rails-builder-base
+COPY --from=atum_node /opt/atum/node /opt/atum/node
+COPY --from=atum_postgresql /opt/bitnami/postgresql /opt/atum/postgresql
+ENV PATH=/opt/atum/node/bin:/opt/atum/postgresql/bin:/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      clang \
+      cmake \
+      gcc \
+      g++ \
+      git \
+      graphicsmagick \
+      libimage-exiftool-perl \
+      libkrb5-dev \
+      libpq-dev \
+      libzstd-dev \
+      llvm-dev \
+      make \
+      patch \
+      sudo \
+      tzdata; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 1000 git; \
+    useradd --create-home --home-dir /home/git --shell /bin/bash \
+      --uid 1000 --gid 1000 git; \
+    gem install --no-document bundler --version 2.7.1; \
+    npm install --global --no-audit --no-fund yarn@1.22.19
+
+FROM gitlab-rails-builder-base AS gitlab-gem-deps
+COPY --from=gitlab_foss_source --chown=1000:1000 / /srv/gitlab
+WORKDIR /srv/gitlab
+RUN --mount=type=cache,id=atum-bundler,target=/home/git/.bundle/cache,uid=1000,gid=1000,sharing=shared \
+    set -eux; \
+    mkdir -p vendor/bundle; \
+    chown -R git:git vendor/bundle; \
+    sudo -u git -H env "PATH=${PATH}" bundle config set --local version system; \
+    sudo -u git -H env "PATH=${PATH}" bundle config set --local clean true; \
+    sudo -u git -H env "PATH=${PATH}" bundle config set --local deployment true; \
+    sudo -u git -H env "PATH=${PATH}" bundle config set --local path /srv/gitlab/vendor/bundle; \
+    sudo -u git -H env "PATH=${PATH}" bundle config set --local without 'development test mysql aws'; \
+    sudo -u git -H env "PATH=${PATH}" bundle install --jobs "$(nproc)" --retry 5
+
+FROM gitlab-rails-builder-base AS gitlab-node-deps
+COPY --from=gitlab_foss_source --chown=1000:1000 / /srv/gitlab
+WORKDIR /srv/gitlab
+RUN --mount=type=cache,id=atum-yarn,target=/home/git/.cache/yarn,uid=1000,gid=1000,sharing=shared \
+    set -eux; \
+    sudo -u git -H env "PATH=${PATH}" \
+      npm_config_nodedir=/opt/atum/node \
+      CI=true RAILS_ENV=production NODE_ENV=development USE_DB=false \
+      SKIP_STORAGE_VALIDATION=true \
+      yarn install --frozen-lockfile --non-interactive
+
+FROM gitlab-rails-builder-base AS gitlab-rails-build
+COPY --from=gitlab_foss_source --chown=1000:1000 / /srv/gitlab
+COPY --from=gitlab-gem-deps --chown=1000:1000 /srv/gitlab/vendor/bundle /srv/gitlab/vendor/bundle
+COPY --from=gitlab-gem-deps --chown=1000:1000 /srv/gitlab/.bundle /srv/gitlab/.bundle
+COPY --from=gitlab-node-deps --chown=1000:1000 /srv/gitlab/node_modules /srv/gitlab/node_modules
+WORKDIR /srv/gitlab
+RUN set -eux; \
+    mkdir -p \
+      /var/opt/gitlab/.upgrade-status \
+      /var/opt/gitlab/config \
+      /var/opt/gitlab/data \
+      /var/opt/gitlab/repo; \
+    cp config/gitlab.yml.example config/gitlab.yml; \
+    cp config/resque.yml.example config/resque.yml; \
+    cp config/secrets.yml.example config/secrets.yml; \
+    cp config/database.yml.postgresql config/database.yml; \
+    sed -i '/host: localhost/d; /port: 80/d' config/gitlab.yml; \
+    sed -i '/geo:/,/^$/d' config/database.yml; \
+    sed -i 's/# user:.*/user: git/' config/gitlab.yml; \
+    sed -i 's:/home/git/repositories:/var/opt/gitlab/repo:' config/gitlab.yml; \
+    cp --remove-destination VERSION workhorse/VERSION; \
+    printf '%s\n' gitlab-cloud-native-image > INSTALLATION_TYPE; \
+    chown -R git:git /srv/gitlab /var/opt/gitlab; \
+    sudo -u git -H env "PATH=${PATH}" \
+      CI=true RAILS_ENV=production NODE_ENV=production USE_DB=false \
+      SKIP_STORAGE_VALIDATION=true \
+      bundle exec rake gettext:compile; \
+    sudo -u git -H env "PATH=${PATH}" \
+      CI=true RAILS_ENV=production NODE_ENV=production USE_DB=false \
+      SKIP_STORAGE_VALIDATION=true \
+      node scripts/frontend/infection_scanner/infection_scanner.mjs; \
+    sudo -u git -H env "PATH=${PATH}" \
+      CI=true RAILS_ENV=production NODE_ENV=production USE_DB=false \
+      SKIP_STORAGE_VALIDATION=true \
+      bundle exec rake gitlab:assets:compile; \
+    install -o git -g git -m 0600 config/secrets.yml.example config/secrets.yml; \
+    rm -rf node_modules tmp spec storybook qa rubocop tooling .gitlab .github docker; \
+    find public/assets/webpack -type f -name '*.map' -delete 2>/dev/null || true
+
+FROM atum_go AS gitlab-workhorse-build
+COPY --from=gitlab_foss_source / /src/gitlab
+WORKDIR /src/gitlab/workhorse
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    make -j"$(nproc)" SOURCE_DATE_EPOCH=0 \
+      DESTDIR=/out PREFIX=/usr/local install
+
+FROM atum_go AS gitlab-registry-build
+COPY --from=container_registry_source / /src/registry
+WORKDIR /src/registry
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    CGO_ENABLED=0 BUILDTAGS=continuous_profiler_stackdriver make -j"$(nproc)" binaries; \
+    install -D -m 0755 bin/registry /out/registry
+
+FROM atum_go AS gitlab-shell-build
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y libkrb5-dev; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=gitlab_shell_source / /src/gitlab-shell
+WORKDIR /src/gitlab-shell
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    make -j"$(nproc)" build; \
+    mkdir -p /out/srv/gitlab-shell/bin; \
+    install -m 0755 \
+      bin/gitlab-shell-check \
+      bin/gitlab-shell \
+      bin/gitlab-shell-authorized-keys-check \
+      bin/gitlab-shell-authorized-principals-check \
+      bin/gitlab-sshd \
+      /out/srv/gitlab-shell/bin/; \
+    cp LICENSE VERSION /out/srv/gitlab-shell/
+
+FROM atum_go AS gitaly-build
+COPY --from=atum_ruby /opt/atum/jemalloc /opt/atum/jemalloc
+COPY --from=atum_ruby /opt/atum/ruby /opt/atum/ruby
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bzip2 \
+      cmake \
+      curl \
+      gcc \
+      g++ \
+      libcurl4-gnutls-dev \
+      libicu-dev \
+      libpcre2-dev \
+      libssl-dev \
+      libyaml-dev \
+      meson \
+      ninja-build \
+      ruby-dev \
+      zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=gitaly_source / /src/gitaly
+WORKDIR /src/gitaly
+ENV GEM_HOME=/opt/atum/ruby/lib/ruby/gems/3.3.0 \
+    PATH=/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/opt/atum/go/bin:/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    --mount=type=cache,id=atum-bundler,target=/root/.bundle/cache,sharing=shared \
+    set -eux; \
+    make -j"$(nproc)" PREFIX=/out/usr/local WITH_BUNDLED_GIT=YesPlease USE_MESON=YesPlease install; \
+    CGO_ENABLED=0 go build -C tools/gitaly-init-cgroups -trimpath -buildvcs=false \
+      -ldflags='-s -w' -o /out/usr/local/bin/setup_cgroups .
+
+FROM atum_ruby AS gitlab-exporter-build
+COPY --from=gitlab_exporter_source / /src/gitlab-exporter
+WORKDIR /src/gitlab-exporter
+RUN --mount=type=cache,id=atum-bundler,target=/root/.bundle/cache,sharing=shared \
+    set -eux; \
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+      git init -q; \
+      git add .; \
+    fi; \
+    gem build gitlab-exporter.gemspec; \
+    gem install --no-document --install-dir /out/gems --bindir /out/bin \
+      gitlab-exporter-*.gem
+
+FROM atum_go AS gitlab-kas-build
+COPY --from=gitlab_kas_source / /src/gitlab-kas
+WORKDIR /src/gitlab-kas
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    mkdir -p /out; \
+    GIT_COMMIT=4d3884f671ddfa3a197207d992ef65e663a1d31f \
+      GIT_TAG=v18.11.1 TARGET_DIRECTORY=/out make -j"$(nproc)" kas
+
+FROM atum_go AS cfssl-build
+COPY --from=cfssl_source / /src/cfssl
+WORKDIR /src/cfssl
+RUN --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
+    --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=shared \
+    set -eux; \
+    mkdir -p /out; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' \
+      -o /out/cfssl ./cmd/cfssl & \
+    atum_cfssl_pid=$!; \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' \
+      -o /out/cfssljson ./cmd/cfssljson; \
+    wait "$atum_cfssl_pid"
+
+FROM atum_python AS gitlab-toolbox-python
+RUN --mount=type=cache,id=atum-pip,target=/root/.cache/pip,sharing=locked \
+    set -eux; \
+    python3 -m venv /opt/atum/gitlab-toolbox; \
+    /opt/atum/gitlab-toolbox/bin/pip install --disable-pip-version-check \
+      awscli==1.44.58 \
+      crcmod==1.7 \
+      gsutil==5.36 \
+      pyOpenSSL==24.2.1 \
+      s3cmd==2.4.0; \
+    /opt/atum/gitlab-toolbox/bin/pip cache purge
+
+FROM atum_runtime AS gitlab-service-runtime
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSES
+ARG ATUM_IMAGE_REVISION
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_TITLE
+ARG ATUM_IMAGE_VERSION
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bash busybox curl less procps; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 1000 git; \
+    useradd --create-home --home-dir /home/git --shell /bin/bash \
+      --uid 1000 --gid 1000 git; \
+    mkdir -p /scripts /var/log/gitlab; \
+    chown -R git:git /home/git /var/log/gitlab
+COPY --from=atum_gitlab_base /usr/local/bin/gomplate /usr/local/bin/gomplate
+COPY --from=atum_gitlab_base /usr/local/bin/gitlab-logger /usr/local/bin/gitlab-logger
+COPY --from=atum_gitlab_base /scripts/entrypoint.sh /scripts/entrypoint.sh
+COPY --from=atum_gitlab_base /scripts/exec-env /scripts/exec-env
+COPY --from=atum_gitlab_base /scripts/set-config /scripts/set-config
+ENV CONFIG_TEMPLATE_DIRECTORY=/etc \
+    GITLAB_USER=git
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSES}" \
+      org.opencontainers.image.revision="${ATUM_IMAGE_REVISION}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="${ATUM_IMAGE_TITLE}" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+ENTRYPOINT ["/scripts/entrypoint.sh"]
+
+FROM atum_runtime AS gitlab-base
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSES
+ARG ATUM_IMAGE_REVISION
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_TITLE
+ARG ATUM_IMAGE_VERSION
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bash \
+      busybox \
+      curl \
+      git \
+      graphicsmagick \
+      gzip \
+      less \
+      libffi8 \
+      libgdbm6t64 \
+      libgmp10 \
+      libicu76 \
+      libimage-exiftool-perl \
+      libpq5 \
+      libreadline8t64 \
+      libssl3t64 \
+      libxml2 \
+      libxslt1.1 \
+      libyaml-0-2 \
+      openssh-client \
+      perl \
+      procps \
+      tzdata \
+      zlib1g; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 1000 git; \
+    useradd --create-home --home-dir /home/git --shell /bin/bash \
+      --uid 1000 --gid 1000 git; \
+    mkdir -p /scripts /var/log/gitlab; \
+    chown -R git:git /home/git /var/log/gitlab
+COPY --from=atum_ruby /opt/atum/jemalloc /opt/atum/jemalloc
+COPY --from=atum_ruby /opt/atum/ruby /opt/atum/ruby
+COPY --from=atum_postgresql /opt/bitnami/postgresql /opt/atum/postgresql
+COPY --from=gitlab-rails-build --chown=1000:1000 /srv/gitlab /srv/gitlab
+COPY --from=gitlab-rails-build --chown=1000:1000 /var/opt/gitlab /var/opt/gitlab
+COPY --from=gitlab-gomplate-build /out/gomplate /usr/local/bin/gomplate
+COPY --from=gitlab-logger-build /out/gitlab-logger /usr/local/bin/gitlab-logger
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-base/scripts/ /scripts/
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-rails/scripts/ /scripts/
+RUN set -eux; \
+    rm -rf /srv/gitlab/log; \
+    ln -s /var/log/gitlab /srv/gitlab/log; \
+    chmod 0600 /srv/gitlab/config/database.yml /srv/gitlab/config/secrets.yml; \
+    mkdir -p /home/git/gitlab-shell /srv/gitlab/public/uploads; \
+    ln -s /srv/gitlab/GITLAB_SHELL_VERSION /home/git/gitlab-shell/VERSION; \
+    chown -R git:git /home/git/gitlab-shell /srv/gitlab/public/uploads /var/log/gitlab; \
+    chmod 0700 /srv/gitlab/public/uploads
+ENV BOOTSNAP_CACHE_DIR=/srv/gitlab/bootsnap \
+    CONFIG_TEMPLATE_DIRECTORY=/srv/gitlab/config \
+    EXECJS_RUNTIME=Disabled \
+    GEM_HOME=/opt/atum/ruby/lib/ruby/gems/3.3.0 \
+    GITLAB_USER=git \
+    LD_LIBRARY_PATH=/opt/atum/jemalloc/lib \
+    PATH=/opt/atum/postgresql/bin:/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    RAILS_ENV=production \
+    RUBYOPT=-W:no-experimental \
+    UPGRADE_STATUS_DIR=/var/opt/gitlab/.upgrade-status
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSES}" \
+      org.opencontainers.image.revision="${ATUM_IMAGE_REVISION}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="${ATUM_IMAGE_TITLE}" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+VOLUME ["/var/opt/gitlab", "/var/log"]
+ENTRYPOINT ["/scripts/entrypoint.sh"]
+
+FROM atum_gitlab_base AS gitlab-rails-runtime
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSES
+ARG ATUM_IMAGE_REVISION
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_TITLE
+ARG ATUM_IMAGE_VERSION
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSES}" \
+      org.opencontainers.image.revision="${ATUM_IMAGE_REVISION}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="${ATUM_IMAGE_TITLE}" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+
+FROM gitlab-service-runtime AS gitlab-certificates
+COPY --from=gitlab_cng_source --chmod=0755 /certificates/scripts/bundle-certificates /scripts/bundle-certificates
+VOLUME ["/etc/ssl/certs", "/usr/local/share/ca-certificates"]
+CMD ["/scripts/bundle-certificates"]
+
+FROM gitlab-service-runtime AS gitlab-container-registry
+COPY --from=gitlab-registry-build /out/registry /bin/registry
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-container-registry/scripts/ /scripts/
+RUN set -eux; mkdir -p /etc/docker/registry; chown -R git:git /etc/docker/registry
+ENV CONFIG_DIRECTORY=/etc/docker/registry \
+    CONFIG_FILENAME=config.yml
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-rails-runtime AS gitlab-toolbox
+COPY --from=atum_python /opt/atum/python /opt/atum/python
+COPY --from=gitlab-toolbox-python /opt/atum/gitlab-toolbox /opt/atum/gitlab-toolbox
+COPY --from=atum_gitaly /usr/local/bin/gitaly-backup /usr/local/bin/gitaly-backup
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-toolbox/scripts/bin/ /usr/local/bin/
+COPY --from=gitlab_cng_source /gitlab-toolbox/scripts/lib/ /usr/lib/ruby/vendor_ruby/
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      jq openssl redis-tools screen tar; \
+    rm -rf /var/lib/apt/lists/*; \
+    chown -R git:git /opt/atum/gitlab-toolbox
+ENV LD_LIBRARY_PATH=/opt/atum/python/lib:/opt/atum/jemalloc/lib \
+    PATH=/opt/atum/gitlab-toolbox/bin:/opt/atum/python/bin:/opt/atum/postgresql/bin:/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER 1000:1000
+ENTRYPOINT ["/scripts/entrypoint.sh", "/usr/local/bin/process-wrapper.sh"]
+
+FROM gitlab-rails-runtime AS gitlab-webservice
+COPY --from=atum_python /opt/atum/python /opt/atum/python
+ENV LD_LIBRARY_PATH=/opt/atum/python/lib:/opt/atum/jemalloc/lib \
+    PATH=/opt/atum/python/bin:/opt/atum/postgresql/bin:/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN --mount=type=cache,id=atum-pip,target=/root/.cache/pip,sharing=locked \
+    set -eux; \
+    /opt/atum/python/bin/pip3 install --disable-pip-version-check --no-cache-dir docutils==0.19; \
+    mkdir -p /srv/gitlab/public/uploads; \
+    chown -R git:git /srv/gitlab/public/uploads
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-webservice/scripts/ /scripts/
+COPY --from=gitlab_cng_source --chown=1000:1000 /gitlab-webservice/configuration/ /srv/gitlab/config/
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-rails-runtime AS gitlab-workhorse
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y perl; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /srv/gitlab/config; \
+    chown -R git:git /srv/gitlab /var/log/gitlab
+COPY --from=gitlab-workhorse-build /out/usr/local/bin/ /usr/local/bin/
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-workhorse/scripts/ /scripts/
+USER 1000:1000
+CMD ["/scripts/start-workhorse"]
+
+FROM gitlab-rails-runtime AS gitlab-sidekiq
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y openssh-client; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=gitlab_cng_source --chown=1000:1000 --chmod=0755 /gitlab-sidekiq/scripts/ /scripts/
+ENV SIDEKIQ_CONCURRENCY=25 \
+    SIDEKIQ_TIMEOUT=25
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-service-runtime AS gitlab-shell
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      libkrb5-3 openssh-server; \
+    rm -rf /var/lib/apt/lists/*; \
+    rm -f /etc/ssh/ssh_host_* /etc/ssh/sshd_config.*; \
+    mkdir -p /etc/ssh /srv/sshd /var/log/gitlab-shell; \
+    touch /var/log/gitlab-shell/gitlab-shell.log; \
+    sed -i 's/^git:!:/git:*:/' /etc/shadow; \
+    chown -R git:git /etc/ssh /srv/sshd /srv/gitlab-shell /var/log/gitlab-shell
+COPY --from=gitlab-shell-build --chown=1000:1000 /out/ /
+COPY --from=gitlab_cng_source /gitlab-shell/sshd_config /etc/ssh/sshd_config
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-shell/scripts/ /scripts/
+RUN set -eux; mv /scripts/authorized_keys /authorized_keys; chmod 0755 /authorized_keys
+ENV CONFIG_TEMPLATE_DIRECTORY=/srv/gitlab-shell
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-service-runtime AS gitaly
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bzip2 gzip iproute2 libcurl3t64-gnutls libffi8 libgdbm6t64 libgmp10 \
+      libicu76 libpcre2-16-0 libpcre2-32-0 libpcre2-posix3 libreadline8t64 \
+      libssl3t64 libyaml-0-2 openssh-client zlib1g; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p \
+      /etc/gitaly \
+      /home/git/custom_hooks \
+      /home/git/repositories \
+      /srv/gitlab-shell \
+      /var/log/gitaly; \
+    touch /etc/gitaly/config.toml /var/log/gitaly/gitaly.log /var/log/gitaly/gitlab-shell.log; \
+    chown -R git:git /etc/gitaly /home/git /srv/gitlab-shell /var/log/gitaly
+COPY --from=atum_ruby /opt/atum/jemalloc /opt/atum/jemalloc
+COPY --from=atum_ruby /opt/atum/ruby /opt/atum/ruby
+COPY --from=gitaly-build /out/usr/local/ /usr/local/
+COPY --from=gitlab_cng_source --chown=1000:1000 /gitaly/config.toml /etc/gitaly/config.toml.tpl
+COPY --from=gitlab_cng_source --chmod=0755 /gitaly/scripts/ /scripts/
+ENV CONFIG_TEMPLATE_DIRECTORY=/etc/gitaly \
+    GEM_HOME=/opt/atum/ruby/lib/ruby/gems/3.3.0 \
+    LD_LIBRARY_PATH=/opt/atum/jemalloc/lib \
+    PATH=/opt/atum/ruby/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-service-runtime AS gitlab-exporter
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      libffi8 libgdbm6t64 libgmp10 libreadline8t64 libssl3t64 libyaml-0-2 zlib1g; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=atum_ruby /opt/atum/jemalloc /opt/atum/jemalloc
+COPY --from=atum_ruby /opt/atum/ruby /opt/atum/ruby
+COPY --from=gitlab-exporter-build /out/gems /opt/atum/gitlab-exporter/gems
+COPY --from=gitlab-exporter-build /out/bin/gitlab-exporter /usr/bin/gitlab-exporter
+COPY --from=gitlab_cng_source --chmod=0755 /gitlab-exporter/scripts/ /scripts/
+RUN set -eux; mkdir -p /etc/gitlab-exporter; chown -R git:git /etc/gitlab-exporter
+ENV CONFIG_DIRECTORY=/etc/gitlab-exporter \
+    CONFIG_FILENAME=gitlab-exporter.yml \
+    CONFIG_TEMPLATE_DIRECTORY=/var/opt/gitlab-exporter/templates \
+    GEM_HOME=/opt/atum/gitlab-exporter/gems \
+    GEM_PATH=/opt/atum/gitlab-exporter/gems:/opt/atum/ruby/lib/ruby/gems/3.3.0 \
+    LD_LIBRARY_PATH=/opt/atum/jemalloc/lib \
+    PATH=/opt/atum/ruby/bin:/opt/atum/gitlab-exporter/gems/bin:/opt/atum/ruby/lib/ruby/gems/3.3.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER 1000:1000
+CMD ["/scripts/process-wrapper"]
+
+FROM gitlab-service-runtime AS gitlab-kas
+COPY --from=gitlab-kas-build /out/kas /usr/bin/kas
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/bin/kas"]
+CMD []
+
+FROM gitlab-service-runtime AS cfssl-self-sign
+COPY --from=cfssl-build /out/cfssl /out/cfssljson /usr/local/bin/
+COPY --from=gitlab_cng_source --chmod=0755 /cfssl-self-sign/scripts/generate-certificates /scripts/generate-certificates
+VOLUME ["/output"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/scripts/generate-certificates"]

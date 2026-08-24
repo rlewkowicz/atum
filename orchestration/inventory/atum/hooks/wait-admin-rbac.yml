@@ -1,0 +1,12 @@
+---
+- name: Wait for cluster administrator RBAC before uncordon
+  ansible.builtin.command: >-
+    {{ kubectl }} --request-timeout=5s auth can-i get nodes
+  register: atum_admin_rbac
+  changed_when: false
+  retries: 30
+  delay: 2
+  until:
+    - atum_admin_rbac.rc == 0
+    - atum_admin_rbac.stdout | trim == "yes"
+  delegate_to: "{{ groups['kube_control_plane'][0] }}"

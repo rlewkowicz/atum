@@ -1,0 +1,7 @@
+---
+# Atum installs platform add-ons through Flux after Kubespray converges.
+helm_enabled: false
+registry_enabled: false
+metrics_server_enabled: false
+local_path_provisioner_enabled: false
+ingress_nginx_enabled: false

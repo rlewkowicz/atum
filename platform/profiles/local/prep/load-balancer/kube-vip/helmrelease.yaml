@@ -1,0 +1,28 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  releaseName: kube-vip
+  targetNamespace: kube-system
+  interval: 10m
+  timeout: 10m
+  chartRef:
+    kind: OCIRepository
+    name: kube-vip
+    namespace: kube-system
+  install:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 1m
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 1m
+  driftDetection:
+    mode: enabled
+  valuesFrom:
+    - kind: ConfigMap
+      name: kube-vip-values
+      valuesKey: values.yaml

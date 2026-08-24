@@ -1,0 +1,533 @@
+{
+  "$schema": "./atum.lock.schema.json",
+  "schemaVersion": "atum.dev/lock/v1",
+  "desiredSha256": "90c0045c7b6123f47d013e186a325513de77cab5d306efd6f38a36ff44853d23",
+  "resolved": {
+    "clusterReleases": [
+      {
+        "kubernetes": "1.33.5",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.29.1",
+          "commit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29"
+        },
+        "checksums": {
+          "kubelet": "sha256:8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
+          "kubeadm": "sha256:6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
+          "kubectl": "sha256:6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc"
+        }
+      },
+      {
+        "kubernetes": "1.34.3",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.30.0",
+          "commit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a"
+        },
+        "checksums": {
+          "kubelet": "sha256:0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
+          "kubeadm": "sha256:f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
+          "kubectl": "sha256:ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212"
+        }
+      },
+      {
+        "kubernetes": "1.35.4",
+        "kubespray": {
+          "url": "https://github.com/kubernetes-sigs/kubespray.git",
+          "version": "v2.31.0",
+          "commit": "1c9add48975060f45396b34d8e022c30d7f80dab"
+        },
+        "checksums": {
+          "kubelet": "sha256:983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
+          "kubeadm": "sha256:0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
+          "kubectl": "sha256:b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd"
+        }
+      }
+    ],
+    "bigBang": {
+      "url": "https://repo1.dso.mil/big-bang/bigbang.git",
+      "version": "3.30.0",
+      "commit": "1d5a436945aa24316b21b88f74d555e9d3559655",
+      "kubeVersion": "\u003e=1.34.0-0"
+    },
+    "flux": {
+      "url": "https://github.com/fluxcd/flux2.git",
+      "version": "2.9.4",
+      "ref": "v2.9.4",
+      "commit": "889be9d6cc8afa8ed639e1e1ba4ab678e3b38d8c",
+      "assets": [
+        {
+          "id": "install-manifest",
+          "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
+          "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
+          "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
+          "sha256": "97da4654bc11de5637d7f506b0a73707e1e6a1f7a8e9fa8e307063c0b9befa1f"
+        }
+      ]
+    },
+    "packages": [
+      {
+        "id": "istio-crds",
+        "valuesPath": "istioCRDs",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istio-crds.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "bf478aca88cbeaaa9a6b74579d339333e0e17bb6"
+        }
+      },
+      {
+        "id": "istiod",
+        "valuesPath": "istiod",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istiod.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "31fe272d29c84e3c88b586891bde1e00322090a9"
+        }
+      },
+      {
+        "id": "istio-gateway",
+        "valuesPath": "istioGateway",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/istio-gateway.git",
+          "version": "1.30.3-bb.0",
+          "branch": "main",
+          "commit": "4e0520ebbed7b8be114602a8f7e9993b4a75a9b2"
+        }
+      },
+      {
+        "id": "kiali",
+        "valuesPath": "kiali",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kiali.git",
+          "version": "2.28.0-bb.1",
+          "branch": "main",
+          "commit": "118b3c8c677aaae7cf77d09ca3d3ff563711e7a6"
+        }
+      },
+      {
+        "id": "kyverno",
+        "valuesPath": "kyverno",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno.git",
+          "version": "3.8.2-bb.0",
+          "branch": "main",
+          "commit": "b447db7750b8151631adb50c030ee8eec7d068f8",
+          "kubeVersion": "\u003e=1.25.0-0"
+        }
+      },
+      {
+        "id": "kyverno-policies",
+        "valuesPath": "kyvernoPolicies",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno-policies.git",
+          "version": "3.3.4-bb.87",
+          "branch": "main",
+          "commit": "4a5b32d4b3dda100b661ca04a9f4608705c9224e"
+        }
+      },
+      {
+        "id": "kyverno-reporter",
+        "valuesPath": "kyvernoReporter",
+        "license": "MIT",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/kyverno-reporter.git",
+          "version": "3.9.0-bb.0",
+          "branch": "main",
+          "commit": "da6a9440e6e236b3eb75ade632852aa5f1045c5f"
+        }
+      },
+      {
+        "id": "fluent-bit",
+        "valuesPath": "fluentbit",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/fluentbit.git",
+          "version": "0.57.9-bb.0",
+          "branch": "main",
+          "commit": "c85d4ca665b9a59645c68f1246ff653d68e5d82b"
+        }
+      },
+      {
+        "id": "tempo",
+        "valuesPath": "tempo",
+        "license": "AGPL-3.0-only",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/tempo.git",
+          "version": "2.1.0-bb.2",
+          "branch": "main",
+          "commit": "00e3261d933da31330be94e44a36c19dafaaa865"
+        }
+      },
+      {
+        "id": "prometheus-operator-crds",
+        "valuesPath": "prometheusOperatorCRDs",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/prometheus-operator-crds.git",
+          "version": "30.0.1-bb.0",
+          "branch": "main",
+          "commit": "52443c44cd5f5eabc8932f8823d90ce9544833ce",
+          "kubeVersion": "\u003e=1.16.0-0"
+        }
+      },
+      {
+        "id": "monitoring",
+        "valuesPath": "monitoring",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/monitoring.git",
+          "version": "87.10.1-bb.3",
+          "branch": "main",
+          "commit": "f80a08770eac2d6f7928965b25987fc15b96a2bd",
+          "kubeVersion": "\u003e=1.19.0-0"
+        }
+      },
+      {
+        "id": "grafana",
+        "valuesPath": "grafana",
+        "license": "AGPL-3.0-only",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/grafana.git",
+          "version": "10.5.15-bb.6",
+          "branch": "main",
+          "commit": "70293e4da4fbbfda8ee8676ca70cce67f1b8b381",
+          "kubeVersion": "^1.25.0-0"
+        }
+      },
+      {
+        "id": "authservice",
+        "valuesPath": "addons.authservice",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/authservice.git",
+          "version": "1.1.5-bb.5",
+          "branch": "main",
+          "commit": "a5e8736bbb8219c7d66e066bb844626b38e35434"
+        }
+      },
+      {
+        "id": "gitlab",
+        "valuesPath": "addons.gitlab",
+        "license": "MIT",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/gitlab.git",
+          "version": "9.11.8-bb.0",
+          "branch": "main",
+          "commit": "e1afa3518e4c3e7a329369a73158a14224593192"
+        }
+      },
+      {
+        "id": "harbor",
+        "valuesPath": "addons.harbor",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/harbor.git",
+          "version": "1.19.1-bb.2",
+          "branch": "main",
+          "commit": "a0bb9f16e81dd7f4b44ce6e23ece1336883af676"
+        }
+      },
+      {
+        "id": "headlamp",
+        "valuesPath": "addons.headlamp",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/headlamp.git",
+          "version": "0.40.0-bb.2",
+          "branch": "main",
+          "commit": "376b0d52d5397c01a33434de11d9dd97d8d8d0bd"
+        }
+      },
+      {
+        "id": "keycloak",
+        "valuesPath": "addons.keycloak",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git",
+          "version": "7.2.2-bb.1",
+          "branch": "main",
+          "commit": "63f3f02f4b5d32f970bb9d4525331cc8e96cd832"
+        }
+      },
+      {
+        "id": "vault",
+        "valuesPath": "addons.vault",
+        "license": "MPL-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/vault.git",
+          "version": "0.33.0-bb.4",
+          "branch": "main",
+          "commit": "59a5a25b1e0490a746da65f441d5ce9620b1c38f"
+        }
+      },
+      {
+        "id": "velero",
+        "valuesPath": "addons.velero",
+        "license": "Apache-2.0",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/velero.git",
+          "version": "12.1.0-bb.2",
+          "branch": "main",
+          "commit": "b6948838ee216bfe2fa854ec2322d116c8853c3d",
+          "kubeVersion": "\u003e=1.18.0-0"
+        }
+      }
+    ],
+    "supportSources": [
+      {
+        "id": "wrapper",
+        "valuesPath": "wrapper",
+        "chartPath": "chart",
+        "source": {
+          "url": "https://repo1.dso.mil/big-bang/product/packages/wrapper.git",
+          "version": "0.4.15",
+          "branch": "main",
+          "commit": "86b9ecc74169cb4f9635e7a5ed695014390e9efc"
+        }
+      }
+    ],
+    "charts": [
+      {
+        "id": "opensearch-operator",
+        "name": "opensearch-operator",
+        "valuesPath": "packages.opensearch-operator",
+        "fluxSource": "platform/apps/bigbang/source-opensearch-operator.yaml",
+        "version": "2.8.0",
+        "appVersion": "2.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/opensearch-k8s-operator/releases/download/opensearch-operator-2.8.0/opensearch-operator-2.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/opensearch-k8s-operator/index.yaml"
+        },
+        "archiveSha256": "f289e27e553c45b55e20952c78971b19a1b5defe9f89bea1f6910f3ee3da81eb"
+      },
+      {
+        "id": "opensearch",
+        "name": "opensearch",
+        "valuesPath": "packages.opensearch",
+        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
+        "version": "3.8.0",
+        "appVersion": "3.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-3.8.0/opensearch-3.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/helm-charts/index.yaml"
+        },
+        "archiveSha256": "cad6c77d04ec2389be6f61b5422ce61e7264eb7145e42b4c78dbc00e9d7dbe4d"
+      },
+      {
+        "id": "opensearch-dashboards",
+        "name": "opensearch-dashboards",
+        "valuesPath": "packages.opensearch-dashboards",
+        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
+        "version": "3.8.0",
+        "appVersion": "3.8.0",
+        "license": "Apache-2.0",
+        "source": {
+          "type": "https",
+          "url": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-dashboards-3.8.0/opensearch-dashboards-3.8.0.tgz",
+          "indexUrl": "https://opensearch-project.github.io/helm-charts/index.yaml"
+        },
+        "archiveSha256": "d932c62d60743f2837c7b9a4248ef7719c3049fe11b2dd8d44bc6ede43641a0e"
+      }
+    ],
+    "vendors": [],
+    "bootstrap": {
+      "schemaVersion": "atum.dev/bootstrap-charts/v1",
+      "registry": {
+        "host": "10.77.0.9:32443",
+        "project": "charts",
+        "tlsVerify": false
+      },
+      "immutableTags": true,
+      "charts": [
+        {
+          "id": "local-path-provisioner",
+          "name": "local-path-provisioner",
+          "version": "0.0.37",
+          "appVersion": "v0.0.37",
+          "imageBindings": [
+            {
+              "id": "local-path-provisioner",
+              "valuesPath": "image"
+            }
+          ],
+          "kubeVersion": "\u003e=1.12.0-r0",
+          "license": "Apache-2.0",
+          "source": {
+            "type": "oci",
+            "url": "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner",
+            "digest": "sha256:81033683ce790e593524b2105945ee0d81bf6608f0c85eb5e0c1082cc74ff03d"
+          },
+          "values": "platform/apps/prep/storage/values.yaml",
+          "fluxSource": "platform/apps/prep/storage/source-local-path-provisioner.yaml",
+          "file": "local-path-provisioner-0.0.37.tgz",
+          "archiveSha256": "5fdbc13018711551041bb7112a2f9f7b5a2d9cad534866e389efe1b015871068",
+          "target": "10.77.0.9:32443/charts/local-path-provisioner:0.0.37"
+        },
+        {
+          "id": "cert-manager",
+          "name": "cert-manager",
+          "version": "v1.21.1",
+          "appVersion": "v1.21.1",
+          "imageBindings": [
+            {
+              "id": "cert-manager-controller",
+              "valuesPath": "image"
+            },
+            {
+              "id": "cert-manager-webhook",
+              "valuesPath": "webhook.image"
+            },
+            {
+              "id": "cert-manager-cainjector",
+              "valuesPath": "cainjector.image"
+            },
+            {
+              "id": "cert-manager-startupapicheck",
+              "valuesPath": "startupapicheck.image"
+            },
+            {
+              "id": "cert-manager-acmesolver",
+              "valuesPath": "acmesolver.image"
+            }
+          ],
+          "kubeVersion": "\u003e= 1.22.0-0",
+          "license": "Apache-2.0",
+          "source": {
+            "type": "oci",
+            "url": "oci://quay.io/jetstack/charts/cert-manager",
+            "digest": "sha256:15c0b46d9006ce8eb9ff14d1bf54d1bbfcc587bb9e24cd9fe186fb8fec56af1f"
+          },
+          "values": "platform/apps/prep/cert-manager/values.yaml",
+          "fluxSource": "platform/apps/prep/cert-manager/source.yaml",
+          "file": "cert-manager-v1.21.1.tgz",
+          "archiveSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
+          "target": "10.77.0.9:32443/charts/cert-manager:v1.21.1"
+        },
+        {
+          "id": "kube-vip",
+          "name": "kube-vip",
+          "version": "0.11.0",
+          "appVersion": "v1.2.2",
+          "imageBindings": [
+            {
+              "id": "kube-vip",
+              "valuesPath": "image",
+              "imageRepository": "ghcr.io/kube-vip/kube-vip"
+            }
+          ],
+          "license": "Apache-2.0",
+          "source": {
+            "type": "https",
+            "url": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-0.11.0/kube-vip-0.11.0.tgz",
+            "indexUrl": "https://kube-vip.github.io/helm-charts/index.yaml"
+          },
+          "values": "platform/profiles/local/prep/load-balancer/kube-vip/values.yaml",
+          "fluxSource": "platform/profiles/local/prep/load-balancer/kube-vip/source.yaml",
+          "file": "kube-vip-0.11.0.tgz",
+          "archiveSha256": "5703d415869ed03cc46721ff33e09c801f217ebcafe11496510870327bd1aeea",
+          "target": "10.77.0.9:32443/charts/kube-vip:0.11.0",
+          "profiles": [
+            "local"
+          ]
+        },
+        {
+          "id": "kube-vip-cloud-provider",
+          "name": "kube-vip-cloud-provider",
+          "version": "0.2.10",
+          "appVersion": "v0.0.12",
+          "imageBindings": [
+            {
+              "id": "kube-vip-cloud-provider",
+              "valuesPath": "image",
+              "imageRepository": "ghcr.io/kube-vip/kube-vip-cloud-provider"
+            }
+          ],
+          "license": "Apache-2.0",
+          "source": {
+            "type": "https",
+            "url": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-cloud-provider-0.2.10/kube-vip-cloud-provider-0.2.10.tgz",
+            "indexUrl": "https://kube-vip.github.io/helm-charts/index.yaml"
+          },
+          "values": "platform/profiles/local/prep/load-balancer/kube-vip-cloud-provider/values.yaml",
+          "fluxSource": "platform/profiles/local/prep/load-balancer/kube-vip-cloud-provider/source.yaml",
+          "file": "kube-vip-cloud-provider-0.2.10.tgz",
+          "archiveSha256": "6a9c9d7540cd3d7a4ebfaf205c4df07c809b19b463e6a764d59c011387d2695e",
+          "target": "10.77.0.9:32443/charts/kube-vip-cloud-provider:0.2.10",
+          "profiles": [
+            "local"
+          ]
+        }
+      ]
+    }
+  },
+  "compatibility": {
+    "kubernetesVersion": "1.35.4",
+    "bigBangConstraint": "\u003e=1.34.0-0",
+    "status": "compatible",
+    "constraints": [
+      {
+        "id": "bigbang",
+        "constraint": "\u003e=1.34.0-0"
+      },
+      {
+        "id": "bootstrap/cert-manager",
+        "constraint": "\u003e= 1.22.0-0"
+      },
+      {
+        "id": "bootstrap/local-path-provisioner",
+        "constraint": "\u003e=1.12.0-r0"
+      },
+      {
+        "id": "package/grafana",
+        "constraint": "^1.25.0-0"
+      },
+      {
+        "id": "package/kyverno",
+        "constraint": "\u003e=1.25.0-0"
+      },
+      {
+        "id": "package/monitoring",
+        "constraint": "\u003e=1.19.0-0"
+      },
+      {
+        "id": "package/prometheus-operator-crds",
+        "constraint": "\u003e=1.16.0-0"
+      },
+      {
+        "id": "package/velero",
+        "constraint": "\u003e=1.18.0-0"
+      }
+    ],
+    "checksums": {
+      "kubelet": "sha256:983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
+      "kubeadm": "sha256:0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
+      "kubectl": "sha256:b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd"
+    }
+  },
+  "delivery": {
+    "schemaVersion": "atum.dev/image-lock/v3",
+    "profile": "platform",
+    "platform": "linux/amd64",
+    "inventorySha256": "98e77678870c28fb607454dbf266b02fc8297f445d48afa2fa8bd4a7ca257aa4",
+    "graphSha256": "960cb9ca222b79971ed9024172ffcfd0e744f8fb91020cbc778267058b674c41",
+    "counts": {
+      "total": 0,
+      "mirrored": 0,
+      "built": 0
+    },
+    "images": []
+  },
+  "bundle": null
+}

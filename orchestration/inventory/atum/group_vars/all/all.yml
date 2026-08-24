@@ -1,0 +1,8 @@
+---
+loadbalancer_apiserver_localhost: false
+loadbalancer_apiserver:
+  address: "{{ atum_load_balancer_address }}"
+  port: 6443
+apiserver_loadbalancer_domain_name: "{{ atum_load_balancer_address }}"
+supplementary_addresses_in_ssl_keys:
+  - "{{ atum_load_balancer_address }}"
