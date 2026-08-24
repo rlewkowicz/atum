@@ -48,6 +48,8 @@ atum pull updates
 sudo atum apply
 ```
 
+### Work in progress
+You need a pretty beefy rig to run the local install. It's literally an entire enterprise platform. There's also failure modes I've not explored, I'm not even certain how the cli bubbles up errors if you didn't have resources.I'm polishing the edges, but the base functionality works, and is worth exploring. 
 
 ## Declarative State
 
