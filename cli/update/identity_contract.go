@@ -267,6 +267,7 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 				"groups": map[string]any{
 					"groupsAttribute": contract.GroupClaim(),
 					"adminGroups":     []any{admin.Group},
+					"requiredGroups":  []any{},
 				},
 			}},
 			"harbor": map[string]any{"values": map[string]any{"upstream": map[string]any{
@@ -387,8 +388,11 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 					"hosts": []any{map[string]any{
 						"names": []any{strings.TrimSuffix(
 							opensearch.Host, "."+contract.Domain())},
-						"gateways":  []any{"istio-gateway/public-ingressgateway"},
-						"selectors": []any{map[string]any{"protect": "keycloak"}},
+						"domains":  []any{contract.Domain()},
+						"gateways": []any{"istio-gateway/public-ingressgateway"},
+						"selectors": []any{map[string]any{"matchLabels": map[string]any{
+							"protect": "keycloak",
+						}}},
 						"destination": map[string]any{
 							"protocol": "http", "service": "opensearch-dashboards", "port": 5601,
 						},
@@ -1715,8 +1719,8 @@ func validatePlatformIdentityContract(
 		{"kiali", "upstream.cr.spec.auth.openid.client_id", kiali.ID},
 		{"kiali", "upstream.cr.spec.auth.openid.disable_rbac", true},
 		{"grafana", "sso.enabled", true},
-		{"grafana", "upstream.grafana\\.ini.auth.generic_oauth.enabled", true},
-		{"grafana", "upstream.grafana\\.ini.auth.generic_oauth.role_attribute_path",
+		{"grafana", "upstream.grafana\\.ini.auth\\.generic_oauth.enabled", true},
+		{"grafana", "upstream.grafana\\.ini.auth\\.generic_oauth.role_attribute_path",
 			fmt.Sprintf("contains(groups[*], '%s') && '%s' || 'Viewer'",
 				admin.Group, grafana.AdministratorMapping)},
 		{"kyverno-reporter", "upstream.ui.openIDConnect.enabled", true},
@@ -1777,11 +1781,8 @@ func validatePlatformIdentityContract(
 	if !found || !containsOpenBaoIdentityPolicy(openBaoPolicies) {
 		return errors.New("OpenBao package does not render the identity reconciliation egress policy")
 	}
-	if !renderedResourceContains(
-		collector.rendered, "Secret", "gitlab", "gitlab-sso-provider",
-		`"admin_groups":[`+fmt.Sprintf("%q", admin.Group)+`]`,
-	) {
-		return errors.New("GitLab does not render the canonical administrator group")
+	if !hasExactGitLabGroups(collector.rendered, contract.GroupClaim(), admin.Group) {
+		return errors.New("GitLab does not render the canonical group claim and administrator group")
 	}
 	for _, id := range sortedClientIDs(contract) {
 		client, _ := contract.Client(id)
@@ -2227,17 +2228,20 @@ func decodeBase64String(value string) (string, error) {
 	return string(decoded), nil
 }
 
-func renderedResourceContains(
-	resources []renderedResource,
-	kind, namespace, name, wanted string,
-) bool {
+func hasExactGitLabGroups(resources []renderedResource, claim, administrator string) bool {
 	for _, resource := range resources {
-		if resource.key.kind != kind || resource.key.namespace != namespace ||
-			resource.key.name != name {
+		if resource.key.kind != "Secret" || resource.key.namespace != "gitlab" ||
+			resource.key.name != "gitlab-sso-provider" {
 			continue
 		}
-		data, err := json.Marshal(resource.object)
-		return err == nil && strings.Contains(strings.ReplaceAll(string(data), " ", ""), wanted)
+		raw, _ := mapAt(resource.object, "stringData")["gitlab-sso.json"].(string)
+		var provider map[string]any
+		if json.Unmarshal([]byte(raw), &provider) != nil {
+			return false
+		}
+		groups := mapAt(provider, "args", "client_options", "gitlab")
+		return stringAt(groups, "groups_attribute") == claim &&
+			reflectsOnly(stringSlice(groups["admin_groups"]), administrator)
 	}
 	return false
 }

@@ -46,10 +46,6 @@ func TestDeriveIsStableAndSeparated(t *testing.T) {
 }
 
 func TestDeriveSeparatesDomainAndClient(t *testing.T) {
-	contract, err := Load(repositoryRoot(t), "platform/profiles/local/identity/contract.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
 	seed := bytes.Repeat([]byte{0xa5}, 32)
 	one, err := derive(seed, clientPurpose+"/grafana", "atum", "atum.test", "atum-grafana")
 	if err != nil {

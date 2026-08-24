@@ -9,9 +9,14 @@ spec:
   timeout: 15m
   prune: true
   wait: true
+  force: false
   postBuild:
     substitute:
       ATUM_PLATFORM_DOMAIN: ${ATUM_PLATFORM_DOMAIN}
+    substituteFrom:
+      - kind: Secret
+        name: atum-platform-identity
+        optional: true
   dependsOn:
     - name: prep
   sourceRef:

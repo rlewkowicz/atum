@@ -1,0 +1,329 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: atum-platform-identity-values
+  namespace: bigbang
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+  annotations:
+    atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+type: Opaque
+stringData:
+  values.yaml: |
+    addons:
+        authservice:
+            chains:
+                alertmanager:
+                    callback_uri: https://alertmanager.atum.test/oauth2/callback
+                    client_id: atum-alertmanager
+                    client_secret: ${ATUM_ALERTMANAGER_CLIENT_SECRET}
+                    logout_path: /
+                    match:
+                        header: :authority
+                        prefix: alertmanager.atum.test
+                local: null
+                opensearch:
+                    callback_uri: https://opensearch.atum.test/oauth2/callback
+                    client_id: atum-opensearch
+                    client_secret: ${ATUM_OPENSEARCH_CLIENT_SECRET}
+                    logout_path: /
+                    match:
+                        header: :authority
+                        prefix: opensearch.atum.test
+                prometheus:
+                    callback_uri: https://prometheus.atum.test/oauth2/callback
+                    client_id: atum-prometheus
+                    client_secret: ${ATUM_PROMETHEUS_CLIENT_SECRET}
+                    logout_path: /
+                    match:
+                        header: :authority
+                        prefix: prometheus.atum.test
+        gitlab:
+            sso:
+                client_id: atum-gitlab
+                client_secret: ${ATUM_GITLAB_CLIENT_SECRET}
+                enabled: true
+                groups:
+                    adminGroups:
+                        - atum-admins
+                    groupsAttribute: groups
+                    requiredGroups: []
+                scopes:
+                    - openid
+                    - profile
+                    - email
+                    - groups
+        harbor:
+            values:
+                upstream:
+                    caBundleSecretName: atum-sso-ca
+                    core:
+                        configureUserSettings: '{"auth_mode":"oidc_auth","oidc_admin_group":"atum-admins","oidc_auto_onboard":true,"oidc_client_id":"atum-harbor","oidc_client_secret":"${ATUM_HARBOR_CLIENT_SECRET}","oidc_endpoint":"https://keycloak.atum.test/auth/realms/master","oidc_extra_redirect_parms":{},"oidc_group_filter":"","oidc_groups_claim":"groups","oidc_logout_endpoint_enabled":true,"oidc_name":"Atum","oidc_scope":"openid profile email groups","oidc_user_claim":"preferred_username","oidc_verify_cert":true}'
+        headlamp:
+            sso:
+                client_id: atum-headlamp
+                client_secret: ""
+                enabled: true
+            values:
+                bigbang:
+                    rbac:
+                        clusterRoleBindings:
+                            - name: atum-headlamp-admin
+                              roleRef: cluster-admin
+                              subjects:
+                                - apiGroup: rbac.authorization.k8s.io
+                                  kind: Group
+                                  name: oidc:atum-admins
+                        clusterRoles: []
+                        enabled: true
+                upstream:
+                    clusterRoleBinding:
+                        create: false
+                    config:
+                        oidc:
+                            clientID: atum-headlamp
+                            issuerURL: https://keycloak.atum.test/auth/realms/master
+                            scopes: openid,profile,email,groups
+                            secret:
+                                create: false
+                            usePKCE: true
+        keycloak:
+            values:
+                networkPolicies:
+                    additionalPolicies:
+                        - name: allow-identity-reconcile-to-keycloak
+                          spec:
+                            egress:
+                                - ports:
+                                    - port: 53
+                                      protocol: TCP
+                                    - port: 53
+                                      protocol: UDP
+                                  to:
+                                    - namespaceSelector:
+                                        matchLabels:
+                                            kubernetes.io/metadata.name: kube-system
+                                      podSelector:
+                                        matchLabels:
+                                            k8s-app: kube-dns
+                                - ports:
+                                    - port: 8443
+                                      protocol: TCP
+                                  to:
+                                    - namespaceSelector:
+                                        matchLabels:
+                                            kubernetes.io/metadata.name: istio-gateway
+                                      podSelector:
+                                        matchLabels:
+                                            istio: ingressgateway
+                            podSelector:
+                                matchLabels:
+                                    atum.dev/identity-job: keycloak
+                            policyTypes:
+                                - Egress
+                upstream:
+                    secrets:
+                        env:
+                            stringData:
+                                KEYCLOAK_ADMIN: atum-bootstrap
+                                KEYCLOAK_ADMIN_PASSWORD: ${ATUM_IDENTITY_BOOTSTRAP_PASSWORD}
+        vault:
+            values:
+                istio:
+                    serviceEntries:
+                        custom:
+                            - name: keycloak
+                              spec:
+                                hosts:
+                                    - keycloak.atum.test
+                                location: MESH_EXTERNAL
+                                ports:
+                                    - name: tls-keycloak
+                                      number: 443
+                                      protocol: TLS
+                                resolution: DNS
+                networkPolicies:
+                    additionalPolicies:
+                        - name: allow-openbao-identity-reconcile
+                          spec:
+                            egress:
+                                - ports:
+                                    - port: 53
+                                      protocol: TCP
+                                    - port: 53
+                                      protocol: UDP
+                                  to:
+                                    - namespaceSelector:
+                                        matchLabels:
+                                            kubernetes.io/metadata.name: kube-system
+                                      podSelector:
+                                        matchLabels:
+                                            k8s-app: kube-dns
+                                - ports:
+                                    - port: 8200
+                                      protocol: TCP
+                                  to:
+                                    - podSelector:
+                                        matchLabels:
+                                            app.kubernetes.io/name: vault
+                                - ports:
+                                    - port: 15012
+                                      protocol: TCP
+                                  to:
+                                    - namespaceSelector:
+                                        matchLabels:
+                                            kubernetes.io/metadata.name: istio-system
+                                      podSelector:
+                                        matchLabels:
+                                            app: istiod
+                            podSelector:
+                                matchLabels:
+                                    atum.dev/identity-job: openbao
+                            policyTypes:
+                                - Egress
+                    egress:
+                        from:
+                            vault:
+                                to:
+                                    definition:
+                                        sso: true
+                upstream:
+                    server:
+                        extraEnvironmentVars:
+                            VAULT_CACERT: /var/run/atum-sso/ca.crt
+                        volumeMounts:
+                            - mountPath: /var/run/atum-sso
+                              name: atum-sso-ca
+                              readOnly: true
+                        volumes:
+                            - name: atum-sso-ca
+                              secret:
+                                secretName: atum-sso-ca
+    grafana:
+        sso:
+            enabled: true
+            grafana:
+                allow_sign_up: true
+                client_id: atum-grafana
+                client_secret: ${ATUM_GRAFANA_CLIENT_SECRET}
+                role_attribute_path: contains(groups[*], 'atum-admins') && 'Admin' || 'Viewer'
+                scopes: openid,profile,email,groups
+    kiali:
+        sso:
+            client_id: atum-kiali
+            client_secret: ${ATUM_KIALI_CLIENT_SECRET}
+            enabled: true
+        values:
+            upstream:
+                cr:
+                    spec:
+                        auth:
+                            openid:
+                                client_id: atum-kiali
+                                client_secret: ${ATUM_KIALI_CLIENT_SECRET}
+                                disable_rbac: true
+                                issuer_uri: https://keycloak.atum.test/auth/realms/master
+                                scopes:
+                                    - openid
+                                    - profile
+                                    - email
+                                    - groups
+    kyvernoReporter:
+        sso:
+            client_id: atum-policy-reporter
+            client_secret: ${ATUM_POLICY_REPORTER_CLIENT_SECRET}
+            enabled: true
+        values:
+            routes:
+                inbound:
+                    policy-reporter-ui:
+                        hosts:
+                            - policy.atum.test
+            upstream:
+                ui:
+                    openIDConnect:
+                        callbackUrl: https://policy.atum.test/callback
+                        clientId: atum-policy-reporter
+                        clientSecret: ${ATUM_POLICY_REPORTER_CLIENT_SECRET}
+                        discoveryUrl: https://keycloak.atum.test/auth/realms/master/.well-known/openid-configuration
+                        enabled: true
+    monitoring:
+        sso:
+            alertmanager:
+                client_id: atum-alertmanager
+                client_secret: ${ATUM_ALERTMANAGER_CLIENT_SECRET}
+            enabled: true
+            prometheus:
+                client_id: atum-prometheus
+                client_secret: ${ATUM_PROMETHEUS_CLIENT_SECRET}
+    networkPolicies:
+        egress:
+            definitions:
+                sso:
+                    to:
+                        - namespaceSelector:
+                            matchLabels:
+                                kubernetes.io/metadata.name: istio-gateway
+                          podSelector:
+                            matchLabels:
+                                istio: ingressgateway
+    packages:
+        opensearch:
+            istio:
+                hardened:
+                    matchLabels:
+                        protect: keycloak
+                hosts:
+                    - destination:
+                        port: 5601
+                        protocol: http
+                        service: opensearch-dashboards
+                      domains:
+                        - atum.test
+                      gateways:
+                        - istio-gateway/public-ingressgateway
+                      names:
+                        - opensearch
+                      selectors:
+                        - matchLabels:
+                            protect: keycloak
+            sso:
+                enabled: true
+        opensearch-dashboards:
+            values:
+                labels:
+                    protect: keycloak
+    sso:
+        certificateAuthority:
+            secretName: atum-sso-ca
+        name: Atum
+        oidc:
+            authorization: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/auth
+            claims:
+                email: email
+                groups: groups
+                name: name
+                username: preferred_username
+            discoveryUrl: https://keycloak.atum.test/auth/realms/master/.well-known/openid-configuration
+            endSession: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/logout
+            jwksUri: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/certs
+            token: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/token
+            userinfo: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/userinfo
+        url: https://keycloak.atum.test/auth/realms/master
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: atum-sso-ca
+  namespace: bigbang
+spec:
+  commonName: sso-ca.bigbang
+  dnsNames:
+    - sso-ca.bigbang
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: atum-test-ca
+  secretName: atum-sso-ca

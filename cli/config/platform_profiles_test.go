@@ -19,6 +19,7 @@ func TestPlatformProfileSelection(t *testing.T) {
 			},
 		},
 		Platform: Platform{
+			Directory: "platform",
 			Values: PlatformValues{
 				Profiles: map[string]string{
 					"local": "platform/profiles/local/prep/values.yaml",

@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: atum-sso-ca
+  namespace: keycloak
+spec:
+  commonName: sso-ca.keycloak
+  dnsNames:
+    - sso-ca.keycloak
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: atum-test-ca
+  secretName: atum-sso-ca

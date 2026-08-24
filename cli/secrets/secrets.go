@@ -27,10 +27,10 @@ import (
 )
 
 const (
-	SchemaVersion   = "atum.dev/secrets/v2"
-	schemaVersionV1 = "atum.dev/secrets/v1"
-	fileLimit       = 1 << 20
-	migrationLock   = ".atum/state/secrets-migration.lock"
+	SchemaVersion    = "atum.dev/secrets/v2"
+	schemaVersionV1  = "atum.dev/secrets/v1"
+	fileLimit        = 1 << 20
+	localSecretsLock = ".atum/state/secrets.lock"
 )
 
 var (
@@ -114,22 +114,22 @@ func Init(project *config.Project, options InitOptions) (string, error) {
 // ignored local credential document when neither representation exists. It
 // never replaces an existing, invalid, or undecryptable document.
 func LoadOrCreateLocal(project *config.Project) (Document, bool, error) {
+	if project == nil {
+		return Document{}, false, errors.New("project is required")
+	}
+	unlock, err := fssecure.LockContext(
+		context.Background(), project.Root, localSecretsLock, 25*time.Millisecond,
+	)
+	if err != nil {
+		return Document{}, false, fmt.Errorf("lock local secrets: %w", err)
+	}
+	defer unlock()
+
 	document, err := Load(project)
 	if err == nil {
 		return document, false, nil
 	}
 	if errors.Is(err, ErrMigrationRequired) {
-		unlock, lockErr := fssecure.LockContext(context.Background(), project.Root, migrationLock, 25*time.Millisecond)
-		if lockErr != nil {
-			return Document{}, false, fmt.Errorf("lock secrets migration: %w", lockErr)
-		}
-		defer unlock()
-		if document, err = Load(project); err == nil {
-			return document, false, nil
-		}
-		if !errors.Is(err, ErrMigrationRequired) {
-			return Document{}, false, err
-		}
 		document, err = migrateLocal(project)
 		return document, false, err
 	}

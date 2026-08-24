@@ -51,6 +51,17 @@ func TestIdentityValuesProjectCanonicalContractDeterministically(t *testing.T) {
 	if strings.Contains(text, "ATUM_HEADLAMP_CLIENT_SECRET") {
 		t.Fatal("public PKCE Headlamp projection contains a client secret")
 	}
+	openSearchHosts := mapSlice(mapAt(first, "packages", "opensearch", "istio")["hosts"])
+	if len(openSearchHosts) != 1 ||
+		!reflectsOnly(stringSlice(openSearchHosts[0]["names"]), "opensearch") ||
+		!reflectsOnly(stringSlice(openSearchHosts[0]["domains"]), contract.Domain()) {
+		t.Fatalf("OpenSearch wrapper does not project its canonical domain: %#v", openSearchHosts)
+	}
+	selectors := mapSlice(openSearchHosts[0]["selectors"])
+	if len(selectors) != 1 ||
+		!exactLabelSelector(selectors[0], "protect", "keycloak") {
+		t.Fatalf("OpenSearch wrapper has an invalid workload selector: %#v", selectors)
+	}
 }
 
 func TestIdentityProjectionFollowsCanonicalApplicationIdentity(t *testing.T) {
@@ -79,9 +90,9 @@ func TestIdentityProjectionFollowsCanonicalApplicationIdentity(t *testing.T) {
 		t.Fatalf("application projection did not follow the canonical client identity: %s", encoded)
 	}
 	duplicate := bytes.Replace(
-		data, []byte("application: headlamp"), []byte("application: kiali"), 1)
+		data, []byte("application: kiali"), []byte("application: headlamp"), 1)
 	if _, err := identity.Parse(duplicate, "duplicate-application.yaml"); err == nil ||
-		!strings.Contains(err.Error(), `application projection "kiali" is duplicated`) {
+		!strings.Contains(err.Error(), `application projection "headlamp" is duplicated`) {
 		t.Fatalf("duplicate application projection error = %v", err)
 	}
 }

@@ -6,3 +6,4 @@ resources:
   - platform-profile-prep.yaml
   - bigbang.yaml
   - platform-profile-access.yaml
+  - platform-profile-identity.yaml

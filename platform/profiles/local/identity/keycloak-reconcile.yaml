@@ -1,0 +1,759 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atum-keycloak-reconcile
+  namespace: keycloak
+  labels:
+    atum.dev/identity-job: keycloak
+  annotations:
+    atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: atum-keycloak-reconcile
+        atum.dev/identity-job: keycloak
+      annotations:
+        atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+        sidecar.istio.io/inject: "false"
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconcile
+          image: 10.77.0.9:32443/atum/keycloak:26.7.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              KCADM=/opt/keycloak/bin/kcadm.sh
+              CONFIG=/var/run/atum-kcadm/config
+              TRUSTSTORE=/var/run/atum-kcadm/truststore.p12
+              TRUSTPASS=atum-reconcile
+              SERVER=https://keycloak.${ATUM_PLATFORM_DOMAIN}/auth
+              CA=/var/run/atum-ca/ca.crt
+              ADMIN_EMAIL="$ADMIN_USERNAME@${ATUM_PLATFORM_DOMAIN}"
+              export KCADM_CONFIG="$CONFIG"
+              keytool -importcert -noprompt -alias atum-sso-ca -file "$CA" \
+                -keystore "$TRUSTSTORE" -storetype PKCS12 -storepass "$TRUSTPASS" >/dev/null
+              "$KCADM" config truststore --config "$CONFIG" --trustpass "$TRUSTPASS" "$TRUSTSTORE" >/dev/null
+              login() {
+                "$KCADM" config credentials --config "$CONFIG" --server "$SERVER" --realm master \
+                  --user "$1" --password "$2" >/dev/null 2>&1
+              }
+              until login "$ADMIN_USERNAME" "$ADMIN_PASSWORD" || login atum-bootstrap "$BOOTSTRAP_PASSWORD"; do
+                sleep 5
+              done
+              group_id="$("$KCADM" get groups -r master -q search="$ADMIN_GROUP" --fields id,name --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)"
+              if [ -z "$group_id" ]; then
+                "$KCADM" create groups -r master -s name="$ADMIN_GROUP" --config "$CONFIG" >/dev/null
+                group_id="$("$KCADM" get groups -r master -q search="$ADMIN_GROUP" --fields id,name --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)"
+              fi
+              user_id="$("$KCADM" get users -r master -q username="$ADMIN_USERNAME" --fields id,username --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)"
+              if [ -z "$user_id" ]; then
+                "$KCADM" create users -r master -s username="$ADMIN_USERNAME" -s enabled=true \
+                  -s email="$ADMIN_EMAIL" -s emailVerified=true \
+                  -s firstName="$ADMIN_USERNAME" -s lastName=Administrator --config "$CONFIG" >/dev/null
+                user_id="$("$KCADM" get users -r master -q username="$ADMIN_USERNAME" --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)"
+              fi
+              "$KCADM" update users/"$user_id" -r master -s username="$ADMIN_USERNAME" -s enabled=true \
+                -s email="$ADMIN_EMAIL" -s emailVerified=true \
+                -s firstName="$ADMIN_USERNAME" -s lastName=Administrator --config "$CONFIG" >/dev/null
+              "$KCADM" set-password -r master --userid "$user_id" --new-password "$ADMIN_PASSWORD" \
+                --config "$CONFIG" >/dev/null
+              "$KCADM" update users/"$user_id"/groups/"$group_id" -r master --config "$CONFIG" >/dev/null
+              management_id="$("$KCADM" get clients -r master -q clientId=realm-management --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)"
+              [ -n "$management_id" ]
+              "$KCADM" add-roles -r master --uusername "$ADMIN_USERNAME" --cclientid realm-management \
+                --rolename realm-admin --config "$CONFIG" >/dev/null
+              scope_ids="$("$KCADM" get client-scopes -r master --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-groups$/s/,.*//p')"
+              scope_id="$(printf '%s\n' "$scope_ids" | head -1)"
+              if [ -z "$scope_id" ]; then
+                "$KCADM" create client-scopes -r master -s name=atum-groups -s protocol=openid-connect \
+                  --config "$CONFIG" >/dev/null
+                scope_id="$("$KCADM" get client-scopes -r master --fields id,name --format csv --noquotes --config "$CONFIG" |
+                  sed -n '/,atum-groups$/s/,.*//p' | head -1)"
+              fi
+              [ -n "$scope_id" ]
+              for duplicate_id in $scope_ids; do
+                [ "$duplicate_id" = "$scope_id" ] ||
+                  "$KCADM" delete client-scopes/"$duplicate_id" -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get client-scopes -r master --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-groups$')" -eq 1 ]
+              mapper_ids="$("$KCADM" get client-scopes/"$scope_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-groups$/s/,.*//p')"
+              mapper_id="$(printf '%s\n' "$mapper_ids" | head -1)"
+              mapper_resource=client-scopes/"$scope_id"/protocol-mappers/models
+              if [ -n "$mapper_id" ]; then
+                mapper_resource="$mapper_resource/$mapper_id"
+                mapper_action=update
+              else
+                mapper_action=create
+              fi
+              "$KCADM" "$mapper_action" "$mapper_resource" -r master -s name=atum-groups \
+                -s protocol=openid-connect -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."full.path"=false' -s 'config."claim.name"=groups' \
+                -s 'config."id.token.claim"=true' -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' --config "$CONFIG" >/dev/null
+              for duplicate_id in $mapper_ids; do
+                [ "$duplicate_id" = "$mapper_id" ] ||
+                  "$KCADM" delete client-scopes/"$scope_id"/protocol-mappers/models/"$duplicate_id" \
+                    -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get client-scopes/"$scope_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-groups$')" -eq 1 ]
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-headlamp --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-headlamp -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=true -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://headlamp.atum.test/oidc-callback"]' -s 'webOrigins=["https://headlamp.atum.test"]' --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-headlamp --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=true -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://headlamp.atum.test/oidc-callback"]' -s 'webOrigins=["https://headlamp.atum.test"]' --config "$CONFIG" >/dev/null
+              fi
+              "$KCADM" update clients/"$client_id" -r master \
+                -s 'attributes."pkce.code.challenge.method"=S256' --config "$CONFIG" >/dev/null
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              if [ -n "$audience_id" ]; then
+                audience_resource=clients/"$client_id"/protocol-mappers/models/"$audience_id"
+                audience_action=update
+              else
+                audience_resource=clients/"$client_id"/protocol-mappers/models
+                audience_action=create
+              fi
+              "$KCADM" "$audience_action" "$audience_resource" -r master \
+                -s name=atum-audience -s protocol=openid-connect -s protocolMapper=oidc-audience-mapper \
+                -s 'config."included.client.audience"=atum-headlamp' -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' --config "$CONFIG" >/dev/null
+              for duplicate_id in $audience_ids; do
+                [ "$duplicate_id" = "$audience_id" ] ||
+                  "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$duplicate_id" \
+                    -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$')" -eq 1 ]
+              "$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --config "$CONFIG" | grep -F '"included.client.audience" : "'"$client_id"'"' >/dev/null
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-headlamp"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : true' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://headlamp.atum.test/oidc-callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://headlamp.atum.test' >/dev/null
+              printf '%s' "$verified" | grep -F '"pkce.code.challenge.method" : "S256"' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-kiali --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-kiali -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://kiali.atum.test/kiali"]' -s 'webOrigins=["https://kiali.atum.test"]' -s secret="$ATUM_KIALI_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-kiali --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://kiali.atum.test/kiali"]' -s 'webOrigins=["https://kiali.atum.test"]' -s secret="$ATUM_KIALI_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_KIALI_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              if [ -n "$audience_id" ]; then
+                audience_resource=clients/"$client_id"/protocol-mappers/models/"$audience_id"
+                audience_action=update
+              else
+                audience_resource=clients/"$client_id"/protocol-mappers/models
+                audience_action=create
+              fi
+              "$KCADM" "$audience_action" "$audience_resource" -r master \
+                -s name=atum-audience -s protocol=openid-connect -s protocolMapper=oidc-audience-mapper \
+                -s 'config."included.client.audience"=atum-kiali' -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' --config "$CONFIG" >/dev/null
+              for duplicate_id in $audience_ids; do
+                [ "$duplicate_id" = "$audience_id" ] ||
+                  "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$duplicate_id" \
+                    -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$')" -eq 1 ]
+              "$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --config "$CONFIG" | grep -F '"included.client.audience" : "'"$client_id"'"' >/dev/null
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-kiali"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://kiali.atum.test/kiali' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://kiali.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-grafana --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-grafana -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://grafana.atum.test/login/generic_oauth"]' -s 'webOrigins=["https://grafana.atum.test"]' -s secret="$ATUM_GRAFANA_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-grafana --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://grafana.atum.test/login/generic_oauth"]' -s 'webOrigins=["https://grafana.atum.test"]' -s secret="$ATUM_GRAFANA_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_GRAFANA_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-grafana"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://grafana.atum.test/login/generic_oauth' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://grafana.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-gitlab --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-gitlab -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://gitlab.atum.test/users/auth/openid_connect/callback"]' -s 'webOrigins=["https://gitlab.atum.test"]' -s secret="$ATUM_GITLAB_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-gitlab --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://gitlab.atum.test/users/auth/openid_connect/callback"]' -s 'webOrigins=["https://gitlab.atum.test"]' -s secret="$ATUM_GITLAB_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_GITLAB_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-gitlab"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://gitlab.atum.test/users/auth/openid_connect/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://gitlab.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-policy-reporter --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-policy-reporter -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://policy.atum.test/callback"]' -s 'webOrigins=["https://policy.atum.test"]' -s secret="$ATUM_POLICY_REPORTER_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-policy-reporter --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://policy.atum.test/callback"]' -s 'webOrigins=["https://policy.atum.test"]' -s secret="$ATUM_POLICY_REPORTER_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_POLICY_REPORTER_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-policy-reporter"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://policy.atum.test/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://policy.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-harbor --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-harbor -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://harbor.atum.test/c/oidc/callback"]' -s 'webOrigins=["https://harbor.atum.test"]' -s secret="$ATUM_HARBOR_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-harbor --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://harbor.atum.test/c/oidc/callback"]' -s 'webOrigins=["https://harbor.atum.test"]' -s secret="$ATUM_HARBOR_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_HARBOR_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-harbor"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://harbor.atum.test/c/oidc/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://harbor.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-openbao --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-openbao -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_OPENBAO_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-openbao --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_OPENBAO_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_OPENBAO_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-openbao"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://vault.atum.test/ui/vault/auth/oidc/oidc/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://vault.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-prometheus --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-prometheus -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://prometheus.atum.test/oauth2/callback"]' -s 'webOrigins=["https://prometheus.atum.test"]' -s secret="$ATUM_PROMETHEUS_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-prometheus --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://prometheus.atum.test/oauth2/callback"]' -s 'webOrigins=["https://prometheus.atum.test"]' -s secret="$ATUM_PROMETHEUS_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_PROMETHEUS_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-prometheus"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://prometheus.atum.test/oauth2/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://prometheus.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-alertmanager --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-alertmanager -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://alertmanager.atum.test/oauth2/callback"]' -s 'webOrigins=["https://alertmanager.atum.test"]' -s secret="$ATUM_ALERTMANAGER_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-alertmanager --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://alertmanager.atum.test/oauth2/callback"]' -s 'webOrigins=["https://alertmanager.atum.test"]' -s secret="$ATUM_ALERTMANAGER_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_ALERTMANAGER_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-alertmanager"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://alertmanager.atum.test/oauth2/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://alertmanager.atum.test' >/dev/null
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-opensearch --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -z "$client_id" ]; then
+                "$KCADM" create clients -r master -s clientId=atum-opensearch -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://opensearch.atum.test/oauth2/callback"]' -s 'webOrigins=["https://opensearch.atum.test"]' -s secret="$ATUM_OPENSEARCH_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-opensearch --fields id --config "$CONFIG" |
+                  sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              else
+                "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
+                  -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
+                  -s 'redirectUris=["https://opensearch.atum.test/oauth2/callback"]' -s 'webOrigins=["https://opensearch.atum.test"]' -s secret="$ATUM_OPENSEARCH_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+              fi
+              actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
+                --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
+              [ "$actual_secret" = "$ATUM_OPENSEARCH_CLIENT_SECRET" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,profile$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "profile"' >/dev/null
+              builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
+                --format csv --noquotes --config "$CONFIG" | sed -n '/,email$/s/,.*//p' | head -1)
+              [ -n "$builtin_scope_id" ]
+              "$KCADM" update clients/"$client_id"/default-client-scopes/"$builtin_scope_id" \
+                -r master --config "$CONFIG" >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name \
+                --config "$CONFIG" | grep -F '"name" : "email"' >/dev/null
+              audience_ids=$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                sed -n '/,atum-audience$/s/,.*//p')
+              audience_id="$(printf '%s\n' "$audience_ids" | head -1)"
+              for audience_id in $audience_ids; do
+                "$KCADM" delete clients/"$client_id"/protocol-mappers/models/"$audience_id" \
+                  -r master --config "$CONFIG" >/dev/null
+              done
+              [ "$("$KCADM" get clients/"$client_id"/protocol-mappers/models -r master \
+                --fields id,name --format csv --noquotes --config "$CONFIG" |
+                grep -c ',atum-audience$' || true)" -eq 0 ]
+              verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-opensearch"' >/dev/null
+              printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
+              "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
+                grep -F '"name" : "atum-groups"' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://opensearch.atum.test/oauth2/callback' >/dev/null
+              printf '%s' "$verified" | grep -F 'https://opensearch.atum.test' >/dev/null
+              login "$ADMIN_USERNAME" "$ADMIN_PASSWORD"
+              bootstrap_id=$("$KCADM" get users -r master -q username=atum-bootstrap --fields id --config "$CONFIG" |
+                sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+              if [ -n "$bootstrap_id" ]; then
+                "$KCADM" delete users/"$bootstrap_id" -r master --config "$CONFIG"
+              fi
+              login "$ADMIN_USERNAME" "$ADMIN_PASSWORD"
+              verified_user=$("$KCADM" get users/"$user_id" -r master \
+                --fields username,email,emailVerified,enabled --config "$CONFIG")
+              printf '%s' "$verified_user" | grep -F '"username" : "'"$ADMIN_USERNAME"'"' >/dev/null
+              printf '%s' "$verified_user" | grep -F '"email" : "'"$ADMIN_EMAIL"'"' >/dev/null
+              printf '%s' "$verified_user" | grep -F '"emailVerified" : true' >/dev/null
+              printf '%s' "$verified_user" | grep -F '"enabled" : true' >/dev/null
+              "$KCADM" get users/"$user_id"/groups -r master --fields id,name --config "$CONFIG" |
+                grep -F '"name" : "'"$ADMIN_GROUP"'"' >/dev/null
+              "$KCADM" get users/"$user_id"/role-mappings/clients/"$management_id" -r master --config "$CONFIG" |
+                grep -F '"name" : "realm-admin"' >/dev/null
+          env:
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: password
+            - name: ADMIN_GROUP
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: group
+            - name: BOOTSTRAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: bootstrap-password
+            - name: ATUM_KIALI_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-kiali
+            - name: ATUM_GRAFANA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-grafana
+            - name: ATUM_GITLAB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-gitlab
+            - name: ATUM_POLICY_REPORTER_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-policy-reporter
+            - name: ATUM_HARBOR_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-harbor
+            - name: ATUM_OPENBAO_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-openbao
+            - name: ATUM_PROMETHEUS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-prometheus
+            - name: ATUM_ALERTMANAGER_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-alertmanager
+            - name: ATUM_OPENSEARCH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: atum-opensearch
+          volumeMounts:
+            - name: ca
+              mountPath: /var/run/atum-ca
+              readOnly: true
+            - name: kcadm
+              mountPath: /var/run/atum-kcadm
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: ca
+          secret:
+            secretName: atum-sso-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: kcadm
+          emptyDir:
+            sizeLimit: 8Mi

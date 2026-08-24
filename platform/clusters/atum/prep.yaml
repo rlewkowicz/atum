@@ -1,15 +1,16 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: prep
-  namespace: flux-system
+    name: prep
+    namespace: flux-system
 spec:
-  interval: 10m
-  retryInterval: 2m
-  timeout: 15m
-  prune: true
-  wait: false
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./platform/apps/prep
+    force: false
+    interval: 10m
+    path: ./platform/apps/prep
+    prune: true
+    retryInterval: 2m
+    sourceRef:
+        kind: GitRepository
+        name: flux-system
+    timeout: 15m
+    wait: false

@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - certificates
   - load-balancer
+  - identity-values.yaml
 configMapGenerator:
   - name: bigbang-target-values
     namespace: bigbang

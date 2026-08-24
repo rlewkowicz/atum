@@ -90,7 +90,7 @@ spec:
                   target:
                     group: helm.toolkit.fluxcd.io
                     kind: HelmRelease
-                    name: ^(opensearch|opensearch-dashboards)$
+                    name: ^(opensearch|opensearch-dashboards|opensearch-wrapper)$
                     namespace: opensearch
                     version: v2
                 - patch: |
@@ -129,3 +129,12 @@ spec:
         - kind: ConfigMap
           name: bigbang-target-values
           valuesKey: values.yaml
+        - kind: Secret
+          name: atum-platform-identity-values
+          optional: true
+          valuesKey: values.yaml
+        - kind: Secret
+          name: atum-sso-ca
+          optional: true
+          targetPath: sso.certificateAuthority.cert
+          valuesKey: ca.crt

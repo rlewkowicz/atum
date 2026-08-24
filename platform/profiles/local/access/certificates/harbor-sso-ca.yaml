@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: atum-sso-ca
+  namespace: harbor
+spec:
+  commonName: sso-ca.harbor
+  dnsNames:
+    - sso-ca.harbor
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: atum-test-ca
+  secretName: atum-sso-ca

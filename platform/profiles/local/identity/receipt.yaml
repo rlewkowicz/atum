@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atum-identity-contract
+  namespace: keycloak
+data:
+  schemaVersion: atum.dev/identity/v1
+  issuer: https://keycloak.atum.test/auth/realms/master
+  digest: ${ATUM_IDENTITY_DIGEST}
+  clients: db255f4fcaae09e9dc2d7b0297fa8a1aed51558b32c9c9b8d6a533a3419b0f9b
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atum-identity-contract
+  namespace: vault
+data:
+  schemaVersion: atum.dev/identity/v1
+  issuer: https://keycloak.atum.test/auth/realms/master
+  digest: ${ATUM_IDENTITY_DIGEST}
+  clients: db255f4fcaae09e9dc2d7b0297fa8a1aed51558b32c9c9b8d6a533a3419b0f9b
