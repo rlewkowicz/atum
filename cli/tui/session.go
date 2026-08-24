@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -41,6 +42,12 @@ type eventSignature struct {
 	current, total int
 }
 
+type terminalProgram interface {
+	ReleaseTerminal() error
+	RestoreTerminal() error
+	Send(tea.Msg)
+}
+
 var singleLineReplacer = strings.NewReplacer("\r", " ", "\n", " ")
 
 const displayDetailLimit = 4 << 10
@@ -58,21 +65,24 @@ type Session struct {
 	logPath     string
 	parser      outputParser
 	program     *tea.Program
+	terminal    terminalProgram
 	programDone chan error
 
-	reportMu      sync.Mutex
-	lastEvents    map[string]eventSignature
-	activeEvents  map[string]struct{}
-	compactState  map[string]eventSignature
-	pendingEvents map[string]queuedProgress
-	eventSequence uint64
-	closed        bool
-	heartbeatStop chan struct{}
-	heartbeatDone chan struct{}
-	heartbeatOnce sync.Once
-	flushStop     chan struct{}
-	flushDone     chan struct{}
-	flushOnce     sync.Once
+	screenMu       sync.Mutex
+	terminalActive atomic.Bool
+	reportMu       sync.Mutex
+	lastEvents     map[string]eventSignature
+	activeEvents   map[string]struct{}
+	compactState   map[string]eventSignature
+	pendingEvents  map[string]queuedProgress
+	eventSequence  uint64
+	closed         bool
+	heartbeatStop  chan struct{}
+	heartbeatDone  chan struct{}
+	heartbeatOnce  sync.Once
+	flushStop      chan struct{}
+	flushDone      chan struct{}
+	flushOnce      sync.Once
 }
 
 func New(options Options) (*Session, error) {
@@ -118,6 +128,7 @@ func New(options Options) (*Session, error) {
 			tea.WithOutput(options.Output),
 			tea.WithFPS(2),
 		)
+		session.terminal = session.program
 		session.programDone = make(chan error, 1)
 		go func() {
 			_, runErr := session.program.Run()
@@ -210,6 +221,57 @@ func (session *Session) WrapRunner(runner process.Runner) process.Runner {
 
 func (session *Session) WrapOutputRunner(runner process.OutputRunner) process.OutputRunner {
 	return sessionOutputRunner{session: session, runner: runner}
+}
+
+// WithTerminal transfers exclusive terminal custody to work. Interactive
+// sessions stop all frame sends while Bubble Tea is released; compact and raw
+// sessions execute the callback directly because they hold no terminal state.
+func (session *Session) WithTerminal(
+	work func(io.Reader, io.Writer, io.Writer) error,
+) error {
+	if work == nil {
+		return errors.New("terminal callback is required")
+	}
+	if !session.terminalActive.CompareAndSwap(false, true) {
+		return errors.New("terminal handoff is already active")
+	}
+	defer session.terminalActive.Store(false)
+
+	session.reportMu.Lock()
+	interactive := session.interactive
+	closed := session.closed
+	program := session.terminal
+	session.reportMu.Unlock()
+	if closed {
+		return errors.New("progress session is already closed")
+	}
+	if !interactive || program == nil {
+		return work(session.input, session.output, session.errorOutput)
+	}
+
+	// Publish the current batch before stopping renderer writes. Later progress
+	// remains queued because every Program.Send is serialized by screenMu.
+	session.sendPendingEvents()
+	session.screenMu.Lock()
+	releaseErr := program.ReleaseTerminal()
+	var workErr error
+	if releaseErr == nil {
+		workErr = work(session.input, session.output, session.errorOutput)
+	}
+	restoreErr := program.RestoreTerminal()
+	if restoreErr == nil {
+		program.Send(tea.ClearScreen())
+	}
+	session.screenMu.Unlock()
+	session.sendPendingEvents()
+
+	if releaseErr != nil {
+		releaseErr = fmt.Errorf("release managed terminal: %w", releaseErr)
+	}
+	if restoreErr != nil {
+		restoreErr = fmt.Errorf("restore managed terminal: %w", restoreErr)
+	}
+	return errors.Join(releaseErr, workErr, restoreErr)
 }
 
 func (session *Session) Report(event progress.Event) {
@@ -306,13 +368,19 @@ func (session *Session) sendPendingEvents() {
 		sort.Slice(batch, func(left, right int) bool { return batch[left].sequence < batch[right].sequence })
 	}
 	if program != nil && len(batch) != 0 {
-		program.Send(batch)
+		session.sendProgram(program, batch)
 	}
 	if program != nil && session.log.tail != nil {
 		if snapshot, changed := session.log.tail.snapshot(); changed {
-			program.Send(snapshot)
+			session.sendProgram(program, snapshot)
 		}
 	}
+}
+
+func (session *Session) sendProgram(program *tea.Program, message tea.Msg) {
+	session.screenMu.Lock()
+	program.Send(message)
+	session.screenMu.Unlock()
 }
 
 func (session *Session) stopInteractiveEvents() {
@@ -428,7 +496,7 @@ func (session *Session) observeLine(command process.Command, line string) {
 	session.parser.observe(session, command, line)
 }
 
-func (session *Session) Finish(workErr error) error {
+func (session *Session) Finish(completion Completion, workErr error) error {
 	session.reportMu.Lock()
 	if session.closed {
 		session.reportMu.Unlock()
@@ -443,14 +511,20 @@ func (session *Session) Finish(workErr error) error {
 	session.stopInteractiveEvents()
 	var rendererErr error
 	if interactive && program != nil {
-		program.Send(finishMsg{err: workErr})
+		session.sendProgram(program, finishMsg{completion: completion, err: workErr})
 		rendererErr = <-done
-	} else if !session.raw {
+	} else {
 		state := "complete"
 		if workErr != nil {
 			state = "failed: " + workErr.Error()
 		}
-		_, _ = fmt.Fprintln(session.output, "Atum "+session.title+" "+state)
+		if !session.raw {
+			_, rendererErr = fmt.Fprintln(session.output, "Atum "+session.title+" "+state)
+		}
+		if workErr == nil && completion.Valid() {
+			_, completionErr := fmt.Fprintln(session.output, renderCompletionText(completion))
+			rendererErr = errors.Join(rendererErr, completionErr)
+		}
 	}
 	session.stopHeartbeat()
 	result := "complete"

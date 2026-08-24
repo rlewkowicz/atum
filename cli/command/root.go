@@ -36,6 +36,7 @@ type Options struct {
 type app struct {
 	runner        process.Runner
 	outputRunner  process.OutputRunner
+	terminal      func(func(io.Reader, io.Writer, io.Writer) error) error
 	in            io.Reader
 	out           io.Writer
 	err           io.Writer
@@ -426,13 +427,15 @@ func (a *app) runInfrastructureAction(ctx context.Context, action string, args [
 			return err
 		}
 		preflightDone = true
-		if err := a.ensureLocalDNS(ctx); err != nil {
-			return err
-		}
 	}
 	return a.withDashboard(ctx, "infrastructure "+action, tui.ScopeInfrastructure, func(ctx context.Context) error {
 		if !preflightDone {
 			if err := a.checkPreflight(ctx, preflight.Infrastructure); err != nil {
+				return err
+			}
+		}
+		if managedApply {
+			if err := a.ensureLocalDNS(ctx); err != nil {
 				return err
 			}
 		}
@@ -554,70 +557,71 @@ func (a *app) applyCommand() *cobra.Command {
 			if err := a.checkPreflight(cmd.Context(), preflight.Full); err != nil {
 				return err
 			}
-			if err := a.ensureLocalDNS(cmd.Context()); err != nil {
-				return err
-			}
-			var status platform.Status
-			err := a.withDashboard(cmd.Context(), "full deployment", tui.ScopeAll, func(ctx context.Context) error {
-				if err := a.ensureDeploymentBundle(ctx, preflight.Full); err != nil {
-					return err
-				}
-				service := a.orchestrationService()
-				preflight, err := service.Plan(ctx)
-				if err != nil {
-					return fmt.Errorf("orchestration preflight: %w", err)
-				}
-				if err := service.ValidatePlan(preflight, orchestration.FullConvergence); err != nil {
-					return fmt.Errorf("orchestration preflight: %w", err)
-				}
-				var seed terraformSeed
-				if !a.dryRun {
-					seed, err = a.seedTerraformEnvironment(ctx)
-					if err != nil {
-						return err
+			return a.withDashboardCompletion(
+				cmd.Context(), "full deployment", tui.ScopeAll,
+				func(ctx context.Context) (tui.Completion, error) {
+					if err := a.ensureLocalDNS(ctx); err != nil {
+						return tui.Completion{}, err
 					}
-				}
-				if err := a.runTerraformActionWithEnvironment(ctx, "apply", seed.environment); err != nil {
-					return err
-				}
-				if a.dryRun {
-					return a.printOrchestrationPlan(preflight)
-				}
-				// Terraform owns the libvirt dnsmasq records. Start the bounded
-				// lookup budget only after that state has been applied; kube-vip
-				// and the remaining platform can continue independently.
-				dns, err := a.startLocalDNSObservation(ctx)
-				if err != nil {
-					return err
-				}
-				defer dns.Cancel()
-				platformService, err := a.managedPlatformService()
-				if err != nil {
-					return err
-				}
-				handoff, err := platformService.Seed(
-					ctx,
-					seed.bundle,
-					seed.credentials,
-					platform.PrepareOptions{},
-				)
-				if err != nil {
-					return err
-				}
-				if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
-					return err
-				}
-				if err := a.runFullConvergence(
-					ctx, service, platformService, handoff, applyOptions,
-				); err != nil {
-					return err
-				}
-				return a.completePlatformApply(ctx, &status, dns)
-			})
-			if err != nil {
-				return err
-			}
-			return a.printLocalAccess(status)
+					if err := a.ensureDeploymentBundle(ctx, preflight.Full); err != nil {
+						return tui.Completion{}, err
+					}
+					service := a.orchestrationService()
+					preflight, err := service.Plan(ctx)
+					if err != nil {
+						return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
+					}
+					if err := service.ValidatePlan(preflight, orchestration.FullConvergence); err != nil {
+						return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
+					}
+					var seed terraformSeed
+					if !a.dryRun {
+						seed, err = a.seedTerraformEnvironment(ctx)
+						if err != nil {
+							return tui.Completion{}, err
+						}
+					}
+					if err := a.runTerraformActionWithEnvironment(ctx, "apply", seed.environment); err != nil {
+						return tui.Completion{}, err
+					}
+					if a.dryRun {
+						return tui.Completion{}, a.printOrchestrationPlan(preflight)
+					}
+					// Terraform owns the libvirt dnsmasq records. Start the bounded
+					// lookup budget only after that state has been applied; kube-vip
+					// and the remaining platform can continue independently.
+					dns, err := a.startLocalDNSObservation(ctx)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					defer dns.Cancel()
+					platformService, err := a.managedPlatformService()
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					handoff, err := platformService.Seed(
+						ctx,
+						seed.bundle,
+						seed.credentials,
+						platform.PrepareOptions{},
+					)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
+						return tui.Completion{}, err
+					}
+					if err := a.runFullConvergence(
+						ctx, service, platformService, handoff, applyOptions,
+					); err != nil {
+						return tui.Completion{}, err
+					}
+					status, err := a.completePlatformApply(ctx, dns)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					return a.platformCompletion(status)
+				})
 		}),
 	}
 	command.Flags().DurationVar(
@@ -627,42 +631,6 @@ func (a *app) applyCommand() *cobra.Command {
 		"bounded platform readiness timeout",
 	)
 	return command
-}
-
-func (a *app) printLocalAccess(status platform.Status) error {
-	if a.dryRun {
-		return nil
-	}
-	target, found := a.project.Desired.ActiveTarget()
-	if !found || target.LocalAccess == nil {
-		return nil
-	}
-	if !status.Ready() {
-		return errors.New("local access is not exact; URLs withheld")
-	}
-	if _, err := fmt.Fprintf(a.out,
-		"resolver path: %s\nCA path: %s\nCA fingerprint: %s\npublic VIP: %s\npassthrough VIP: %s\n",
-		status.ResolverPath, status.CAPath, status.CAFingerprint,
-		status.PublicIngressVIP, status.PassthroughIngressVIP,
-	); err != nil {
-		return fmt.Errorf("print local access paths: %w", err)
-	}
-	headlampURL := "https://headlamp." + target.LocalAccess.Domain
-	for _, url := range status.AccessURLs {
-		if url == headlampURL {
-			continue
-		}
-		if _, err := fmt.Fprintln(a.out, url); err != nil {
-			return fmt.Errorf("print local application URL: %w", err)
-		}
-	}
-	if _, err := fmt.Fprintf(a.out,
-		"%s\nkubectl -n headlamp create token headlamp-headlamp --duration=24h\n",
-		headlampURL,
-	); err != nil {
-		return fmt.Errorf("print Headlamp access: %w", err)
-	}
-	return nil
 }
 
 func (a *app) verifyLocalAccessStatus(
@@ -690,21 +658,21 @@ func (a *app) verifyLocalAccessStatus(
 
 func (a *app) completePlatformApply(
 	ctx context.Context,
-	status *platform.Status,
 	dns *localDNSObservation,
-) error {
+) (platform.Status, error) {
 	if err := a.ensureLocalCA(ctx); err != nil {
-		return err
+		return platform.Status{}, err
 	}
 	dnsStatus, err := dns.Wait()
 	if err != nil {
-		return err
+		return platform.Status{}, err
 	}
-	if err := a.verifyLocalAccessStatus(ctx, status, &dnsStatus); err != nil {
-		return err
+	var status platform.Status
+	if err := a.verifyLocalAccessStatus(ctx, &status, &dnsStatus); err != nil {
+		return platform.Status{}, err
 	}
 	finishPlatformApply(ctx)
-	return nil
+	return status, nil
 }
 
 func finishPlatformApply(ctx context.Context) {

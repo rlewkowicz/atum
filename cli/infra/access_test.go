@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestDNSPostWriteVerificationUsesConfigurationInspector(t *testing.T) {
@@ -99,6 +101,27 @@ func TestLocalAccessFactsAreDeterministicAndSafe(t *testing.T) {
 	}
 	if canonicalExecutable("relative/tool") != "" {
 		t.Fatal("relative executable accepted")
+	}
+}
+
+func TestSecureRootExecutableAcceptsFedoraExecuteOnlySudo(t *testing.T) {
+	t.Parallel()
+
+	if !secureRootExecutable(unix.Stat_t{
+		Mode: unix.S_IFREG | 0o4111,
+		Uid:  0,
+		Gid:  0,
+	}) {
+		t.Fatal("root-owned mode-4111 executable was rejected")
+	}
+	for _, identity := range []unix.Stat_t{
+		{Mode: unix.S_IFREG | 0o4111, Uid: 1, Gid: 0},
+		{Mode: unix.S_IFREG | 0o4133, Uid: 0, Gid: 0},
+		{Mode: unix.S_IFDIR | 0o4111, Uid: 0, Gid: 0},
+	} {
+		if secureRootExecutable(identity) {
+			t.Fatalf("insecure executable identity accepted: %#v", identity)
+		}
 	}
 }
 

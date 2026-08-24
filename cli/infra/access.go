@@ -1140,16 +1140,22 @@ func canonicalExecutable(path string) string {
 		return ""
 	}
 	canonical = filepath.Clean(canonical)
+	// O_PATH obtains metadata without requiring read permission. This is
+	// required for Fedora's root-owned, execute-only mode-4111 sudo binary.
 	descriptor, info, found, err := openHostDescriptor(canonical, unix.O_PATH)
 	if err != nil || !found {
 		return ""
 	}
 	defer unix.Close(descriptor)
-	if info.Mode&unix.S_IFMT != unix.S_IFREG || info.Mode&0o111 == 0 ||
-		info.Mode&0o022 != 0 || info.Uid != 0 || info.Gid != 0 {
+	if !secureRootExecutable(info) {
 		return ""
 	}
 	return canonical
+}
+
+func secureRootExecutable(info unix.Stat_t) bool {
+	return info.Mode&unix.S_IFMT == unix.S_IFREG && info.Mode&0o111 != 0 &&
+		info.Mode&0o022 == 0 && info.Uid == 0 && info.Gid == 0
 }
 
 func stringSlicesEqual(left, right []string) bool {

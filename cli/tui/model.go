@@ -46,7 +46,10 @@ type phaseModel struct {
 	items   map[string]*itemModel
 }
 
-type finishMsg struct{ err error }
+type finishMsg struct {
+	completion Completion
+	err        error
+}
 type tickMsg time.Time
 
 type queuedProgress struct {
@@ -57,23 +60,24 @@ type queuedProgress struct {
 type progressBatchMsg []queuedProgress
 
 type model struct {
-	title    string
-	logPath  string
-	phases   []*phaseModel
-	byPhase  map[progress.Phase]*phaseModel
-	start    time.Time
-	width    int
-	height   int
-	frame    int
-	ticking  bool
-	finished bool
-	canceled bool
-	showLogs bool
-	logs     logSnapshotMsg
-	lastItem string
-	lastAt   time.Time
-	err      error
-	cancel   func()
+	title      string
+	logPath    string
+	phases     []*phaseModel
+	byPhase    map[progress.Phase]*phaseModel
+	start      time.Time
+	width      int
+	height     int
+	frame      int
+	ticking    bool
+	finished   bool
+	canceled   bool
+	showLogs   bool
+	logs       logSnapshotMsg
+	lastItem   string
+	lastAt     time.Time
+	err        error
+	completion Completion
+	cancel     func()
 }
 
 func newModel(title, logPath string, specs []phaseSpec, cancel func()) *model {
@@ -154,6 +158,9 @@ func (model *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case finishMsg:
 		model.finished = true
 		model.err = message.err
+		if message.err == nil && message.completion.Valid() {
+			model.completion = message.completion
+		}
 		for _, phase := range model.phases {
 			for _, id := range phase.order {
 				item := phase.items[id]
@@ -249,7 +256,7 @@ func (model *model) running() bool {
 
 func (model *model) View() string {
 	width := max(model.width, 40)
-	sections := make([]string, 0, len(model.phases)+2)
+	sections := make([]string, 0, len(model.phases)+3)
 	elapsed := time.Since(model.start).Round(time.Second)
 	state := "running"
 	stateStyle := mutedStyle
@@ -285,6 +292,13 @@ func (model *model) View() string {
 		} else if !model.finished && !model.running() {
 			sections = append(sections, model.renderQuietActivity(width))
 		}
+	}
+	if model.finished && model.err == nil && model.completion.Valid() {
+		sections = append(sections, renderCompletion(model.completion, width))
+	} else if model.finished && model.err != nil {
+		detail := singleLineReplacer.Replace(model.err.Error())
+		sections = append(sections,
+			failureStyle.Render(ansi.Truncate("Error  "+detail, width, "…")))
 	}
 	footer := "raw log  " + model.logPath
 	if !model.finished {

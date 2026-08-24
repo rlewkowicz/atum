@@ -459,12 +459,28 @@ KUBECONFIG=orchestration/inventory/atum/artifacts/admin.conf kubectl get nodes -
 The local profile routes `atum.test` and `*.atum.test` through the public
 Istio VIP at `10.77.0.20`; exact passthrough hosts such as
 `keycloak.atum.test` use `10.77.0.21`. kube-vip allocates other
-`LoadBalancer` Services from `10.77.0.22-10.77.0.39`. After DNS, ingress, and
-certificate verification succeeds, `atum apply` prints every discovered HTTPS
-application route, the saved resolver and CA paths, the CA fingerprint, and
-the ephemeral Headlamp token command. Visit `https://headlamp.atum.test`, run
-the printed `kubectl create token` command, and paste that short-lived token
-into Headlamp; Atum never stores or prints the token itself.
+`LoadBalancer` Services from `10.77.0.22-10.77.0.39`. After DNS, ingress,
+identity, Kubernetes OIDC, and certificate verification succeed, the managed
+TUI finishes with an Access panel. It contains the resolver and CA paths, CA
+fingerprint, both ingress VIPs, Keycloak issuer and administrator console,
+local-development credentials (`atum` / `atum`), categorized browser
+applications, and the token-backed GitLab KAS and registry endpoints. There is
+no second terminal summary after the dashboard exits.
+
+Keycloak's master realm is the sole local human-identity authority. The
+permanent `atum` user belongs to `atum-admins`, has Keycloak server
+administration, and receives the highest supported administrator mapping in
+integrated applications. Kubernetes prefixes the group as
+`oidc:atum-admins` and binds it to `cluster-admin`, so Headlamp uses native
+OIDC instead of a service-account token. Kiali, Grafana, GitLab, Policy
+Reporter, Harbor, and OpenBao also use their selected native or reconciled
+OIDC integration. Prometheus, Alertmanager, and OpenSearch Dashboards use Big
+Bang Authservice because their selected packages do not provide a complete
+native browser flow. The derived bootstrap administrator is retired after the
+permanent account is verified. GitLab KAS and the registry remain protocol
+endpoints whose application-issued tokens are not replaced by browser OIDC.
+The per-application integration and administrator matrix is recorded in the
+[final package set](platform/docs/finalpackages.md#local-identity-integration-matrix).
 
 ## Supported Environment Inputs
 

@@ -4,21 +4,44 @@
 
 This is the minimal enterprise cluster package set using OSI-approved open-source tooling.
 
-The local profile exposes the Big Bang-managed Headlamp release at
-`https://headlamp.atum.test`. After convergence, obtain an ephemeral login
-token directly from Kubernetes when needed:
+The local profile uses the Keycloak master realm as its single human-identity
+authority. The permanent local-development administrator is `atum` / `atum`;
+it belongs to `atum-admins`, receives Keycloak server administration, and is
+mapped to the highest supported administrator role in each integrated
+application. The derived bootstrap administrator is retired after this
+permanent login is verified.
 
-```sh
-kubectl -n headlamp create token headlamp-headlamp --duration=24h
-```
+After convergence, the managed TUI shows one final Access panel only when the
+resolver, public and passthrough VIPs, certificate SANs and validity, installed
+CA fingerprint, identity reconciliation, and Kubernetes OIDC receipt are all
+exact. The panel contains workstation paths and fingerprints, the Keycloak
+issuer and administrator console, the local credentials, categorized browser
+URLs, and token-backed protocol endpoints. Inspect or remove workstation state
+with `atum infra access status` and `atum infra access uninstall`.
 
-Atum does not generate, store, or print the resulting bearer token.
+Headlamp uses native Keycloak OIDC. Kubernetes maps `atum-admins` to
+`oidc:atum-admins` and binds that group to `cluster-admin`; no Headlamp
+service-account token is created or displayed. Kiali, Grafana, GitLab, Policy
+Reporter, Harbor, and OpenBao use native or reconciled OIDC. Prometheus,
+Alertmanager, and OpenSearch Dashboards remain behind Big Bang Authservice.
+GitLab KAS and the registry remain application-token protocol endpoints rather
+than browser OIDC routes.
 
-The URL is printed only after the local resolver, public gateway VIP,
-certificate SAN and validity, and installed CA fingerprint are exact. Paste
-the freshly minted token into Headlamp's token login and allow it to expire or
-revoke it when finished. Inspect or remove the workstation lifecycle with
-`atum infra access status` and `atum infra access uninstall`.
+### Local Identity Integration Matrix
+
+| Browser endpoint | Identity integration | Administrator result |
+| --- | --- | --- |
+| Keycloak | Master realm | Keycloak server administrator |
+| Headlamp | Native PKCE | Kubernetes `cluster-admin` through `oidc:atum-admins` |
+| Kiali | Native OpenID | Authenticated cluster administrator |
+| Grafana | Generic OAuth | Grafana `Admin` |
+| GitLab | OmniAuth | GitLab administrator through `atum-admins` |
+| Policy Reporter | Native OIDC | Authenticated UI administrator |
+| Harbor | Native OIDC | Harbor administrator through `atum-admins` |
+| OpenBao | Reconciled OIDC | Broad local administrator policy |
+| Prometheus | Big Bang Authservice | Authenticated access |
+| Alertmanager | Big Bang Authservice | Authenticated access |
+| OpenSearch Dashboards | Big Bang Authservice | Authenticated access |
 
 The local profile alone deploys kube-vip, its `10.77.0.22-10.77.0.39`
 allocator, the `atum.test` issuers, and the public and passthrough certificates.

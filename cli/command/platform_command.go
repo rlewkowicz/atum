@@ -56,32 +56,33 @@ func (a *app) platformCommand() *cobra.Command {
 			if err := a.checkPreflight(cmd.Context(), preflight.Platform); err != nil {
 				return err
 			}
-			if err := a.ensureLocalDNS(cmd.Context()); err != nil {
-				return err
-			}
-			var status platform.Status
-			err := a.withDashboard(cmd.Context(), "platform apply", tui.ScopePlatform, func(ctx context.Context) error {
-				if err := a.ensureDeploymentBundle(ctx, preflight.Platform); err != nil {
-					return err
-				}
-				dns, err := a.startLocalDNSObservation(ctx)
-				if err != nil {
-					return err
-				}
-				defer dns.Cancel()
-				service, err := a.managedPlatformService()
-				if err != nil {
-					return err
-				}
-				if err := service.Apply(ctx, applyOptions); err != nil {
-					return err
-				}
-				return a.completePlatformApply(ctx, &status, dns)
-			})
-			if err != nil {
-				return err
-			}
-			return a.printLocalAccess(status)
+			return a.withDashboardCompletion(
+				cmd.Context(), "platform apply", tui.ScopePlatform,
+				func(ctx context.Context) (tui.Completion, error) {
+					if err := a.ensureLocalDNS(ctx); err != nil {
+						return tui.Completion{}, err
+					}
+					if err := a.ensureDeploymentBundle(ctx, preflight.Platform); err != nil {
+						return tui.Completion{}, err
+					}
+					dns, err := a.startLocalDNSObservation(ctx)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					defer dns.Cancel()
+					service, err := a.managedPlatformService()
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					if err := service.Apply(ctx, applyOptions); err != nil {
+						return tui.Completion{}, err
+					}
+					status, err := a.completePlatformApply(ctx, dns)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					return a.platformCompletion(status)
+				})
 		}),
 	}
 	apply.Flags().DurationVar(

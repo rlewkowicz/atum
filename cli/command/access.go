@@ -95,7 +95,7 @@ func hostAccessHelperCommand() *cobra.Command {
 				return errors.New("host access helper action is required")
 			}
 			service := infra.AccessService{
-				Runner: process.ExecRunner{}, Output: cmd.OutOrStdout(), EUID: os.Geteuid(),
+				Runner: process.ExecRunner{}, Output: io.Discard, EUID: os.Geteuid(),
 			}
 			switch arguments[0] {
 			case "dns-install":
@@ -313,8 +313,12 @@ func (a *app) runAccessAction(ctx context.Context, action string) error {
 		}
 		helperArguments := []string{"uninstall", plan.AuthorizationDigest()}
 		helperArguments = append(helperArguments, factsArguments(facts)...)
-		return a.runPrivilegedHelper(
-			ctx, capabilities, trustStore, updater, sudo, nil, helperArguments...)
+		return a.withTerminal(func(input io.Reader, output, errorOutput io.Writer) error {
+			return a.runPrivilegedHelper(
+				ctx, capabilities, trustStore, updater, sudo, nil,
+				terminalStreams{input: input, output: output, errorOutput: errorOutput},
+				helperArguments...)
+		})
 	default:
 		return fmt.Errorf("unsupported access action %q", action)
 	}
@@ -465,20 +469,27 @@ func (a *app) ensureLocalDNS(ctx context.Context) error {
 	if err != nil || !local {
 		return err
 	}
+	progress.Start(ctx, progress.Platform, "local-dns", "Local DNS",
+		"inspecting resolver configuration")
 	status, err := a.localDNSConfigurationStatus(ctx, facts)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-dns", "Local DNS", err)
 		return err
 	}
 	if status.DNSExact() {
-		_, err := fmt.Fprintf(a.out, "already configured at %s\n", infra.ResolverDropInPath)
-		return err
+		progress.Done(ctx, progress.Platform, "local-dns", "Local DNS",
+			"resolver configuration already exact")
+		return nil
 	}
 	if a.dryRun {
 		a.logger.InfoContext(ctx, "local DNS would be installed", "path", infra.ResolverDropInPath)
+		progress.Done(ctx, progress.Platform, "local-dns", "Local DNS",
+			"resolver configuration installation planned")
 		return nil
 	}
 	capabilities, err := infra.SelectAccessCapabilities(infra.ObserveDNS)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-dns", "Local DNS", err)
 		return err
 	}
 	managedReport := a.preflight
@@ -487,16 +498,25 @@ func (a *app) ensureLocalDNS(ctx context.Context) error {
 		ctx, preflight.AccessDNS, capabilities, infra.TrustStoreDescriptor{},
 		infra.TrustUpdater{}, sudo); err != nil {
 		a.preflight = managedReport
+		progress.Fail(ctx, progress.Platform, "local-dns", "Local DNS", err)
 		return err
 	}
 	defer func() { a.preflight = managedReport }()
-	if _, err := fmt.Fprintf(a.err, "local DNS differs at %s; administrator authorization is required\n",
-		infra.ResolverDropInPath); err != nil {
+	progress.Update(ctx, progress.Platform, "local-dns", "Local DNS",
+		"administrator authorization required for resolver installation", 0, 0)
+	err = a.withTerminal(func(input io.Reader, output, errorOutput io.Writer) error {
+		return a.runPrivilegedHelper(
+			ctx, capabilities, infra.TrustStoreDescriptor{}, infra.TrustUpdater{}, sudo, nil,
+			terminalStreams{input: input, output: output, errorOutput: errorOutput},
+			append([]string{"dns-install"}, factsArguments(facts)...)...)
+	})
+	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-dns", "Local DNS", err)
 		return err
 	}
-	return a.runPrivilegedHelper(
-		ctx, capabilities, infra.TrustStoreDescriptor{}, infra.TrustUpdater{}, sudo, nil,
-		append([]string{"dns-install"}, factsArguments(facts)...)...)
+	progress.Done(ctx, progress.Platform, "local-dns", "Local DNS",
+		"resolver configuration installed")
+	return nil
 }
 
 func (a *app) verifyLocalDNSLookups(ctx context.Context) error {
@@ -686,33 +706,47 @@ func localDNSLookupError(
 func (a *app) ensureLocalCA(ctx context.Context) error {
 	facts, local, err := a.localAccessFacts()
 	if err != nil || !local || a.dryRun {
+		if local && a.dryRun {
+			progress.Start(ctx, progress.Platform, "local-certificates", "Local certificates",
+				"inspecting host CA trust")
+			progress.Done(ctx, progress.Platform, "local-certificates", "Local certificates",
+				"host CA trust installation planned")
+		}
 		return err
 	}
+	progress.Start(ctx, progress.Platform, "local-certificates", "Local certificates",
+		"inspecting host CA trust")
 	certificate, err := a.inClusterRootCA(ctx)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	defer certificate.Clear()
 	trustStore, err := infra.SelectTrustStore()
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	service := infra.AccessService{TrustStore: trustStore}
 	anchorPath, _, anchorExact, err := service.CompareCA(certificate)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	if anchorExact {
 		if err := a.verifyTrustedHTTPS(
 			ctx, facts.Domain, facts.PublicIngressVIP,
 			certificate.Fingerprint); err != nil {
+			progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 			return err
 		}
-		_, err := fmt.Fprintf(a.out, "already configured at %s\n", anchorPath)
-		return err
+		progress.Done(ctx, progress.Platform, "local-certificates", "Local certificates",
+			"host CA trust already exact")
+		return nil
 	}
 	updater, err := infra.SelectTrustUpdater(trustStore)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	managedReport := a.preflight
@@ -720,34 +754,42 @@ func (a *app) ensureLocalCA(ctx context.Context) error {
 	if err := a.checkAccessPreflight(
 		ctx, preflight.AccessCA, infra.AccessCapabilities{}, trustStore, updater, sudo); err != nil {
 		a.preflight = managedReport
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	defer func() { a.preflight = managedReport }()
-	if _, err := fmt.Fprintf(a.err, "local CA differs at %s; administrator authorization is required\n",
-		anchorPath); err != nil {
-		return err
-	}
-	if err := a.runPrivilegedHelper(
-		ctx, infra.AccessCapabilities{}, trustStore, updater, sudo,
-		bytes.NewReader(certificate.PEM),
-		append([]string{"ca-install"}, factsArguments(facts)...)...); err != nil {
+	progress.Update(ctx, progress.Platform, "local-certificates", "Local certificates",
+		"administrator authorization required for CA installation", 0, 0)
+	if err := a.withTerminal(func(input io.Reader, output, errorOutput io.Writer) error {
+		return a.runPrivilegedHelper(
+			ctx, infra.AccessCapabilities{}, trustStore, updater, sudo,
+			bytes.NewReader(certificate.PEM),
+			terminalStreams{input: input, output: output, errorOutput: errorOutput},
+			append([]string{"ca-install"}, factsArguments(facts)...)...)
+	}); err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	anchorPath, _, anchorExact, err = service.CompareCA(certificate)
 	if err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
 	if !anchorExact {
-		return fmt.Errorf(
+		err := fmt.Errorf(
 			"host CA fingerprint at %s does not match the in-cluster root", anchorPath)
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
+		return err
 	}
 	if err := a.verifyTrustedHTTPS(
 		ctx, facts.Domain, facts.PublicIngressVIP,
 		certificate.Fingerprint); err != nil {
+		progress.Fail(ctx, progress.Platform, "local-certificates", "Local certificates", err)
 		return err
 	}
-	_, err = fmt.Fprintf(a.out, "local CA saved to %s\n", anchorPath)
-	return err
+	progress.Done(ctx, progress.Platform, "local-certificates", "Local certificates",
+		"host CA trust installed and verified")
+	return nil
 }
 
 func (a *app) inClusterRootCA(ctx context.Context) (infra.ValidatedCA, error) {
@@ -896,6 +938,12 @@ func validateTrustedHTTPSIdentity(domain, publicVIP, fingerprint string) error {
 	return infra.ValidateRootFingerprint(fingerprint)
 }
 
+type terminalStreams struct {
+	input       io.Reader
+	output      io.Writer
+	errorOutput io.Writer
+}
+
 func (a *app) runPrivilegedHelper(
 	ctx context.Context,
 	capabilities infra.AccessCapabilities,
@@ -903,6 +951,7 @@ func (a *app) runPrivilegedHelper(
 	updater infra.TrustUpdater,
 	sudo string,
 	input io.Reader,
+	terminal terminalStreams,
 	arguments ...string,
 ) error {
 	var need infra.AccessCapabilityNeed
@@ -929,7 +978,8 @@ func (a *app) runPrivilegedHelper(
 		return err
 	}
 	if err := a.runner.Run(ctx, process.Command{
-		Name: sudo, Args: []string{"-v"}, Stdin: a.in, Stdout: a.out, Stderr: a.err,
+		Name: sudo, Args: []string{"-v"}, Stdin: terminal.input,
+		Stdout: terminal.output, Stderr: terminal.errorOutput,
 	}); err != nil {
 		return fmt.Errorf("sudo authorization failed: %w", err)
 	}
@@ -944,9 +994,14 @@ func (a *app) runPrivilegedHelper(
 	helperArguments := make([]string, 0, len(arguments)+3)
 	helperArguments = append(helperArguments, "-n", "--", executable, "__host-access")
 	helperArguments = append(helperArguments, arguments...)
+	helperInput := input
+	if helperInput == nil {
+		helperInput = terminal.input
+	}
 	if err := a.runner.Run(ctx, process.Command{
 		Name: sudo, Args: helperArguments, Env: internalEnvironment(internalRootProcess),
-		ExactEnv: true, Stdin: input, Stdout: a.out, Stderr: a.err,
+		ExactEnv: true, Stdin: helperInput,
+		Stdout: terminal.output, Stderr: terminal.errorOutput,
 	}); err != nil {
 		return fmt.Errorf("privileged local access helper failed: %w", err)
 	}
