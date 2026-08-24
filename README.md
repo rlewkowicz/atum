@@ -37,6 +37,18 @@ into the ignored `.atum/cache` tree from the commits in [`atum.json`](atum.json)
   <img src="assets/oneshot.png" alt="Term">
 </p>
 
+# Quickstart
+```sh
+git clone https://github.com/rlewkowicz/atum.git && cd atum
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o atum ./cli/atum
+go version -m ./atum
+sha256sum ./atum
+install -m 0755 atum "$HOME/.local/bin/atum"
+atum pull updates
+sudo atum apply
+```
+
+
 ## Declarative State
 
 [`atum.json`](atum.json) is the desired-state boundary. It selects the active
@@ -76,12 +88,7 @@ second.
 For a production build, disable cgo for a portable static binary, remove local
 source paths, and strip the Go symbol and DWARF tables:
 
-```sh
-CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o atum ./cli/atum
-go version -m ./atum
-sha256sum ./atum
-install -m 0755 atum "$HOME/.local/bin/atum"
-```
+
 
 Use `go build -o atum ./cli/atum` when local debugging symbols are useful.
 `go run ./cli/atum` may replace `atum` in every example.
