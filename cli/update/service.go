@@ -18,6 +18,7 @@ import (
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	"atum/cli/gitcache"
+	"atum/cli/identity"
 
 	"github.com/Masterminds/semver/v3"
 	"golang.org/x/sync/errgroup"
@@ -76,7 +77,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if _, err := recoverTransactions(service.root); err != nil {
 		return Result{}, err
 	}
-	project, err := config.LoadWithOptions(service.root, config.LoadOptions{AllowStale: true})
+	project, err := config.LoadWithOptions(service.root, config.LoadOptions{
+		AllowStale: true, AllowMissingGeneratedIdentity: true,
+	})
 	if err != nil {
 		return Result{}, err
 	}
@@ -118,6 +121,14 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, errors.New("declarative state changed while the updater was loading it; retry without discarding the concurrent edit")
 	}
 	managedFiles := tree.Files()
+	identityContract, err := loadCandidateIdentity(tree, desired)
+	if err != nil {
+		return Result{}, err
+	}
+	generatedIdentityValues, err := identityValues(identityContract)
+	if err != nil {
+		return Result{}, err
+	}
 	parallelism := desired.Updates.Parallelism
 	if len(desired.Platform.Flux.Assets) != 1 || desired.Platform.Flux.Assets[0].ID != "install-manifest" {
 		return Result{}, errors.New("Flux source must define exactly one install-manifest asset")
@@ -129,14 +140,25 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	operational := platformValues.Operational
 	generated := platformValues.Generated
 	profileValues := platformValues.Profile
-	if err := verifySelectedPackages(platformValues.Merged, desired.Platform.Packages, desired.Platform.Charts); err != nil {
+	if collision := firstNestedCollision(profileValues, generatedIdentityValues, nil); collision != "" {
+		return Result{}, fmt.Errorf("profile value %s is owned by the local identity contract", collision)
+	}
+	profileRenderValues, err := mergeIdentityValues(profileValues, generatedIdentityValues)
+	if err != nil {
 		return Result{}, err
 	}
-	if err := verifyTrackedChartBindings(service.root, platformValues.Merged, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, managedFiles); err != nil {
+	mergedRenderValues, err := config.MergePlatformValues(operational, generated, profileRenderValues)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := verifySelectedPackages(mergedRenderValues, desired.Platform.Packages, desired.Platform.Charts); err != nil {
+		return Result{}, err
+	}
+	if err := verifyTrackedChartBindings(service.root, mergedRenderValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, managedFiles); err != nil {
 		return Result{}, err
 	}
 	currentRenderValues, err := sourceVersionValues(
-		platformValues.Merged,
+		mergedRenderValues,
 		desired.Platform.Sources,
 		desired.Platform.Packages,
 		lock.Resolved.SupportSources,
@@ -258,7 +280,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		lock,
 		operational,
 		generated,
-		profileValues,
+		profileRenderValues,
 		trackedChartCatalogs,
 		bootstrapChartCatalogs,
 		currentInputs,
@@ -266,6 +288,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		parallelism,
 		managedFiles,
 		historicalBigBang,
+		identityContract,
 	)
 	if err != nil {
 		return Result{}, err
@@ -375,6 +398,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	candidateBigBangHelmRelease := cloneMap(currentBigBangHelmRelease)
+	if err := configureIdentityValuesFrom(candidateBigBangHelmRelease); err != nil {
+		return Result{}, err
+	}
 	if err := pinIstioHelmReleaseGates(
 		candidateBigBangHelmRelease,
 		packages,
@@ -389,6 +415,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		candidateBigBangHelmRelease,
 	); err != nil {
 		return Result{}, err
+	}
+	if err := renderIdentityManifests(
+		tree, desired, identityContract, generatedIdentityValues,
+	); err != nil {
+		return Result{}, fmt.Errorf("render updater-owned identity manifests: %w", err)
 	}
 	fluxKustomizationPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "kustomization.yaml")
 	fluxSyncPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "gotk-sync.yaml")
@@ -491,10 +522,10 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		operational,
 		generated,
 		candidateGenerated,
-		profileValues,
+		profileRenderValues,
 		bootstrapValues,
 		artifacts,
-		managedFiles,
+		tree.Files(),
 	); err != nil {
 		return Result{}, err
 	}
@@ -581,7 +612,8 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err := setCandidateYAML(tree, desired.Platform.Values.Generated, generated, candidateGenerated); err != nil {
 		return Result{}, err
 	}
-	bigBangSource, err := bigBangSourceValues(service.root, desired.Platform.Sources, desired.Platform.BigBang, managedFiles)
+	bigBangSource, err := bigBangSourceValues(
+		service.root, desired.Platform.Sources, desired.Platform.BigBang, tree.Files())
 	if err != nil {
 		return Result{}, err
 	}
@@ -885,7 +917,16 @@ func (service *Service) selectCompatiblePlatform(
 	parallelism int,
 	files map[string][]byte,
 	resetToPinnedBigBang bool,
+	identityContract *identity.Contract,
 ) (platformSelection, error) {
+	if identityContract == nil {
+		return platformSelection{}, errors.New("canonical local identity contract is unavailable")
+	}
+	openSearchIdentity, found := identityContract.ClientForApplication(identity.OpenSearch)
+	if !found {
+		return platformSelection{}, errors.New(
+			"identity contract has no OpenSearch application projection")
+	}
 	minimumRelease, err := desired.Orchestration.TargetRelease()
 	if err != nil {
 		return platformSelection{}, err
@@ -1119,6 +1160,7 @@ func (service *Service) selectCompatiblePlatform(
 					supportSources,
 					candidateRenderValues,
 					kubernetesCandidate.kubernetes.Version,
+					openSearchIdentity.Host,
 				); err != nil {
 					contractErr := fmt.Errorf("platform mesh contract: %w", err)
 					coordinate := candidate.Source.Version + "/Kubernetes " + kubernetesCandidate.kubernetes.Version
@@ -1133,6 +1175,31 @@ func (service *Service) selectCompatiblePlatform(
 						return platformSelection{}, terminalErr
 					}
 					service.logger.WarnContext(ctx, "candidate Big Bang mesh contract is incompatible",
+						"bigbang", candidate.Source.Version,
+						"kubernetes", kubernetesCandidate.kubernetes.Version,
+						"error", err,
+					)
+					break
+				}
+				if err := validatePlatformIdentityContract(
+					artifacts,
+					identityContract,
+					attemptDesired,
+					kubernetesCandidate.kubernetes.Version,
+					files,
+					service.root,
+				); err != nil {
+					coordinate := candidate.Source.Version + "/Kubernetes " +
+						kubernetesCandidate.kubernetes.Version
+					contractErr := fmt.Errorf("platform identity contract: %w", err)
+					if resetToPinnedBigBang {
+						return platformSelection{}, fmt.Errorf(
+							"pinned Big Bang %s has an incompatible identity contract: %w",
+							candidate.Source.Version, contractErr)
+					}
+					failures = append(failures, coordinate+": "+contractErr.Error())
+					service.logger.WarnContext(
+						ctx, "candidate Big Bang identity contract is incompatible",
 						"bigbang", candidate.Source.Version,
 						"kubernetes", kubernetesCandidate.kubernetes.Version,
 						"error", err,

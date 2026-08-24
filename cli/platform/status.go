@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"atum/cli/config"
 	"atum/cli/delivery"
 	"atum/cli/fssecure"
+	"atum/cli/identity"
 	"atum/cli/infra"
 	"atum/cli/kube"
 	atumoci "atum/cli/oci"
@@ -256,6 +258,7 @@ func collectPlatformSnapshot(ctx context.Context, client *kube.Observer) (platfo
 		{name: "Deployments", resource: kube.Deployment},
 		{name: "StatefulSets", resource: kube.StatefulSet},
 		{name: "DaemonSets", resource: kube.DaemonSet},
+		{name: "Jobs", resource: kube.Job},
 	}
 	type resourceResult struct {
 		resource kube.Resource
@@ -316,6 +319,8 @@ type coreClusterObservation struct {
 	bundleSHA256, sourceCommit                          string
 	bundleReady, fluxReady, prepReady, profilePrepReady bool
 	bigBangReady, profileAccessReady                    bool
+	profileIdentityReady                                bool
+	profileIdentityFailure                              string
 }
 
 type workloadObservation struct {
@@ -379,8 +384,62 @@ func (service Service) observeCoreCluster(
 		kustomizations, "flux-system", "platform-profile-prep")
 	result.bigBangReady = snapshotResourceReady(kustomizations, "flux-system", "bigbang")
 	result.profileAccessReady = snapshotResourceReady(
-		kustomizations, "flux-system", "platform-profile-access")
+		kustomizations, "flux-system", identity.ProfileAccessKustomizationName)
+	result.profileIdentityReady = snapshotResourceReady(
+		kustomizations, "flux-system", identity.ProfileIdentityKustomizationName)
+	if _, required := service.Project.Desired.ActiveIdentityContractPath(); required {
+		jobsReady, failure := identityJobsStatus(snapshot.resource(kube.Job))
+		result.profileIdentityReady = result.profileIdentityReady && jobsReady
+		result.profileIdentityFailure = failure
+	}
 	return result, nil
+}
+
+func identityJobsStatus(jobs []kube.Object) (bool, string) {
+	const keycloakJob, openBaoJob = uint8(1), uint8(2)
+	remaining := keycloakJob | openBaoJob
+	for index := range jobs {
+		job := &jobs[index]
+		key := job.GetNamespace() + "/" + job.GetName()
+		var bit uint8
+		var label string
+		switch key {
+		case identity.KeycloakJobNamespace + "/" + identity.KeycloakJobName:
+			bit, label = keycloakJob, identity.KeycloakJobOwner
+		case identity.OpenBaoJobNamespace + "/" + identity.OpenBaoJobName:
+			bit, label = openBaoJob, identity.OpenBaoJobOwner
+		default:
+			continue
+		}
+		if job.GetDeletionTimestamp() != nil {
+			continue
+		}
+		if job.GetLabels()["atum.dev/identity-job"] != label {
+			return false, key + " has an invalid identity owner label"
+		}
+		if jobFailed(job.Object) {
+			return false, key + " reports a failed terminal condition"
+		}
+		if !kube.IsReady(job) {
+			return false, ""
+		}
+		remaining &^= bit
+	}
+	return remaining == 0, ""
+}
+
+func jobFailed(object map[string]any) bool {
+	conditions, found, err := unstructured.NestedSlice(object, "status", "conditions")
+	if err != nil || !found {
+		return false
+	}
+	for _, raw := range conditions {
+		condition, _ := raw.(map[string]any)
+		if condition["type"] == "Failed" && condition["status"] == "True" {
+			return true
+		}
+	}
+	return false
 }
 
 func (service Service) observeWorkloads(
@@ -608,15 +667,42 @@ func (service Service) observeLocalAccess(
 	if err != nil {
 		return localAccessObservation{}, err
 	}
+	routesReady, err := service.identityRoutesReady(accessURLs)
+	if err != nil {
+		return localAccessObservation{}, err
+	}
 	return localAccessObservation{
 		loadBalancer: loadBalancer,
 		certificates: certificates,
 		issuerReady: target.LocalAccess == nil ||
 			localPKIReadySnapshot(snapshot),
-		accessURLs: accessURLs,
-		routesReady: target.LocalAccess == nil ||
-			containsString(accessURLs, "https://headlamp."+target.LocalAccess.Domain),
+		accessURLs:  accessURLs,
+		routesReady: routesReady,
 	}, nil
+}
+
+func (service Service) identityRoutesReady(accessURLs []string) (bool, error) {
+	relative, required := service.Project.Desired.ActiveIdentityContractPath()
+	if !required {
+		return true, nil
+	}
+	contract, err := identity.Load(service.Project.Root, relative)
+	if err != nil {
+		return false, err
+	}
+	expected := make(map[string]struct{}, len(contract.Clients())+len(contract.AdditionalEndpoints()))
+	for _, client := range contract.Clients() {
+		expected["https://"+client.Host] = struct{}{}
+	}
+	for _, endpoint := range contract.AdditionalEndpoints() {
+		if endpoint.Access == identity.Browser {
+			expected["https://"+endpoint.Host] = struct{}{}
+		}
+	}
+	for _, observed := range accessURLs {
+		delete(expected, observed)
+	}
+	return len(expected) == 0, nil
 }
 
 func mergeStatusObservations(service Service, observed statusObservations) Status {
@@ -626,8 +712,10 @@ func mergeStatusObservations(service Service, observed statusObservations) Statu
 		ActiveProfile: target.PlatformProfile, BundleReady: observed.core.bundleReady,
 		FluxReady: observed.core.fluxReady, PrepReady: observed.core.prepReady,
 		ProfilePrepReady: observed.core.profilePrepReady, BigBangReady: observed.core.bigBangReady,
-		ProfileAccessReady: observed.core.profileAccessReady,
-		OCISources:         observed.sources.ociSources, HelmReleases: observed.workloads.helmReleases,
+		ProfileAccessReady:     observed.core.profileAccessReady,
+		ProfileIdentityReady:   observed.core.profileIdentityReady,
+		ProfileIdentityFailure: observed.core.profileIdentityFailure,
+		OCISources:             observed.sources.ociSources, HelmReleases: observed.workloads.helmReleases,
 		ActiveHelmReleases: observed.workloads.activeHelmReleases,
 		ReadyHelmReleases:  observed.workloads.readyHelmReleases,
 		ActiveWorkloads:    observed.workloads.activeWorkloads,
@@ -652,6 +740,7 @@ func mergeStatusObservations(service Service, observed statusObservations) Statu
 		AccessURLs:            observed.local.accessURLs,
 		RoutesReady:           observed.local.routesReady,
 	}
+	_, result.ProfileIdentityRequired = service.Project.Desired.ActiveIdentityContractPath()
 	if !observed.registry.imageExact {
 		result.addImageIssue("Harbor publication differs from the locked image set")
 	}
@@ -716,7 +805,11 @@ func (service Service) accessURLsSnapshot(objects []kube.Object) ([]string, erro
 				(host != domain && !strings.HasSuffix(host, "."+domain)) {
 				continue
 			}
-			unique["https://"+host] = struct{}{}
+			url := "https://" + host
+			if _, duplicate := unique[url]; duplicate {
+				return nil, fmt.Errorf("local access route %s is declared more than once", url)
+			}
+			unique[url] = struct{}{}
 			if len(unique) > accessURLLimit {
 				return nil, fmt.Errorf("local access route count exceeds %d", accessURLLimit)
 			}
@@ -849,6 +942,15 @@ func reportExactStatus(ctx context.Context, status Status) {
 	)
 	report("platform-profile-access", "Platform profile access",
 		"active profile access ready", status.ProfileAccessReady)
+	if status.ProfileIdentityRequired {
+		if status.ProfileIdentityFailure != "" {
+			progress.Fail(ctx, progress.Platform, "platform-profile-identity",
+				"Platform profile identity", errors.New(status.ProfileIdentityFailure))
+		} else {
+			report("platform-profile-identity", "Platform profile identity",
+				"identity reconciliation complete", status.ProfileIdentityReady)
+		}
+	}
 	if status.LoadBalancerRequired {
 		report("kube-vip", "kube-vip", "gateway VIPs and allocator range exact", status.LoadBalancerReady)
 	}
@@ -1533,6 +1635,18 @@ func reportApplyReadiness(ctx context.Context, status Status) {
 	} else {
 		progress.Update(ctx, progress.Platform, "platform-profile-access", "Platform profile access",
 			"waiting for active profile access", 0, 0)
+	}
+	if status.ProfileIdentityRequired {
+		if status.ProfileIdentityFailure != "" {
+			progress.Fail(ctx, progress.Platform, "platform-profile-identity",
+				"Platform profile identity", errors.New(status.ProfileIdentityFailure))
+		} else if status.ProfileIdentityReady {
+			progress.Done(ctx, progress.Platform, "platform-profile-identity", "Platform profile identity",
+				"identity reconciliation complete")
+		} else {
+			progress.Update(ctx, progress.Platform, "platform-profile-identity", "Platform profile identity",
+				"waiting for identity reconciliation", 0, 0)
+		}
 	}
 	bigBangHealthy := status.BigBangReady && status.ProfileAccessReady &&
 		status.ActiveHelmReleases > 0 &&
@@ -2230,6 +2344,112 @@ type chartBinding struct {
 	version string
 }
 
+type fluxConsumerExpectation struct {
+	apiVersion string
+	kind       string
+	namespace  string
+	name       string
+	spec       map[string]any
+}
+
+type fluxConsumerManifest struct {
+	FluxManifestIdentity `yaml:",inline"`
+	Spec                 map[string]any `yaml:"spec"`
+}
+
+func bundledFluxConsumerExpectations(
+	bundle *delivery.DeploymentBundle,
+	desired config.Document,
+) ([]fluxConsumerExpectation, error) {
+	target, exists := desired.ActiveTarget()
+	if !exists {
+		return nil, fmt.Errorf(
+			"active infrastructure target %q is not defined", desired.Infrastructure.Active)
+	}
+	domain := ""
+	if target.LocalAccess != nil {
+		domain = target.LocalAccess.Domain
+	}
+	clusterRoot := filepath.ToSlash(filepath.Join(
+		desired.Platform.Directory, "clusters", desired.Project.Cluster))
+	files := [...]string{
+		"prep.yaml",
+		"platform-profile-prep.yaml",
+		"bigbang.yaml",
+		"platform-profile-access.yaml",
+		"platform-profile-identity.yaml",
+	}
+	expectations := make([]fluxConsumerExpectation, 0, len(files))
+	seen := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		relative := clusterRoot + "/" + file
+		path, err := fssecure.Resolve(bundle.SourceRoot, filepath.FromSlash(relative), false)
+		if err != nil {
+			return nil, fmt.Errorf("resolve bundled Flux consumer %s: %w", relative, err)
+		}
+		data, err := readBounded(path, 1<<20)
+		if err != nil {
+			return nil, fmt.Errorf("read bundled Flux consumer %s: %w", relative, err)
+		}
+		rendered, err := envsubst.Eval(string(data), func(name string) (string, bool) {
+			switch name {
+			case "ATUM_PLATFORM_PROFILE":
+				return target.PlatformProfile, true
+			case "ATUM_PLATFORM_DOMAIN":
+				return domain, true
+			default:
+				return "", false
+			}
+		})
+		if err != nil {
+			return nil, fmt.Errorf("substitute bundled Flux consumer %s: %w", relative, err)
+		}
+		var manifest fluxConsumerManifest
+		if err := decodeSingleYAML([]byte(rendered), &manifest, relative); err != nil {
+			return nil, err
+		}
+		if manifest.APIVersion != "kustomize.toolkit.fluxcd.io/v1" ||
+			manifest.Kind != "Kustomization" ||
+			manifest.Metadata.Namespace == "" || manifest.Metadata.Name == "" ||
+			len(manifest.Spec) == 0 {
+			return nil, fmt.Errorf(
+				"bundled Flux consumer %s does not declare an exact Kustomization", relative)
+		}
+		key := manifest.Metadata.Namespace + "/" + manifest.Metadata.Name
+		if _, duplicate := seen[key]; duplicate {
+			return nil, fmt.Errorf("bundled Flux consumers repeat Kustomization %s", key)
+		}
+		seen[key] = struct{}{}
+		expectations = append(expectations, fluxConsumerExpectation{
+			apiVersion: manifest.APIVersion,
+			kind:       manifest.Kind,
+			namespace:  manifest.Metadata.Namespace,
+			name:       manifest.Metadata.Name,
+			spec:       manifest.Spec,
+		})
+	}
+	return expectations, nil
+}
+
+func exactFluxConsumerObjects(
+	objects []kube.Object,
+	expectations []fluxConsumerExpectation,
+) bool {
+	for _, expected := range expectations {
+		object, found := snapshotResource(objects, expected.namespace, expected.name)
+		if !found || object.GetDeletionTimestamp() != nil ||
+			object.Object["apiVersion"] != expected.apiVersion ||
+			object.Object["kind"] != expected.kind {
+			return false
+		}
+		spec, found, err := unstructured.NestedMap(object.Object, "spec")
+		if err != nil || !found || !reflect.DeepEqual(spec, expected.spec) {
+			return false
+		}
+	}
+	return true
+}
+
 func (service Service) exactFluxConsumersSnapshot(
 	ctx context.Context,
 	client *kube.Observer,
@@ -2240,66 +2460,12 @@ func (service Service) exactFluxConsumersSnapshot(
 	if !exists {
 		return false, fmt.Errorf("active infrastructure target %q is not defined", service.Project.Desired.Infrastructure.Active)
 	}
-	for _, expected := range []struct {
-		name                string
-		path                string
-		wait                bool
-		profileSubstitution bool
-		dependsOn           []string
-	}{
-		{name: "prep", path: "./platform/apps/prep"},
-		{
-			name:                "platform-profile-prep",
-			path:                "./platform/profiles/" + target.PlatformProfile + "/prep",
-			wait:                true,
-			profileSubstitution: true,
-			dependsOn:           []string{"prep"},
-		},
-		{
-			name:      "bigbang",
-			path:      "./platform/apps/bigbang",
-			wait:      true,
-			dependsOn: []string{"prep", "platform-profile-prep"},
-		},
-		{
-			name:                "platform-profile-access",
-			path:                "./platform/profiles/" + target.PlatformProfile + "/access",
-			wait:                true,
-			profileSubstitution: true,
-			dependsOn:           []string{"bigbang"},
-		},
-	} {
-		object, found := snapshotResource(
-			snapshot.resource(kube.Kustomization), "flux-system", expected.name)
-		if !found {
-			return false, nil
-		}
-		kind, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "kind")
-		name, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "name")
-		namespace, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "namespace")
-		resourcePath, _, _ := unstructured.NestedString(object.Object, "spec", "path")
-		prune, _, _ := unstructured.NestedBool(object.Object, "spec", "prune")
-		waitForReady, _, _ := unstructured.NestedBool(object.Object, "spec", "wait")
-		ref, found, _ := unstructured.NestedMap(object.Object, "spec", "sourceRef")
-		domain, domainFound, _ := unstructured.NestedString(
-			object.Object, "spec", "postBuild", "substitute", "ATUM_PLATFORM_DOMAIN",
-		)
-		profileSubstitutions, profileSubstitutionsFound, _ := unstructured.NestedMap(
-			object.Object, "spec", "postBuild", "substitute",
-		)
-		expectedDomain := ""
-		if target.LocalAccess != nil {
-			expectedDomain = target.LocalAccess.Domain
-		}
-		if kind != "GitRepository" || name != "flux-system" || namespace != "" ||
-			resourcePath != expected.path || !prune || waitForReady != expected.wait || !found || len(ref) != 2 ||
-			domainFound != expected.profileSubstitution ||
-			profileSubstitutionsFound != expected.profileSubstitution ||
-			(expected.profileSubstitution && len(profileSubstitutions) != 1) ||
-			(expected.profileSubstitution && domain != expectedDomain) ||
-			!exactKustomizationDependencies(object.Object, expected.dependsOn) {
-			return false, nil
-		}
+	expectations, err := bundledFluxConsumerExpectations(bundle, service.Project.Desired)
+	if err != nil {
+		return false, err
+	}
+	if !exactFluxConsumerObjects(snapshot.resource(kube.Kustomization), expectations) {
+		return false, nil
 	}
 	rootFlux, found := snapshotResource(
 		snapshot.resource(kube.Kustomization), "flux-system", "flux-system")
@@ -2497,20 +2663,6 @@ func (service Service) exactFluxConsumersSnapshot(
 	return len(seenGit) == len(gitSources) &&
 		len(seenSupportReleases) == expectedSupportReleases &&
 		len(seenHelm) == len(service.Project.Desired.Platform.Charts), nil
-}
-
-func exactKustomizationDependencies(object map[string]any, expected []string) bool {
-	raw, found, err := unstructured.NestedSlice(object, "spec", "dependsOn")
-	if err != nil || found != (len(expected) != 0) || len(raw) != len(expected) {
-		return false
-	}
-	for index, name := range expected {
-		dependency, ok := raw[index].(map[string]any)
-		if !ok || len(dependency) != 1 || dependency["name"] != name {
-			return false
-		}
-	}
-	return true
 }
 
 type consumerGitSource struct {

@@ -51,52 +51,55 @@ type ResourceStatus struct {
 }
 
 type Status struct {
-	BundleSHA256          string           `json:"bundleSha256"`
-	SourceCommit          string           `json:"sourceCommit"`
-	ActiveProfile         string           `json:"activeProfile"`
-	BundleReady           bool             `json:"bundleReady"`
-	FluxReady             bool             `json:"fluxReady"`
-	PrepReady             bool             `json:"prepReady"`
-	ProfilePrepReady      bool             `json:"profilePrepReady"`
-	BigBangReady          bool             `json:"bigBangReady"`
-	ProfileAccessReady    bool             `json:"profileAccessReady"`
-	OCISources            []ResourceStatus `json:"ociSources"`
-	HelmReleases          []ResourceStatus `json:"helmReleases"`
-	LoadBalancerRequired  bool             `json:"loadBalancerRequired,omitempty"`
-	LoadBalancerReady     bool             `json:"loadBalancerReady"`
-	PublicIngressVIP      string           `json:"publicIngressVip,omitempty"`
-	PublicIngressIPs      []string         `json:"publicIngressIps,omitempty"`
-	PassthroughIngressVIP string           `json:"passthroughIngressVip,omitempty"`
-	PassthroughIngressIPs []string         `json:"passthroughIngressIps,omitempty"`
-	LoadBalancerRange     string           `json:"loadBalancerRange,omitempty"`
-	CertificatesRequired  bool             `json:"certificatesRequired,omitempty"`
-	CertificatesReady     bool             `json:"certificatesReady"`
-	IssuerReady           bool             `json:"issuerReady"`
-	RootCAFingerprint     string           `json:"rootCaFingerprint,omitempty"`
-	Certificates          []ResourceStatus `json:"certificates,omitempty"`
-	AccessDomain          string           `json:"accessDomain,omitempty"`
-	AccessURLs            []string         `json:"accessUrls,omitempty"`
-	RoutesReady           bool             `json:"routesReady"`
-	HostAccessObserved    bool             `json:"hostAccessObserved,omitempty"`
-	LocalDNSReady         bool             `json:"localDnsReady"`
-	ResolverReady         bool             `json:"resolverReady"`
-	PublicDNSReady        bool             `json:"publicDnsReady"`
-	PassthroughDNSReady   bool             `json:"passthroughDnsReady"`
-	ResolverPath          string           `json:"resolverPath,omitempty"`
-	CATrustReady          bool             `json:"caTrustReady"`
-	CAPath                string           `json:"caPath,omitempty"`
-	CAFingerprint         string           `json:"caFingerprint,omitempty"`
-	ActiveHelmReleases    int              `json:"activeHelmReleases"`
-	ReadyHelmReleases     int              `json:"readyHelmReleases"`
-	ActiveWorkloads       int              `json:"activeWorkloads"`
-	ReadyWorkloads        int              `json:"readyWorkloads"`
-	NonReadyPods          int              `json:"nonReadyPods"`
-	InternalImageOnly     bool             `json:"internalImageOnly"`
-	ImageIssueCount       int              `json:"imageIssueCount,omitempty"`
-	ImageIssues           []string         `json:"imageIssues,omitempty"`
-	InternalSourcesOnly   bool             `json:"internalSourcesOnly"`
-	SourceIssueCount      int              `json:"sourceIssueCount,omitempty"`
-	SourceIssues          []string         `json:"sourceIssues,omitempty"`
+	BundleSHA256            string           `json:"bundleSha256"`
+	SourceCommit            string           `json:"sourceCommit"`
+	ActiveProfile           string           `json:"activeProfile"`
+	BundleReady             bool             `json:"bundleReady"`
+	FluxReady               bool             `json:"fluxReady"`
+	PrepReady               bool             `json:"prepReady"`
+	ProfilePrepReady        bool             `json:"profilePrepReady"`
+	BigBangReady            bool             `json:"bigBangReady"`
+	ProfileAccessReady      bool             `json:"profileAccessReady"`
+	ProfileIdentityRequired bool             `json:"profileIdentityRequired,omitempty"`
+	ProfileIdentityReady    bool             `json:"profileIdentityReady"`
+	ProfileIdentityFailure  string           `json:"profileIdentityFailure,omitempty"`
+	OCISources              []ResourceStatus `json:"ociSources"`
+	HelmReleases            []ResourceStatus `json:"helmReleases"`
+	LoadBalancerRequired    bool             `json:"loadBalancerRequired,omitempty"`
+	LoadBalancerReady       bool             `json:"loadBalancerReady"`
+	PublicIngressVIP        string           `json:"publicIngressVip,omitempty"`
+	PublicIngressIPs        []string         `json:"publicIngressIps,omitempty"`
+	PassthroughIngressVIP   string           `json:"passthroughIngressVip,omitempty"`
+	PassthroughIngressIPs   []string         `json:"passthroughIngressIps,omitempty"`
+	LoadBalancerRange       string           `json:"loadBalancerRange,omitempty"`
+	CertificatesRequired    bool             `json:"certificatesRequired,omitempty"`
+	CertificatesReady       bool             `json:"certificatesReady"`
+	IssuerReady             bool             `json:"issuerReady"`
+	RootCAFingerprint       string           `json:"rootCaFingerprint,omitempty"`
+	Certificates            []ResourceStatus `json:"certificates,omitempty"`
+	AccessDomain            string           `json:"accessDomain,omitempty"`
+	AccessURLs              []string         `json:"accessUrls,omitempty"`
+	RoutesReady             bool             `json:"routesReady"`
+	HostAccessObserved      bool             `json:"hostAccessObserved,omitempty"`
+	LocalDNSReady           bool             `json:"localDnsReady"`
+	ResolverReady           bool             `json:"resolverReady"`
+	PublicDNSReady          bool             `json:"publicDnsReady"`
+	PassthroughDNSReady     bool             `json:"passthroughDnsReady"`
+	ResolverPath            string           `json:"resolverPath,omitempty"`
+	CATrustReady            bool             `json:"caTrustReady"`
+	CAPath                  string           `json:"caPath,omitempty"`
+	CAFingerprint           string           `json:"caFingerprint,omitempty"`
+	ActiveHelmReleases      int              `json:"activeHelmReleases"`
+	ReadyHelmReleases       int              `json:"readyHelmReleases"`
+	ActiveWorkloads         int              `json:"activeWorkloads"`
+	ReadyWorkloads          int              `json:"readyWorkloads"`
+	NonReadyPods            int              `json:"nonReadyPods"`
+	InternalImageOnly       bool             `json:"internalImageOnly"`
+	ImageIssueCount         int              `json:"imageIssueCount,omitempty"`
+	ImageIssues             []string         `json:"imageIssues,omitempty"`
+	InternalSourcesOnly     bool             `json:"internalSourcesOnly"`
+	SourceIssueCount        int              `json:"sourceIssueCount,omitempty"`
+	SourceIssues            []string         `json:"sourceIssues,omitempty"`
 }
 
 func (status Status) Ready() bool {
@@ -105,6 +108,8 @@ func (status Status) Ready() bool {
 			status.CAFingerprint != "" && status.CAFingerprint == status.RootCAFingerprint)
 	return status.BundleReady && status.FluxReady && status.PrepReady && status.ProfilePrepReady &&
 		status.BigBangReady && status.ProfileAccessReady &&
+		(!status.ProfileIdentityRequired ||
+			(status.ProfileIdentityReady && status.ProfileIdentityFailure == "")) &&
 		(!status.LoadBalancerRequired || status.LoadBalancerReady) &&
 		(!status.CertificatesRequired || (status.CertificatesReady && status.RoutesReady)) &&
 		hostReady &&

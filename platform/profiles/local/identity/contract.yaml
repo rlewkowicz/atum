@@ -27,6 +27,7 @@ additionalEndpoints:
     access: token
 clients:
   - id: atum-headlamp
+    application: headlamp
     type: public-pkce
     host: headlamp.atum.test
     category: development
@@ -36,6 +37,7 @@ clients:
     administratorMapping: oidc:atum-admins=cluster-admin
     audience: true
   - id: atum-kiali
+    application: kiali
     type: confidential
     host: kiali.atum.test
     category: observability
@@ -46,6 +48,7 @@ clients:
     administratorMapping: authenticated-cluster-admin
     audience: true
   - id: atum-grafana
+    application: grafana
     type: confidential
     host: grafana.atum.test
     category: observability
@@ -55,6 +58,7 @@ clients:
       - https://grafana.atum.test/login/generic_oauth
     administratorMapping: Admin
   - id: atum-gitlab
+    application: gitlab
     type: confidential
     host: gitlab.atum.test
     category: development
@@ -64,6 +68,7 @@ clients:
       - https://gitlab.atum.test/users/auth/openid_connect/callback
     administratorMapping: adminGroups
   - id: atum-policy-reporter
+    application: policy-reporter
     type: confidential
     host: policy.atum.test
     category: observability
@@ -73,6 +78,7 @@ clients:
       - https://policy.atum.test/callback
     administratorMapping: authenticated-ui-admin
   - id: atum-harbor
+    application: harbor
     type: confidential
     host: harbor.atum.test
     category: development
@@ -82,6 +88,7 @@ clients:
       - https://harbor.atum.test/c/oidc/callback
     administratorMapping: oidc-admin-group
   - id: atum-openbao
+    application: openbao
     type: confidential
     host: vault.atum.test
     category: identity
@@ -91,6 +98,7 @@ clients:
       - https://vault.atum.test/ui/vault/auth/oidc/oidc/callback
     administratorMapping: administrator-policy
   - id: atum-prometheus
+    application: prometheus
     type: confidential
     host: prometheus.atum.test
     category: observability
@@ -100,6 +108,7 @@ clients:
       - https://prometheus.atum.test/oauth2/callback
     administratorMapping: authenticated
   - id: atum-alertmanager
+    application: alertmanager
     type: confidential
     host: alertmanager.atum.test
     category: observability
@@ -109,6 +118,7 @@ clients:
       - https://alertmanager.atum.test/oauth2/callback
     administratorMapping: authenticated
   - id: atum-opensearch
+    application: opensearch
     type: confidential
     host: opensearch.atum.test
     category: observability

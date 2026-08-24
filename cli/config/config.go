@@ -49,7 +49,8 @@ type Project struct {
 }
 
 type LoadOptions struct {
-	AllowStale bool
+	AllowStale                    bool
+	AllowMissingGeneratedIdentity bool
 }
 
 type CandidateFile struct {
@@ -807,7 +808,8 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 		Desired:        desired,
 		Lock:           lock,
 	}
-	if err := project.validate(options.AllowStale, nil); err != nil {
+	if err := project.validate(
+		options.AllowStale, options.AllowMissingGeneratedIdentity, nil); err != nil {
 		return nil, err
 	}
 	return project, nil
@@ -847,10 +849,12 @@ func ValidateCandidate(root string, desired Document, lock Lock, candidate Candi
 	files := make(map[string][]byte, len(candidate.Files))
 	for relative, file := range candidate.Files {
 		if file.Exists {
-			files[relative] = file.Data
+			files[relative] = append([]byte{}, file.Data...)
+		} else {
+			files[relative] = nil
 		}
 	}
-	if err := project.validate(false, files); err != nil {
+	if err := project.validate(false, false, files); err != nil {
 		return nil, nil, nil, err
 	}
 	if err := validateCandidateVendorTrees(desired.Platform.Vendors, candidate); err != nil {
@@ -945,10 +949,40 @@ func Discover(rootHint string) (string, error) {
 }
 
 func (p *Project) Validate() error {
-	return p.validate(false, nil)
+	return p.validate(false, false, nil)
 }
 
-func (p *Project) validate(allowStale bool, files map[string][]byte) error {
+func generatedIdentityRequiredFiles(desired Document, profiles []string) []string {
+	result := make([]string, 0, 12+len(profiles))
+	result = append(result, filepath.Join(
+		desired.Platform.Directory, "clusters", desired.Project.Cluster,
+		"platform-profile-identity.yaml",
+	))
+	for _, profile := range profiles {
+		profileRoot := filepath.Join(desired.Platform.Directory, "profiles", profile)
+		result = append(result, filepath.Join(profileRoot, "identity", "kustomization.yaml"))
+		if profile != "local" {
+			continue
+		}
+		result = append(result,
+			filepath.Join(profileRoot, "prep", "identity-values.yaml"),
+			filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
+			filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
+			filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),
+			filepath.Join(profileRoot, "access", "certificates", "vault-sso-ca.yaml"),
+			filepath.Join(profileRoot, "identity", "credentials.yaml"),
+			filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
+			filepath.Join(profileRoot, "identity", "openbao-reconcile.yaml"),
+			filepath.Join(profileRoot, "identity", "receipt.yaml"),
+		)
+	}
+	return result
+}
+
+func (p *Project) validate(
+	allowStale, allowMissingGeneratedIdentity bool,
+	files map[string][]byte,
+) error {
 	var problems []string
 	add := func(format string, args ...any) {
 		problems = append(problems, fmt.Sprintf(format, args...))
@@ -1267,6 +1301,10 @@ func (p *Project) validate(allowStale bool, files map[string][]byte) error {
 			p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "flux-system", "platform-profile.yaml",
 		),
 	}
+	if !allowMissingGeneratedIdentity {
+		requiredFiles = append(requiredFiles,
+			generatedIdentityRequiredFiles(p.Desired, profileNames)...)
+	}
 	for _, profile := range profileNames {
 		profileRoot := filepath.Join(p.Desired.Platform.Directory, "profiles", profile)
 		requiredFiles = append(
@@ -1280,7 +1318,10 @@ func (p *Project) validate(allowStale bool, files map[string][]byte) error {
 		}
 	}
 	for _, relative := range requiredFiles {
-		if _, exists := files[relative]; exists {
+		if candidate, exists := files[relative]; exists {
+			if candidate == nil {
+				add("required tracked file %s is missing", relative)
+			}
 			continue
 		}
 		if info, err := statProjectPath(p.Root, relative); err != nil || !info.Mode().IsRegular() {

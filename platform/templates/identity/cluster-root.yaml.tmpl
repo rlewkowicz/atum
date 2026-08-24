@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - prep.yaml
+  - platform-profile-prep.yaml
+  - bigbang.yaml
+  - platform-profile-access.yaml
+  - platform-profile-identity.yaml

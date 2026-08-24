@@ -360,6 +360,7 @@ func TestWrapperMeshContractIsInactiveWithoutConsumers(t *testing.T) {
 		nil,
 		map[string]any{},
 		"",
+		"",
 	); err != nil {
 		t.Fatalf("inactive wrapper contract: %v", err)
 	}
@@ -383,7 +384,7 @@ func TestWrapperMeshContractRequiresSupportForActiveConsumers(t *testing.T) {
 			"namespace": map[string]any{"name": openSearchNamespace},
 		},
 	}}
-	err := validatePlatformMeshContract(resolvedGit{}, platform, nil, nil, values, "")
+	err := validatePlatformMeshContract(resolvedGit{}, platform, nil, nil, values, "", "")
 	if err == nil || !strings.Contains(err.Error(), "one resolved wrapper support source") {
 		t.Fatalf("active wrapper contract without support = %v", err)
 	}

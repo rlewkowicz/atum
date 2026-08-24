@@ -41,7 +41,8 @@ var displayNames = map[string]string{
 	"monitoring": "Monitoring", "openbao": "OpenBao", "openssh": "OpenSSH client", "opensearch": "OpenSearch",
 	"opensearch-dashboards": "OpenSearch Dashboards", "opensearch-operator": "OpenSearch operator",
 	"platform-profile-access": "Platform profile access", "platform-profile-prep": "Platform profile prerequisites",
-	"prometheus-operator-crds": "Prometheus operator CRDs", "python": "Python",
+	"platform-profile-identity": "Platform profile identity",
+	"prometheus-operator-crds":  "Prometheus operator CRDs", "python": "Python",
 	"systemd-resolved": "systemd-resolved", "terraform-cli": "Terraform CLI",
 	"tempo": "Tempo", "vault": "OpenBao", "velero": "Velero", "virsh": "virsh",
 }
@@ -90,9 +91,14 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 			{id: "bigbang", label: "Big Bang"},
 			{id: "platform-profile-access", label: "Platform profile access"},
 		}
+		if _, required := project.Desired.ActiveIdentityContractPath(); required {
+			items = append(items,
+				itemSpec{id: "platform-profile-identity", label: "Platform profile identity"})
+		}
 		seen := map[string]struct{}{
 			"bundle": {}, "bundle-materialization": {}, "compatibility-builds": {}, "harbor-seed": {}, "forgejo": {}, "flux": {}, "prep": {},
-			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {}, "platform-profile-access": {},
+			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {},
+			"platform-profile-access": {}, "platform-profile-identity": {},
 		}
 		appendItem := func(id string) {
 			if id == "" {

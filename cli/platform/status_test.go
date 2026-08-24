@@ -17,6 +17,8 @@ import (
 	"atum/cli/delivery"
 	"atum/cli/kube"
 	"atum/cli/progress"
+
+	"go.yaml.in/yaml/v3"
 )
 
 type statusEventRecorder struct {
@@ -40,28 +42,30 @@ func TestStatusReadyContract(t *testing.T) {
 	t.Parallel()
 
 	status := Status{
-		BundleReady:          true,
-		FluxReady:            true,
-		PrepReady:            true,
-		ProfilePrepReady:     true,
-		BigBangReady:         true,
-		ProfileAccessReady:   true,
-		LoadBalancerReady:    true,
-		CertificatesReady:    true,
-		RoutesReady:          true,
-		ActiveHelmReleases:   2,
-		ReadyHelmReleases:    2,
-		ActiveWorkloads:      2,
-		ReadyWorkloads:       2,
-		InternalImageOnly:    true,
-		InternalSourcesOnly:  true,
-		RootCAFingerprint:    "ROOT",
-		CAFingerprint:        "ROOT",
-		LocalDNSReady:        true,
-		CATrustReady:         true,
-		HostAccessObserved:   true,
-		LoadBalancerRequired: true,
-		CertificatesRequired: true,
+		BundleReady:             true,
+		FluxReady:               true,
+		PrepReady:               true,
+		ProfilePrepReady:        true,
+		BigBangReady:            true,
+		ProfileAccessReady:      true,
+		ProfileIdentityRequired: true,
+		ProfileIdentityReady:    true,
+		LoadBalancerReady:       true,
+		CertificatesReady:       true,
+		RoutesReady:             true,
+		ActiveHelmReleases:      2,
+		ReadyHelmReleases:       2,
+		ActiveWorkloads:         2,
+		ReadyWorkloads:          2,
+		InternalImageOnly:       true,
+		InternalSourcesOnly:     true,
+		RootCAFingerprint:       "ROOT",
+		CAFingerprint:           "ROOT",
+		LocalDNSReady:           true,
+		CATrustReady:            true,
+		HostAccessObserved:      true,
+		LoadBalancerRequired:    true,
+		CertificatesRequired:    true,
 	}
 	if !status.Ready() {
 		t.Fatal("complete status is not ready")
@@ -86,6 +90,7 @@ func TestStatusReadyRequiresEveryExactObservation(t *testing.T) {
 	ready := Status{
 		BundleReady: true, FluxReady: true, PrepReady: true, ProfilePrepReady: true,
 		BigBangReady: true, ProfileAccessReady: true, LoadBalancerRequired: true,
+		ProfileIdentityRequired: true, ProfileIdentityReady: true,
 		LoadBalancerReady: true, CertificatesRequired: true, CertificatesReady: true,
 		RoutesReady: true, ActiveHelmReleases: 1, ReadyHelmReleases: 1,
 		ActiveWorkloads: 1, ReadyWorkloads: 1,
@@ -101,6 +106,10 @@ func TestStatusReadyRequiresEveryExactObservation(t *testing.T) {
 		{name: "profile prerequisites", mutate: func(status *Status) { status.ProfilePrepReady = false }},
 		{name: "Big Bang", mutate: func(status *Status) { status.BigBangReady = false }},
 		{name: "profile access", mutate: func(status *Status) { status.ProfileAccessReady = false }},
+		{name: "profile identity", mutate: func(status *Status) { status.ProfileIdentityReady = false }},
+		{name: "profile identity failure", mutate: func(status *Status) {
+			status.ProfileIdentityFailure = "reconciliation failed"
+		}},
 		{name: "load balancer", mutate: func(status *Status) { status.LoadBalancerReady = false }},
 		{name: "certificates", mutate: func(status *Status) { status.CertificatesReady = false }},
 		{name: "routes", mutate: func(status *Status) { status.RoutesReady = false }},
@@ -123,6 +132,42 @@ func TestStatusReadyRequiresEveryExactObservation(t *testing.T) {
 				t.Fatalf("status with non-ready %s is ready", test.name)
 			}
 		})
+	}
+}
+
+func TestIdentityJobsRequireBothExactTerminalSuccesses(t *testing.T) {
+	t.Parallel()
+
+	complete := func(namespace, name, owner string) kube.Object {
+		return kube.Object{
+			Namespace: namespace,
+			Name:      name,
+			Labels:    map[string]string{"atum.dev/identity-job": owner},
+			Ready:     true,
+			Object: map[string]any{"status": map[string]any{"conditions": []any{
+				map[string]any{"type": "Complete", "status": "True"},
+			}}},
+		}
+	}
+	jobs := []kube.Object{
+		complete("keycloak", "atum-keycloak-reconcile", "keycloak"),
+		complete("vault", "atum-openbao-reconcile", "openbao"),
+	}
+	ready, failure := identityJobsStatus(jobs)
+	if !ready || failure != "" {
+		t.Fatal("two exact completed identity Jobs are not ready")
+	}
+	jobs[1].Object["status"].(map[string]any)["conditions"] = []any{
+		map[string]any{"type": "Failed", "status": "True"},
+	}
+	ready, failure = identityJobsStatus(jobs)
+	if ready || failure == "" {
+		t.Fatal("failed OpenBao Job is identity-ready")
+	}
+	jobs[1] = complete("vault", "atum-openbao-reconcile", "other")
+	ready, failure = identityJobsStatus(jobs)
+	if ready || failure == "" {
+		t.Fatal("Job with the wrong identity owner label is ready")
 	}
 }
 
@@ -878,27 +923,215 @@ func TestPendingLockedImageIsNotReportedAsDrift(t *testing.T) {
 	}
 }
 
-func TestExactKustomizationDependencies(t *testing.T) {
+func TestBundledFluxConsumersRejectTimingDrift(t *testing.T) {
 	t.Parallel()
 
-	object := map[string]any{
-		"spec": map[string]any{
-			"dependsOn": []any{
-				map[string]any{"name": "prep"},
-				map[string]any{"name": "profile-prep"},
+	root := t.TempDir()
+	desired := writeFluxConsumerBundleFixture(t, root)
+	expectations, err := bundledFluxConsumerExpectations(
+		&delivery.DeploymentBundle{SourceRoot: root}, desired)
+	if err != nil {
+		t.Fatalf("decode bundled Flux consumers: %v", err)
+	}
+	if len(expectations) != 5 {
+		t.Fatalf("bundled Flux consumer count = %d, want five", len(expectations))
+	}
+	for _, expected := range expectations {
+		if strings.Contains(fmt.Sprint(expected.spec), "${ATUM_") {
+			t.Fatalf("bundled Flux consumer %s retains an unsubstituted profile value", expected.name)
+		}
+		force, found := expected.spec["force"].(bool)
+		want := expected.name == "platform-profile-identity"
+		if !found || force != want {
+			t.Fatalf("bundled Flux consumer %s force = %v, %t; want %t",
+				expected.name, force, found, want)
+		}
+	}
+	canonical := fluxConsumerObjects(expectations)
+	if !exactFluxConsumerObjects(canonical, expectations) {
+		t.Fatal("canonical bundled Flux consumer topology was rejected")
+	}
+
+	for _, name := range []string{
+		"platform-profile-prep",
+		"platform-profile-access",
+		"platform-profile-identity",
+	} {
+		for _, field := range []string{"interval", "retryInterval", "timeout"} {
+			for _, absent := range []bool{false, true} {
+				mutation := "changed"
+				if absent {
+					mutation = "missing"
+				}
+				t.Run(name+"/"+field+"/"+mutation, func(t *testing.T) {
+					objects := fluxConsumerObjects(expectations)
+					spec := fluxConsumerObjectSpec(t, objects, name)
+					if absent {
+						delete(spec, field)
+					} else {
+						spec[field] = "1s"
+					}
+					if exactFluxConsumerObjects(objects, expectations) {
+						t.Fatalf("%s %s %s was accepted", name, mutation, field)
+					}
+				})
+			}
+		}
+	}
+	objects := fluxConsumerObjects(expectations)
+	fluxConsumerObjectSpec(t, objects, "bigbang")["timeout"] = "1s"
+	if exactFluxConsumerObjects(objects, expectations) {
+		t.Fatal("changed bigbang timeout was accepted")
+	}
+	for _, expected := range expectations {
+		for _, missing := range []bool{false, true} {
+			mutation := "changed"
+			if missing {
+				mutation = "missing"
+			}
+			t.Run(expected.name+"/force/"+mutation, func(t *testing.T) {
+				objects := fluxConsumerObjects(expectations)
+				spec := fluxConsumerObjectSpec(t, objects, expected.name)
+				if missing {
+					delete(spec, "force")
+				} else {
+					spec["force"] = !expected.spec["force"].(bool)
+				}
+				if exactFluxConsumerObjects(objects, expectations) {
+					t.Fatalf("%s %s force was accepted", expected.name, mutation)
+				}
+			})
+		}
+	}
+}
+
+func writeFluxConsumerBundleFixture(t *testing.T, root string) config.Document {
+	t.Helper()
+	type fixture struct {
+		file, name, path, interval, retry, timeout string
+		wait, force                                bool
+		dependencies                               []string
+		profile, identity                          bool
+	}
+	fixtures := [...]fixture{
+		{
+			file: "prep.yaml", name: "prep", path: "./platform/apps/prep",
+			interval: "10m", retry: "2m", timeout: "15m",
+		},
+		{
+			file: "platform-profile-prep.yaml", name: "platform-profile-prep",
+			path:     "./platform/profiles/${ATUM_PLATFORM_PROFILE}/prep",
+			interval: "10m", retry: "2m", timeout: "15m", wait: true,
+			dependencies: []string{"prep"}, profile: true, identity: true,
+		},
+		{
+			file: "bigbang.yaml", name: "bigbang", path: "./platform/apps/bigbang",
+			interval: "10m", retry: "2m", timeout: "35m", wait: true,
+			dependencies: []string{"prep", "platform-profile-prep"},
+		},
+		{
+			file: "platform-profile-access.yaml", name: "platform-profile-access",
+			path:     "./platform/profiles/${ATUM_PLATFORM_PROFILE}/access",
+			interval: "10m", retry: "2m", timeout: "15m", wait: true,
+			dependencies: []string{"bigbang"}, profile: true,
+		},
+		{
+			file: "platform-profile-identity.yaml", name: "platform-profile-identity",
+			path:     "./platform/profiles/${ATUM_PLATFORM_PROFILE}/identity",
+			interval: "10m", retry: "2m", timeout: "20m", wait: true, force: true,
+			dependencies: []string{"platform-profile-access"}, profile: true, identity: true,
+		},
+	}
+	directory := filepath.Join(root, "platform", "clusters", "atum")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatalf("create Flux consumer fixture directory: %v", err)
+	}
+	for _, item := range fixtures {
+		spec := map[string]any{
+			"interval": item.interval, "retryInterval": item.retry, "timeout": item.timeout,
+			"prune": true, "wait": item.wait,
+			"sourceRef": map[string]any{
+				"kind": "GitRepository", "name": "flux-system",
+			},
+			"path": item.path,
+		}
+		spec["force"] = item.force
+		if len(item.dependencies) != 0 {
+			dependencies := make([]any, len(item.dependencies))
+			for index, name := range item.dependencies {
+				dependencies[index] = map[string]any{"name": name}
+			}
+			spec["dependsOn"] = dependencies
+		}
+		if item.profile {
+			postBuild := map[string]any{"substitute": map[string]any{
+				"ATUM_PLATFORM_DOMAIN": "${ATUM_PLATFORM_DOMAIN}",
+			}}
+			if item.identity {
+				postBuild["substituteFrom"] = []any{map[string]any{
+					"kind": "Secret", "name": "atum-platform-identity", "optional": true,
+				}}
+			}
+			spec["postBuild"] = postBuild
+		}
+		data, err := yaml.Marshal(map[string]any{
+			"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+			"kind":       "Kustomization",
+			"metadata": map[string]any{
+				"name": item.name, "namespace": "flux-system",
+			},
+			"spec": spec,
+		})
+		if err != nil {
+			t.Fatalf("encode bundled Flux consumer %s: %v", item.name, err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, item.file), data, 0o600); err != nil {
+			t.Fatalf("write bundled Flux consumer %s: %v", item.name, err)
+		}
+	}
+	return config.Document{
+		Project:  config.ProjectConfig{Cluster: "atum"},
+		Platform: config.Platform{Directory: "platform"},
+		Infrastructure: config.Infrastructure{
+			Active: "local",
+			Targets: map[string]config.InfrastructureTarget{
+				"local": {
+					PlatformProfile: "local",
+					LocalAccess:     &config.LocalAccess{Domain: "atum.test"},
+				},
 			},
 		},
 	}
-	if !exactKustomizationDependencies(object, []string{"prep", "profile-prep"}) {
-		t.Fatal("exact dependency sequence rejected")
+}
+
+func fluxConsumerObjects(expectations []fluxConsumerExpectation) []kube.Object {
+	objects := make([]kube.Object, len(expectations))
+	for index, expected := range expectations {
+		spec := make(map[string]any, len(expected.spec))
+		for key, value := range expected.spec {
+			spec[key] = value
+		}
+		objects[index] = kube.Object{
+			Name: expected.name, Namespace: expected.namespace,
+			Object: map[string]any{
+				"apiVersion": expected.apiVersion,
+				"kind":       expected.kind,
+				"spec":       spec,
+			},
+		}
 	}
-	if exactKustomizationDependencies(object, []string{"profile-prep", "prep"}) {
-		t.Fatal("reordered dependency sequence accepted")
+	return objects
+}
+
+func fluxConsumerObjectSpec(t *testing.T, objects []kube.Object, name string) map[string]any {
+	t.Helper()
+	for index := range objects {
+		if objects[index].Name == name {
+			return objects[index].Object["spec"].(map[string]any)
+		}
 	}
-	object["spec"].(map[string]any)["dependsOn"].([]any)[0].(map[string]any)["namespace"] = "flux-system"
-	if exactKustomizationDependencies(object, []string{"prep", "profile-prep"}) {
-		t.Fatal("dependency with undeclared field accepted")
-	}
+	t.Fatalf("Flux consumer fixture omits %s", name)
+	return nil
 }
 
 func TestSubstituteProfileValuesUsesFluxSemantics(t *testing.T) {

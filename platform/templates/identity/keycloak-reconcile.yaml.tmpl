@@ -1,0 +1,92 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atum-keycloak-reconcile
+  namespace: keycloak
+  labels:
+    atum.dev/identity-job: keycloak
+  annotations:
+    atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: atum-keycloak-reconcile
+        atum.dev/identity-job: keycloak
+      annotations:
+        atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+        sidecar.istio.io/inject: "false"
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconcile
+          image: {{ .KeycloakImage }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+{{ indent 14 .Script }}
+          env:
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: username
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: password
+            - name: ADMIN_GROUP
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: group
+            - name: BOOTSTRAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: bootstrap-password
+{{- range .Confidential }}
+            - name: {{ .EnvKey }}
+              valueFrom:
+                secretKeyRef:
+                  name: atum-keycloak-reconcile
+                  key: {{ .ID }}
+{{- end }}
+          volumeMounts:
+            - name: ca
+              mountPath: /var/run/atum-ca
+              readOnly: true
+            - name: kcadm
+              mountPath: /var/run/atum-kcadm
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: ca
+          secret:
+            secretName: atum-sso-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: kcadm
+          emptyDir:
+            sizeLimit: 8Mi

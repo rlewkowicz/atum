@@ -564,10 +564,12 @@ func validateBigBangFluxBinding(root string, sources config.SourceRegistry, sour
 		return errors.New("Big Bang HelmRelease does not exactly bind the managed GitRepository chart revision")
 	}
 	valuesFrom, _ := releaseSpec["valuesFrom"].([]any)
-	if len(valuesFrom) != 3 || !matchesValuesSource(valuesFrom[0], "ConfigMap", "bigbang-operational-values", false) ||
-		!matchesValuesSource(valuesFrom[1], "ConfigMap", "bigbang-generated-values", false) ||
-		!matchesValuesSource(valuesFrom[2], "ConfigMap", "bigbang-target-values", false) {
-		return errors.New("Big Bang HelmRelease valuesFrom order does not match operational, generated, and target values")
+	if len(valuesFrom) != 5 || !matchesValuesSource(valuesFrom[0], "ConfigMap", "bigbang-operational-values", "values.yaml", "", false) ||
+		!matchesValuesSource(valuesFrom[1], "ConfigMap", "bigbang-generated-values", "values.yaml", "", false) ||
+		!matchesValuesSource(valuesFrom[2], "ConfigMap", "bigbang-target-values", "values.yaml", "", false) ||
+		!matchesValuesSource(valuesFrom[3], "Secret", "atum-platform-identity-values", "values.yaml", "", true) ||
+		!matchesValuesSource(valuesFrom[4], "Secret", "atum-sso-ca", "ca.crt", "sso.certificateAuthority.cert", true) {
+		return errors.New("Big Bang HelmRelease valuesFrom order does not match operational, generated, target, identity, and SSO CA values")
 	}
 	return nil
 }
@@ -576,14 +578,24 @@ func internalSourceURL(sources config.SourceRegistry, organization, repository s
 	return strings.TrimSuffix(sources.ClusterURL, "/") + "/" + organization + "/" + repository + ".git"
 }
 
-func matchesValuesSource(raw any, kind, name string, optional bool) bool {
+func matchesValuesSource(raw any, kind, name, key, targetPath string, optional bool) bool {
 	value, ok := raw.(map[string]any)
 	if !ok {
 		return false
 	}
 	actualKind, _ := value["kind"].(string)
 	actualName, _ := value["name"].(string)
-	key, _ := value["valuesKey"].(string)
+	actualKey, _ := value["valuesKey"].(string)
+	actualTarget, targetFound := value["targetPath"].(string)
 	actualOptional, _ := value["optional"].(bool)
-	return actualKind == kind && actualName == name && key == "values.yaml" && actualOptional == optional
+	expectedLength := 3
+	if optional {
+		expectedLength++
+	}
+	if targetPath != "" {
+		expectedLength++
+	}
+	return len(value) == expectedLength && actualKind == kind && actualName == name &&
+		actualKey == key && actualOptional == optional &&
+		targetFound == (targetPath != "") && actualTarget == targetPath
 }

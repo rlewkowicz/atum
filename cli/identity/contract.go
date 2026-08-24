@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,18 @@ import (
 
 const SchemaVersion = "atum.dev/identity/v1"
 
+const (
+	ProfilePrepKustomizationName     = "platform-profile-prep"
+	ProfileAccessKustomizationName   = "platform-profile-access"
+	ProfileIdentityKustomizationName = "platform-profile-identity"
+	KeycloakJobNamespace             = "keycloak"
+	KeycloakJobName                  = "atum-keycloak-reconcile"
+	KeycloakJobOwner                 = "keycloak"
+	OpenBaoJobNamespace              = "vault"
+	OpenBaoJobName                   = "atum-openbao-reconcile"
+	OpenBaoJobOwner                  = "openbao"
+)
+
 var (
 	identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	hostnamePattern   = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -26,6 +39,7 @@ type ClientType string
 type Integration string
 type Category string
 type Access string
+type Application string
 
 const (
 	PublicPKCE   ClientType = "public-pkce"
@@ -34,6 +48,17 @@ const (
 	NativeOIDC         Integration = "native-oidc"
 	Authservice        Integration = "authservice"
 	FluxReconciliation Integration = "flux-reconciliation"
+
+	Headlamp       Application = "headlamp"
+	Kiali          Application = "kiali"
+	Grafana        Application = "grafana"
+	GitLab         Application = "gitlab"
+	PolicyReporter Application = "policy-reporter"
+	Harbor         Application = "harbor"
+	OpenBao        Application = "openbao"
+	Prometheus     Application = "prometheus"
+	Alertmanager   Application = "alertmanager"
+	OpenSearch     Application = "opensearch"
 
 	Identity      Category = "identity"
 	Development   Category = "development"
@@ -52,6 +77,7 @@ type Administrator struct {
 
 type Client struct {
 	ID                   string      `yaml:"id"`
+	Application          Application `yaml:"application"`
 	Type                 ClientType  `yaml:"type"`
 	Host                 string      `yaml:"host"`
 	Category             Category    `yaml:"category"`
@@ -91,6 +117,7 @@ type Contract struct {
 	clients       []Client
 	byID          map[string]int
 	byHost        map[string]int
+	byApplication map[Application]int
 	canonical     []byte
 }
 
@@ -103,17 +130,27 @@ func Load(root, relative string) (*Contract, error) {
 		return nil, fmt.Errorf("open identity contract %s: %w", relative, err)
 	}
 	defer file.Close()
-	decoder := yaml.NewDecoder(file)
+	return decode(file, relative)
+}
+
+// Parse decodes a detached candidate contract. It lets the updater validate
+// and render one transaction without bypassing the contract's ownership.
+func Parse(data []byte, source string) (*Contract, error) {
+	return decode(bytes.NewReader(data), source)
+}
+
+func decode(reader io.Reader, source string) (*Contract, error) {
+	decoder := yaml.NewDecoder(reader)
 	decoder.KnownFields(true)
 	var decoded contractFile
 	if err := decoder.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("decode identity contract %s: %w", relative, err)
+		return nil, fmt.Errorf("decode identity contract %s: %w", source, err)
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return nil, fmt.Errorf("decode identity contract %s: multiple YAML documents are not allowed", relative)
+			return nil, fmt.Errorf("decode identity contract %s: multiple YAML documents are not allowed", source)
 		}
-		return nil, fmt.Errorf("decode identity contract %s: %w", relative, err)
+		return nil, fmt.Errorf("decode identity contract %s: %w", source, err)
 	}
 	canonical, err := yaml.Marshal(decoded)
 	if err != nil {
@@ -130,13 +167,14 @@ func Load(root, relative string) (*Contract, error) {
 		clients:       append([]Client(nil), decoded.Clients...),
 		byID:          make(map[string]int, len(decoded.Clients)),
 		byHost:        make(map[string]int, len(decoded.Clients)),
+		byApplication: make(map[Application]int, len(decoded.Clients)),
 		canonical:     canonical,
 	}
 	for index := range contract.clients {
 		contract.clients[index].Callbacks = append([]string(nil), contract.clients[index].Callbacks...)
 	}
 	if err := contract.validate(); err != nil {
-		return nil, fmt.Errorf("identity contract %s: %w", relative, err)
+		return nil, fmt.Errorf("identity contract %s: %w", source, err)
 	}
 	return contract, nil
 }
@@ -178,6 +216,7 @@ func (contract *Contract) validate() error {
 	}
 	callbacks := make(map[string]struct{}, len(contract.clients))
 	purposes := make(map[string]struct{}, len(contract.clients))
+	applications := make(map[Application]struct{}, len(contract.clients))
 	endpointIDs := make(map[string]struct{}, len(contract.endpoints))
 	for index, endpoint := range contract.endpoints {
 		if !identifierPattern.MatchString(endpoint.ID) {
@@ -213,6 +252,16 @@ func (contract *Contract) validate() error {
 		if _, exists := contract.byID[client.ID]; exists {
 			return fmt.Errorf("client id %q is duplicated", client.ID)
 		}
+		switch client.Application {
+		case Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, OpenBao,
+			Prometheus, Alertmanager, OpenSearch:
+		default:
+			return fmt.Errorf("client %s has unsupported application %q", client.ID, client.Application)
+		}
+		if _, exists := applications[client.Application]; exists {
+			return fmt.Errorf("application projection %q is duplicated", client.Application)
+		}
+		applications[client.Application] = struct{}{}
 		if _, exists := contract.byHost[client.Host]; exists {
 			return fmt.Errorf("client host %q is duplicated", client.Host)
 		}
@@ -223,6 +272,7 @@ func (contract *Contract) validate() error {
 			return fmt.Errorf("client %s host %q is outside issuer domain %q", client.ID, client.Host, domain)
 		}
 		contract.byID[client.ID], contract.byHost[client.Host] = index, index
+		contract.byApplication[client.Application] = index
 		if client.Type != PublicPKCE && client.Type != Confidential {
 			return fmt.Errorf("client %s has unknown type %q", client.ID, client.Type)
 		}
@@ -230,6 +280,15 @@ func (contract *Contract) validate() error {
 		case NativeOIDC, Authservice, FluxReconciliation:
 		default:
 			return fmt.Errorf("client %s has unknown integration %q", client.ID, client.Integration)
+		}
+		expectedType, expectedIntegration, expectedAudience, expectedMapping :=
+			applicationContract(client.Application, admin.Group)
+		if client.Type != expectedType || client.Integration != expectedIntegration ||
+			client.Audience != expectedAudience ||
+			client.AdministratorMapping != expectedMapping {
+			return fmt.Errorf(
+				"client %s does not match the %s application projection contract",
+				client.ID, client.Application)
 		}
 		switch client.Category {
 		case Identity, Development, Observability:
@@ -261,7 +320,44 @@ func (contract *Contract) validate() error {
 			callbacks[callback] = struct{}{}
 		}
 	}
+	for _, required := range [...]Application{
+		Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, OpenBao,
+		Prometheus, Alertmanager, OpenSearch,
+	} {
+		if _, exists := applications[required]; !exists {
+			return fmt.Errorf("required application projection %q is absent", required)
+		}
+	}
 	return nil
+}
+
+func applicationContract(application Application, administratorGroup string) (
+	ClientType,
+	Integration,
+	bool,
+	string,
+) {
+	switch application {
+	case Headlamp:
+		return PublicPKCE, NativeOIDC, true,
+			"oidc:" + administratorGroup + "=cluster-admin"
+	case Kiali:
+		return Confidential, NativeOIDC, true, "authenticated-cluster-admin"
+	case Grafana:
+		return Confidential, NativeOIDC, false, "Admin"
+	case GitLab:
+		return Confidential, NativeOIDC, false, "adminGroups"
+	case PolicyReporter:
+		return Confidential, NativeOIDC, false, "authenticated-ui-admin"
+	case Harbor:
+		return Confidential, NativeOIDC, false, "oidc-admin-group"
+	case OpenBao:
+		return Confidential, FluxReconciliation, false, "administrator-policy"
+	case Prometheus, Alertmanager, OpenSearch:
+		return Confidential, Authservice, false, "authenticated"
+	default:
+		return "", "", false, ""
+	}
 }
 
 func (contract *Contract) SchemaVersion() string        { return contract.schemaVersion }
@@ -283,6 +379,15 @@ func (contract *Contract) Clients() []Client {
 }
 func (contract *Contract) Client(id string) (Client, bool) {
 	index, exists := contract.byID[id]
+	if !exists {
+		return Client{}, false
+	}
+	client := contract.clients[index]
+	client.Callbacks = append([]string(nil), client.Callbacks...)
+	return client, true
+}
+func (contract *Contract) ClientForApplication(application Application) (Client, bool) {
+	index, exists := contract.byApplication[application]
 	if !exists {
 		return Client{}, false
 	}

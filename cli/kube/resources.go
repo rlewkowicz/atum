@@ -36,6 +36,7 @@ const (
 	Deployment
 	StatefulSet
 	DaemonSet
+	Job
 )
 
 type ListOptions struct {
@@ -435,6 +436,8 @@ func resourceGVR(resource Resource) (schema.GroupVersionResource, error) {
 		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, nil
 	case DaemonSet:
 		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, nil
+	case Job:
+		return schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, nil
 	default:
 		return schema.GroupVersionResource{}, fmt.Errorf("unsupported observed resource %d", resource)
 	}
@@ -477,9 +480,22 @@ func objectReady(object *unstructured.Unstructured) bool {
 	if err != nil || !found {
 		return false
 	}
+	if object.GetKind() == "Job" {
+		for _, raw := range conditions {
+			condition, ok := raw.(map[string]any)
+			if ok && condition["type"] == "Failed" && condition["status"] == "True" {
+				return false
+			}
+		}
+	}
 	for _, raw := range conditions {
 		condition, ok := raw.(map[string]any)
-		if !ok || condition["type"] != "Ready" || condition["status"] != "True" {
+		if !ok || condition["status"] != "True" {
+			continue
+		}
+		conditionType := condition["type"]
+		if conditionType != "Ready" &&
+			!(object.GetKind() == "Job" && conditionType == "Complete") {
 			continue
 		}
 		observed, present := condition["observedGeneration"]

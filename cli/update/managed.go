@@ -324,6 +324,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		filepath.Join(clusterRoot, "bigbang.yaml"),
 		filepath.Join(clusterRoot, "kustomization.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-access.yaml"),
+		filepath.Join(clusterRoot, "platform-profile-identity.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-prep.yaml"),
 		filepath.Join(clusterRoot, "prep.yaml"),
 		filepath.Join(clusterRoot, "flux-system", "platform-profile.yaml"),
@@ -338,7 +339,33 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 			valuesPath,
 			filepath.Join(filepath.Dir(valuesPath), "kustomization.yaml"),
 			filepath.Join(profileRoot, "access", "kustomization.yaml"),
+			filepath.Join(profileRoot, "identity", "kustomization.yaml"),
 		)
+		if profile == "local" {
+			paths = append(paths,
+				filepath.Join(profileRoot, "identity", "contract.yaml"),
+				filepath.Join(profileRoot, "identity", "credentials.yaml"),
+				filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
+				filepath.Join(profileRoot, "identity", "openbao-reconcile.yaml"),
+				filepath.Join(profileRoot, "identity", "receipt.yaml"),
+				filepath.Join(profileRoot, "prep", "identity-values.yaml"),
+				filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
+				filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
+				filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),
+				filepath.Join(profileRoot, "access", "certificates", "vault-sso-ca.yaml"),
+			)
+		}
+	}
+	templateDirectory, err := fssecure.Resolve(tree.root, identityTemplateRoot, false)
+	if err != nil {
+		return err
+	}
+	err = fssecure.WalkRegularFiles(templateDirectory, func(_ string, relative string, _ os.FileInfo) error {
+		paths = append(paths, filepath.ToSlash(filepath.Join(identityTemplateRoot, relative)))
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("snapshot identity templates: %w", err)
 	}
 	for _, asset := range desired.Platform.Flux.Assets {
 		paths = append(paths, asset.File, filepath.Join(filepath.Dir(asset.File), "kustomization.yaml"))

@@ -37,9 +37,12 @@ func TestLoadRejectsDuplicateAndUnknownContractState(t *testing.T) {
 	source := `schemaVersion: atum.dev/identity/v1
 realm: master
 issuer: https://keycloak.atum.test/auth/realms/master
+scopes: [openid, profile, email, groups]
+groupClaim: groups
 administrator: {username: atum, password: atum, group: atum-admins, serverRole: admin}
 clients:
   - id: atum-one
+    application: headlamp
     type: confidential
     host: one.atum.test
     category: development

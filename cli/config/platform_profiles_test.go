@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,44 @@ func TestPlatformProfileSelection(t *testing.T) {
 	}
 	if got, want := chartIDs(document.ActiveBootstrapCharts()), []string{"global", "cloud-only", "both"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("cloud bootstrap charts = %v, want %v", got, want)
+	}
+}
+
+func TestGeneratedIdentityInputsAreRequiredForSourceAdmission(t *testing.T) {
+	t.Parallel()
+
+	project, err := LoadWithOptions("../..", LoadOptions{
+		AllowStale: true, AllowMissingGeneratedIdentity: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	required := generatedIdentityRequiredFiles(
+		project.Desired, project.Desired.Platform.Values.SortedProfileNames())
+	for _, expected := range []string{
+		"platform/clusters/atum/platform-profile-identity.yaml",
+		"platform/profiles/cloud/identity/kustomization.yaml",
+		"platform/profiles/local/identity/kustomization.yaml",
+		"platform/profiles/local/prep/identity-values.yaml",
+		"platform/profiles/local/access/certificates/kustomization.yaml",
+		"platform/profiles/local/access/certificates/harbor-sso-ca.yaml",
+		"platform/profiles/local/access/certificates/keycloak-sso-ca.yaml",
+		"platform/profiles/local/access/certificates/vault-sso-ca.yaml",
+		"platform/profiles/local/identity/credentials.yaml",
+		"platform/profiles/local/identity/keycloak-reconcile.yaml",
+		"platform/profiles/local/identity/openbao-reconcile.yaml",
+		"platform/profiles/local/identity/receipt.yaml",
+	} {
+		if !slices.Contains(required, expected) {
+			t.Errorf("required generated identity inputs omit %s", expected)
+		}
+	}
+	for _, missing := range required {
+		err := project.validate(false, false, map[string][]byte{missing: nil})
+		wanted := "required tracked file " + missing + " is missing"
+		if err == nil || !strings.Contains(err.Error(), wanted) {
+			t.Errorf("omitting %s produced %v, want %q", missing, err, wanted)
+		}
 	}
 }
 

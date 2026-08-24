@@ -54,6 +54,7 @@ func validatePlatformMeshContract(
 	supportSources []resolvedSupportSource,
 	values map[string]any,
 	kubernetesVersion string,
+	openSearchIdentityHost string,
 ) error {
 	consumers, err := config.ActiveWrapperConsumers(platform, values)
 	if err != nil {
@@ -145,6 +146,13 @@ func validatePlatformMeshContract(
 			}
 			if !hasFluentBitAuthorization(rendered.rendered) {
 				return fmt.Errorf("%s has no exact Fluent Bit authorization policy on port 9200", consumer.ReleaseName)
+			}
+			sso, _ := mapAt(releaseValues, "package", "sso")["enabled"].(bool)
+			if sso {
+				if err := validateOpenSearchIdentityWrapper(
+					rendered.rendered, openSearchIdentityHost); err != nil {
+					return fmt.Errorf("%s: %w", consumer.ReleaseName, err)
+				}
 			}
 		default:
 			return fmt.Errorf("unexpected wrapper namespace %s", consumer.Namespace)
@@ -321,14 +329,149 @@ func validateNamespaceWrapper(resources []renderedResource, namespace string) er
 	if namespace == openSearchNamespace {
 		expectedAuthorizationPolicies = 2
 	}
-	if count := countResources(resources, namespace, "AuthorizationPolicy"); count != expectedAuthorizationPolicies {
+	if count := countResources(resources, namespace, "AuthorizationPolicy"); count != expectedAuthorizationPolicies &&
+		!(namespace == openSearchNamespace && count == expectedAuthorizationPolicies+1) {
 		return fmt.Errorf("namespace %s rendered %d AuthorizationPolicies, require %d",
 			namespace, count, expectedAuthorizationPolicies)
 	}
-	if count := countResources(resources, namespace, "NetworkPolicy"); count != 5 {
+	if count := countResources(resources, namespace, "NetworkPolicy"); count != 5 &&
+		!(namespace == openSearchNamespace && count == 7) {
 		return fmt.Errorf("namespace %s rendered %d NetworkPolicies, require five", namespace, count)
 	}
 	return nil
+}
+
+func validateOpenSearchIdentityWrapper(resources []renderedResource, host string) error {
+	if host == "" {
+		return fmt.Errorf("identity wrapper has no canonical OpenSearch host")
+	}
+	if count := countResources(resources, openSearchNamespace, "AuthorizationPolicy"); count != 3 {
+		return fmt.Errorf("identity wrapper rendered %d AuthorizationPolicies, require three", count)
+	}
+	if count := countResources(resources, openSearchNamespace, "NetworkPolicy"); count != 7 {
+		return fmt.Errorf("identity wrapper rendered %d NetworkPolicies, require seven", count)
+	}
+	checks := []struct {
+		kind, description string
+		predicate         func(map[string]any) bool
+	}{
+		{"NetworkPolicy", "Authservice egress policy", isAuthserviceEgress},
+		{"NetworkPolicy", "public gateway ingress policy", isDashboardGatewayIngress},
+		{"AuthorizationPolicy", "public gateway authorization", isDashboardGatewayAuthorization},
+	}
+	for _, check := range checks {
+		if !hasResource(resources, openSearchNamespace, check.kind, check.predicate) {
+			return fmt.Errorf("identity wrapper has no %s", check.description)
+		}
+	}
+	if err := validateOpenSearchRouteCardinality(resources, host); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateOpenSearchRouteCardinality(resources []renderedResource, host string) error {
+	claimCount, routeCount := 0, 0
+	for _, resource := range resources {
+		if resource.key.namespace != openSearchNamespace ||
+			resource.key.kind != "VirtualService" {
+			continue
+		}
+		if slices.Contains(stringSlice(mapAt(resource.object, "spec")["hosts"]), host) {
+			claimCount++
+			routeCount += countOpenSearchDashboardRoutes(resource.object, host)
+		}
+	}
+	if claimCount != 1 || routeCount != 1 {
+		return fmt.Errorf(
+			"identity wrapper rendered %d VirtualServices claiming %s and %d exact Dashboards routes, require one each",
+			claimCount, host, routeCount)
+	}
+	return nil
+}
+
+func isOpenSearchDashboardRoute(object map[string]any, host string) bool {
+	return countOpenSearchDashboardRoutes(object, host) == 1
+}
+
+func countOpenSearchDashboardRoutes(object map[string]any, host string) int {
+	spec := mapAt(object, "spec")
+	if !reflectsOnly(stringSlice(spec["hosts"]), host) ||
+		!reflectsOnly(stringSlice(spec["gateways"]), "istio-gateway/public-ingressgateway") {
+		return 0
+	}
+	count := 0
+	for _, http := range mapSlice(spec["http"]) {
+		for _, route := range mapSlice(http["route"]) {
+			destination := mapAt(route, "destination")
+			if stringAt(destination, "host") == "opensearch-dashboards" &&
+				portNumber(mapAt(destination, "port")["number"]) == 5601 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func isAuthserviceEgress(object map[string]any) bool {
+	spec := mapAt(object, "spec")
+	if !exactLabelSelector(spec["podSelector"], "protect", "keycloak") ||
+		!reflectsOnly(stringSlice(spec["policyTypes"]), "Egress") {
+		return false
+	}
+	rules := mapSlice(spec["egress"])
+	if len(rules) != 1 || !hasDefaultTCPPort(rules[0]["ports"], 10003) {
+		return false
+	}
+	to := mapSlice(rules[0]["to"])
+	return len(to) == 1 &&
+		exactLabelSelector(to[0]["namespaceSelector"], "app.kubernetes.io/name", "authservice") &&
+		exactAppSelector(to[0]["podSelector"], "authservice")
+}
+
+func isDashboardGatewayIngress(object map[string]any) bool {
+	spec := mapAt(object, "spec")
+	if !emptyMap(spec["podSelector"]) ||
+		!reflectsOnly(stringSlice(spec["policyTypes"]), "Ingress") {
+		return false
+	}
+	rules := mapSlice(spec["ingress"])
+	if len(rules) != 1 || !hasDefaultTCPPort(rules[0]["ports"], 5601) {
+		return false
+	}
+	from := mapSlice(rules[0]["from"])
+	return len(from) == 1 &&
+		exactLabelSelector(from[0]["namespaceSelector"], "app.kubernetes.io/name", "istio-gateway") &&
+		exactLabelSelector(from[0]["podSelector"], "istio", "ingressgateway")
+}
+
+func hasDefaultTCPPort(value any, port int) bool {
+	ports := mapSlice(value)
+	if len(ports) != 1 || portNumber(ports[0]["port"]) != port {
+		return false
+	}
+	protocol := stringAt(ports[0], "protocol")
+	return protocol == "" || protocol == "TCP"
+}
+
+func isDashboardGatewayAuthorization(object map[string]any) bool {
+	spec := mapAt(object, "spec")
+	if !exactLabelSelector(spec["selector"], "protect", "keycloak") {
+		return false
+	}
+	rules := mapSlice(spec["rules"])
+	if len(rules) != 1 {
+		return false
+	}
+	for _, source := range mapSlice(rules[0]["from"]) {
+		principals := stringSlice(mapAt(source, "source")["principals"])
+		for _, principal := range principals {
+			if strings.HasPrefix(principal, "cluster.local/ns/istio-gateway/sa/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateMainReleaseDependencies(

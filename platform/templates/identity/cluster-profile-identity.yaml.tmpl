@@ -1,0 +1,25 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-profile-identity
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 20m
+  prune: true
+  wait: true
+  force: true
+  postBuild:
+    substitute:
+      ATUM_PLATFORM_DOMAIN: ${ATUM_PLATFORM_DOMAIN}
+    substituteFrom:
+      - kind: Secret
+        name: atum-platform-identity
+        optional: true
+  dependsOn:
+    - name: platform-profile-access
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform/profiles/${ATUM_PLATFORM_PROFILE}/identity
