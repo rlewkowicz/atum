@@ -16,6 +16,7 @@ import (
 	"atum/cli/config"
 	"atum/cli/delivery"
 	"atum/cli/kube"
+	"atum/cli/orchestration"
 	"atum/cli/progress"
 
 	"go.yaml.in/yaml/v3"
@@ -50,6 +51,8 @@ func TestStatusReadyContract(t *testing.T) {
 		ProfileAccessReady:      true,
 		ProfileIdentityRequired: true,
 		ProfileIdentityReady:    true,
+		ClusterOIDCRequired:     true,
+		ClusterOIDCReady:        true,
 		LoadBalancerReady:       true,
 		CertificatesReady:       true,
 		RoutesReady:             true,
@@ -91,6 +94,7 @@ func TestStatusReadyRequiresEveryExactObservation(t *testing.T) {
 		BundleReady: true, FluxReady: true, PrepReady: true, ProfilePrepReady: true,
 		BigBangReady: true, ProfileAccessReady: true, LoadBalancerRequired: true,
 		ProfileIdentityRequired: true, ProfileIdentityReady: true,
+		ClusterOIDCRequired: true, ClusterOIDCReady: true,
 		LoadBalancerReady: true, CertificatesRequired: true, CertificatesReady: true,
 		RoutesReady: true, ActiveHelmReleases: 1, ReadyHelmReleases: 1,
 		ActiveWorkloads: 1, ReadyWorkloads: 1,
@@ -109,6 +113,10 @@ func TestStatusReadyRequiresEveryExactObservation(t *testing.T) {
 		{name: "profile identity", mutate: func(status *Status) { status.ProfileIdentityReady = false }},
 		{name: "profile identity failure", mutate: func(status *Status) {
 			status.ProfileIdentityFailure = "reconciliation failed"
+		}},
+		{name: "cluster OIDC", mutate: func(status *Status) { status.ClusterOIDCReady = false }},
+		{name: "cluster OIDC failure", mutate: func(status *Status) {
+			status.ClusterOIDCFailure = "authentication digest differs"
 		}},
 		{name: "load balancer", mutate: func(status *Status) { status.LoadBalancerReady = false }},
 		{name: "certificates", mutate: func(status *Status) { status.CertificatesReady = false }},
@@ -251,6 +259,69 @@ func TestRunStatusFamiliesReportsDeterministicFailureOrder(t *testing.T) {
 	if !errors.Is(err, first) || errors.Is(err, second) ||
 		!strings.Contains(err.Error(), "core cluster") {
 		t.Fatalf("family error = %v, want deterministic first family failure", err)
+	}
+}
+
+func TestJoinPlatformObligationsPreservesPreciseFailure(t *testing.T) {
+	t.Parallel()
+
+	precise := errors.New("control-plane node atum-2 did not reload authentication")
+	if err := joinPlatformObligations([2]error{
+		context.Canceled, precise,
+	}); !errors.Is(err, precise) || errors.Is(err, context.Canceled) {
+		t.Fatalf("joined terminal failure = %v", err)
+	}
+	first := errors.New("Flux readiness failed")
+	second := errors.New("OIDC reconciliation failed")
+	err := joinPlatformObligations([2]error{first, second})
+	if !errors.Is(err, first) || !errors.Is(err, second) {
+		t.Fatalf("independent obligation failures were hidden: %v", err)
+	}
+}
+
+func TestCoordinateApplyUsesOneObservationStreamForBothObligations(t *testing.T) {
+	t.Parallel()
+
+	var observations atomic.Int32
+	reconcileStarted := make(chan struct{})
+	releaseReconcile := make(chan struct{})
+	observe := func(context.Context) (platformApplyObservation, error) {
+		round := observations.Add(1)
+		if round == 2 {
+			select {
+			case <-reconcileStarted:
+			default:
+				t.Fatal("platform observation did not overlap OIDC reconciliation")
+			}
+			close(releaseReconcile)
+		}
+		return platformApplyObservation{
+			platformReady:          round >= 2,
+			oidcPrerequisitesReady: true,
+			oidcSpec:               &orchestration.PlatformOIDCSpec{},
+		}, nil
+	}
+	reconcile := func(
+		ctx context.Context,
+		_ *orchestration.PlatformOIDCSpec,
+	) error {
+		close(reconcileStarted)
+		select {
+		case <-releaseReconcile:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := coordinateApplyObligations(
+		ctx, time.Millisecond, true, observe, reconcile,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := observations.Load(); got != 2 {
+		t.Fatalf("status collection rounds = %d, want 2", got)
 	}
 }
 
@@ -891,6 +962,22 @@ func TestPodPermutationProducesIdenticalBoundedImageDiagnostics(t *testing.T) {
 	if first.imageFailureDetail() != second.imageFailureDetail() {
 		t.Fatalf("first failure detail differs across pod permutations:\nfirst: %q\nsecond: %q",
 			first.imageFailureDetail(), second.imageFailureDetail())
+	}
+}
+
+func TestControlPlaneNodeCountExcludesWorkers(t *testing.T) {
+	t.Parallel()
+
+	nodes := []kube.Node{
+		{Name: "control-1", ControlPlane: true},
+		{Name: "worker-1"},
+		{Name: "control-2", ControlPlane: true},
+	}
+	if got := controlPlaneNodeCount(nodes); got != 2 {
+		t.Fatalf("control-plane node count = %d, want 2", got)
+	}
+	if got := controlPlaneNodeCount(nodes[1:2]); got != 0 {
+		t.Fatalf("worker-only control-plane node count = %d, want 0", got)
 	}
 }
 

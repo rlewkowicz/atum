@@ -63,6 +63,9 @@ type Status struct {
 	ProfileIdentityRequired bool             `json:"profileIdentityRequired,omitempty"`
 	ProfileIdentityReady    bool             `json:"profileIdentityReady"`
 	ProfileIdentityFailure  string           `json:"profileIdentityFailure,omitempty"`
+	ClusterOIDCRequired     bool             `json:"clusterOidcRequired,omitempty"`
+	ClusterOIDCReady        bool             `json:"clusterOidcReady"`
+	ClusterOIDCFailure      string           `json:"clusterOidcFailure,omitempty"`
 	OCISources              []ResourceStatus `json:"ociSources"`
 	HelmReleases            []ResourceStatus `json:"helmReleases"`
 	LoadBalancerRequired    bool             `json:"loadBalancerRequired,omitempty"`
@@ -110,12 +113,19 @@ func (status Status) Ready() bool {
 		status.BigBangReady && status.ProfileAccessReady &&
 		(!status.ProfileIdentityRequired ||
 			(status.ProfileIdentityReady && status.ProfileIdentityFailure == "")) &&
+		(!status.ClusterOIDCRequired ||
+			(status.ClusterOIDCReady && status.ClusterOIDCFailure == "")) &&
 		(!status.LoadBalancerRequired || status.LoadBalancerReady) &&
 		(!status.CertificatesRequired || (status.CertificatesReady && status.RoutesReady)) &&
 		hostReady &&
 		status.ActiveHelmReleases > 0 && status.ActiveHelmReleases == status.ReadyHelmReleases &&
 		status.ActiveWorkloads == status.ReadyWorkloads &&
 		status.NonReadyPods == 0 && status.InternalImageOnly && status.InternalSourcesOnly
+}
+
+func (status Status) readyBeforeClusterOIDC() bool {
+	status.ClusterOIDCRequired = false
+	return status.Ready()
 }
 
 func (service Service) Validate() error {

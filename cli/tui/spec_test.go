@@ -42,13 +42,15 @@ func TestProjectPhasesAreDeterministicAndProfileScoped(t *testing.T) {
 	local := phaseItemIDs(t, first, progress.Platform)
 	for _, id := range []string{
 		"global", "kube-vip", "local-dns", "local-certificates", "platform-profile-identity",
-		"headlamp", "monitoring",
+		"cluster-oidc", "headlamp", "monitoring",
 	} {
 		if !slices.Contains(local, id) {
 			t.Errorf("local rows %v omit %q", local, id)
 		}
 	}
-	for _, id := range []string{"kube-vip", "local-dns", "local-certificates", "platform-profile-identity"} {
+	for _, id := range []string{
+		"kube-vip", "local-dns", "local-certificates", "platform-profile-identity", "cluster-oidc",
+	} {
 		if got := countID(local, id); got != 1 {
 			t.Errorf("local row %q appears %d times, want one owner", id, got)
 		}
@@ -63,7 +65,7 @@ func TestProjectPhasesAreDeterministicAndProfileScoped(t *testing.T) {
 		t.Fatalf("cloud rows omit active charts: %v", cloud)
 	}
 	for _, id := range []string{
-		"kube-vip", "local-dns", "local-certificates", "platform-profile-identity",
+		"kube-vip", "local-dns", "local-certificates", "platform-profile-identity", "cluster-oidc",
 	} {
 		if slices.Contains(cloud, id) {
 			t.Errorf("cloud rows include local-only item %q: %v", id, cloud)

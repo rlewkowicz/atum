@@ -71,10 +71,15 @@ func (service Service) runKubespray(
 		progress.Fail(ctx, progress.Orchestration, id, label, err)
 		return err
 	}
+	oidc, err := service.initialKubernetesOIDC()
+	if err != nil {
+		return fmt.Errorf("derive initial Kubernetes OIDC configuration: %w", err)
+	}
 	extraVars, err := json.Marshal(struct {
-		Serial      int    `json:"serial"`
-		KubeVersion string `json:"kube_version"`
-	}{Serial: 1, KubeVersion: toolchain.Release.Kubernetes})
+		Serial         int                      `json:"serial"`
+		KubeVersion    string                   `json:"kube_version"`
+		KubernetesOIDC *kubesprayOIDCProjection `json:"atum_kubernetes_oidc,omitempty"`
+	}{Serial: 1, KubeVersion: toolchain.Release.Kubernetes, KubernetesOIDC: oidc})
 	if err != nil {
 		return fmt.Errorf("encode managed Kubespray variables: %w", err)
 	}

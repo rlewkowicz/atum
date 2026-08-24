@@ -74,6 +74,7 @@ func (service Service) ClearLocalState() error {
 		installIntentPath,
 		identityVariablesPath,
 		platformIdentityVariablesPath,
+		platformOIDCVariablesPath,
 	} {
 		if err := fssecure.RemoveRegular(service.Project.Root, relative); err != nil {
 			return err

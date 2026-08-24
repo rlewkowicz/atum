@@ -806,6 +806,7 @@ func (service *Service) resolveKubernetesCandidates(
 		return nil, err
 	}
 	byKubernetes := make(map[string]kubernetesCandidate)
+	var oidcFailures []string
 	for index, release := range latest.Releases {
 		candidate := latest
 		if index != 0 {
@@ -837,6 +838,11 @@ func (service *Service) resolveKubernetesCandidates(
 			return nil, err
 		}
 		for _, kubernetes := range compatible {
+			if err := validateKubesprayOIDCLifecycle(candidate.Checkout, kubernetes.Version); err != nil {
+				oidcFailures = append(oidcFailures,
+					candidate.Source.Version+"/Kubernetes "+kubernetes.Version+": "+err.Error())
+				continue
+			}
 			kubernetesVersion, _ := semver.NewVersion(kubernetes.Version)
 			delta := int64(kubernetesVersion.Minor()) - int64(minimumKubernetes.Minor())
 			if kubernetesVersion.Major() != minimumKubernetes.Major() || delta < 0 ||
@@ -850,6 +856,10 @@ func (service *Service) resolveKubernetesCandidates(
 		}
 	}
 	if len(byKubernetes) == 0 {
+		if len(oidcFailures) != 0 {
+			return nil, fmt.Errorf("%w for the selected Big Bang package set: %s",
+				errNoCompatibleKubernetes, strings.Join(oidcFailures, "; "))
+		}
 		return nil, fmt.Errorf("%w for the selected Big Bang package set", errNoCompatibleKubernetes)
 	}
 	result := make([]kubernetesCandidate, 0, len(byKubernetes))

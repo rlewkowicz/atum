@@ -260,8 +260,11 @@ func (service Service) applyPlatform(
 		return err
 	}
 	progress.Start(ctx, progress.Platform, "bigbang", "Big Bang", "Flux reconciliation in progress")
-	if err := service.waitPlatformReadiness(
-		ctx, client, bundle, publication, timeout); err != nil {
+	coordinationContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := service.coordinatePlatformApply(
+		coordinationContext, client, bundle, publication,
+	); err != nil {
 		return err
 	}
 	status, err := service.statusWithBundle(ctx, client, bundle, credentials)
@@ -275,6 +278,30 @@ func (service Service) applyPlatform(
 		return fmt.Errorf("record platform identity: %w", err)
 	}
 	service.logger().InfoContext(ctx, "platform apply complete", "bundle", bundle.ArchiveSHA256)
+	return nil
+}
+
+func joinPlatformObligations(obligations [2]error) error {
+	if obligations[0] == nil && obligations[1] == nil {
+		return nil
+	}
+	if obligations[0] != nil && obligations[1] != nil {
+		if errors.Is(obligations[1], context.Canceled) &&
+			!errors.Is(obligations[0], context.Canceled) {
+			return obligations[0]
+		}
+		if errors.Is(obligations[0], context.Canceled) &&
+			!errors.Is(obligations[1], context.Canceled) {
+			return obligations[1]
+		}
+		return errors.Join(obligations[0], obligations[1])
+	}
+	if obligations[0] != nil {
+		return obligations[0]
+	}
+	if obligations[1] != nil {
+		return obligations[1]
+	}
 	return nil
 }
 

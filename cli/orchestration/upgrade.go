@@ -242,11 +242,13 @@ func (service Service) ConvergePlanned(
 			toolchain.Release.Kubespray.Commit != release.Kubespray.Commit {
 			return UpgradePlan{}, fmt.Errorf("prepared Kubespray toolchain %s does not match Kubernetes %s", toolchain.Release.Kubespray.Commit, release.Kubernetes)
 		}
-		if err := service.runKubespray(ctx, toolchain, inventoryPath, "upgrade-cluster.yml", rawArgs); err != nil {
-			return UpgradePlan{}, err
-		}
-		if err := service.waitHealthy(ctx, client, release.Kubernetes); err != nil {
-			return UpgradePlan{}, fmt.Errorf("post-upgrade health gate for Kubernetes %s: %w", release.Kubernetes, err)
+		if err := service.convergeExistingKubespray(
+			ctx, client, toolchain, inventoryPath, "upgrade-cluster.yml",
+			rawArgs, release.Kubernetes,
+		); err != nil {
+			return UpgradePlan{}, fmt.Errorf(
+				"converge existing cluster at Kubernetes %s: %w",
+				release.Kubernetes, err)
 		}
 		state = service.identityForRelease(release, state)
 		if index == len(plan.Steps)-1 {
@@ -288,11 +290,10 @@ func (service Service) convergeCurrentConfiguration(
 		return ClusterState{}, errors.New("prepared Kubespray toolchain does not match the current release")
 	}
 	toolchain := toolchains[0]
-	if err := service.runKubespray(ctx, toolchain, inventoryPath, "cluster.yml", rawArgs); err != nil {
-		return ClusterState{}, err
-	}
-	if err := service.waitHealthy(ctx, client, target.Kubernetes); err != nil {
-		return ClusterState{}, fmt.Errorf("current cluster configuration health gate: %w", err)
+	if err := service.convergeExistingKubespray(
+		ctx, client, toolchain, inventoryPath, "cluster.yml", rawArgs, target.Kubernetes,
+	); err != nil {
+		return ClusterState{}, fmt.Errorf("current cluster configuration convergence: %w", err)
 	}
 	if err := service.requireOrchestrationInput(inventoryPath, inputSHA); err != nil {
 		return ClusterState{}, err
@@ -303,6 +304,46 @@ func (service Service) convergeCurrentConfiguration(
 		return ClusterState{}, err
 	}
 	return state, nil
+}
+
+func (service Service) convergeExistingKubespray(
+	ctx context.Context,
+	client *clusterClient,
+	toolchain Toolchain,
+	inventoryPath, playbook string,
+	rawArgs []string,
+	kubernetes string,
+) error {
+	return completeExistingKubesprayHandoff(
+		func() error {
+			return service.runKubespray(ctx, toolchain, inventoryPath, playbook, rawArgs)
+		},
+		func() error {
+			if err := service.waitHealthy(ctx, client, kubernetes); err != nil {
+				return fmt.Errorf("post-Kubespray health gate: %w", err)
+			}
+			return nil
+		},
+		func() error {
+			if err := service.reconcileExistingPlatformOIDC(ctx, client, kubernetes); err != nil {
+				return fmt.Errorf("restore platform Kubernetes OIDC: %w", err)
+			}
+			return nil
+		},
+	)
+}
+
+func completeExistingKubesprayHandoff(
+	runKubespray, waitHealthy, reconcilePlatformOIDC func() error,
+) error {
+	for _, step := range [...]func() error{
+		runKubespray, waitHealthy, reconcilePlatformOIDC,
+	} {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (service Service) ValidatePlan(plan UpgradePlan, mode ConvergenceMode) error {

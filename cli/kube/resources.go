@@ -114,6 +114,7 @@ type Node struct {
 	Unschedulable  bool
 	KubeletVersion string
 	Ready          bool
+	ControlPlane   bool
 }
 
 func (observer *Observer) ServerVersion(ctx context.Context) (string, error) {
@@ -392,6 +393,7 @@ func (observer *Observer) Nodes(ctx context.Context) ([]Node, error) {
 			result = append(result, Node{
 				Name: item.Name, Unschedulable: item.Spec.Unschedulable,
 				KubeletVersion: item.Status.NodeInfo.KubeletVersion, Ready: ready,
+				ControlPlane: nodeHasControlPlaneRole(item.Labels),
 			})
 		}
 		continuation = page.Continue
@@ -399,6 +401,15 @@ func (observer *Observer) Nodes(ctx context.Context) ([]Node, error) {
 			return result, nil
 		}
 	}
+}
+
+func nodeHasControlPlaneRole(labels map[string]string) bool {
+	if labels == nil {
+		return false
+	}
+	_, controlPlane := labels["node-role.kubernetes.io/control-plane"]
+	_, legacyMaster := labels["node-role.kubernetes.io/master"]
+	return controlPlane || legacyMaster
 }
 
 func (observer *Observer) DeploymentsReady(ctx context.Context, namespace string, names []string) bool {

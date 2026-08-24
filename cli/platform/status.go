@@ -24,6 +24,7 @@ import (
 	"atum/cli/infra"
 	"atum/cli/kube"
 	atumoci "atum/cli/oci"
+	"atum/cli/orchestration"
 	"atum/cli/progress"
 	atumsecrets "atum/cli/secrets"
 
@@ -65,7 +66,10 @@ func (service Service) statusWithBundle(
 	bundle *delivery.DeploymentBundle,
 	credentials atumsecrets.Document,
 ) (Status, error) {
-	result, _, err := service.collectStatus(ctx, client, bundle, &credentials, nil)
+	result, _, spec, err := service.collectStatus(ctx, client, bundle, &credentials, nil)
+	if spec != nil {
+		defer spec.Clear()
+	}
 	if err != nil {
 		return Status{}, err
 	}
@@ -83,10 +87,10 @@ func (service Service) collectStatus(
 	bundle *delivery.DeploymentBundle,
 	credentials *atumsecrets.Document,
 	publication *publicationReceipt,
-) (Status, platformSnapshot, error) {
+) (Status, platformSnapshot, *orchestration.PlatformOIDCSpec, error) {
 	_, exists := service.Project.Desired.ActiveTarget()
 	if !exists {
-		return Status{}, platformSnapshot{}, fmt.Errorf("active infrastructure target %q is not defined",
+		return Status{}, platformSnapshot{}, nil, fmt.Errorf("active infrastructure target %q is not defined",
 			service.Project.Desired.Infrastructure.Active)
 	}
 	var snapshot platformSnapshot
@@ -102,7 +106,7 @@ func (service Service) collectStatus(
 	} else if publication == nil || !publication.registry.imageExact ||
 		!publication.registry.chartsExact || !publication.registry.chartsImmutable ||
 		len(publication.runtimeImages) == 0 {
-		return Status{}, platformSnapshot{}, errors.New(
+		return Status{}, platformSnapshot{}, nil, errors.New(
 			"verified seed publication receipt is required for apply readiness")
 	} else {
 		registryTask = statusFamilyTask{name: "seed publication receipt", run: func(context.Context) error {
@@ -147,17 +151,27 @@ func (service Service) collectStatus(
 			}},
 		},
 	); err != nil {
-		return Status{}, platformSnapshot{}, err
+		return Status{}, platformSnapshot{}, nil, err
 	}
-	return mergeStatusObservations(service, observations), snapshot, nil
+	defer clear(observations.local.certificates.rootPEM)
+	oidcObservation, oidcSpec, err := service.observeClusterOIDC(
+		snapshot, observations.local.certificates)
+	if err != nil {
+		return Status{}, platformSnapshot{}, nil, fmt.Errorf("observe cluster OIDC: %w", err)
+	}
+	observations.oidc = oidcObservation
+	return mergeStatusObservations(service, observations), snapshot, oidcSpec, nil
 }
 
 const statusFamilyLimit = 4
 const statusHarborImageLimit = statusFamilyLimit - 1
 
 type platformSnapshot struct {
-	resources map[kube.Resource][]kube.Object
-	pods      []kube.Pod
+	resources     map[kube.Resource][]kube.Object
+	pods          []kube.Pod
+	nodes         []kube.Node
+	oidcReceipt   map[string]string
+	serverVersion string
 }
 
 var platformWorkloadResources = [...]kube.Resource{
@@ -266,7 +280,10 @@ func collectPlatformSnapshot(ctx context.Context, client *kube.Observer) (platfo
 	}
 	results := make([]resourceResult, len(resources))
 	var pods []kube.Pod
-	tasks := make([]statusFamilyTask, 0, len(resources)+1)
+	var nodes []kube.Node
+	var oidcReceipt map[string]string
+	var serverVersion string
+	tasks := make([]statusFamilyTask, 0, len(resources)+4)
 	for index := range resources {
 		index := index
 		tasks = append(tasks, statusFamilyTask{
@@ -292,13 +309,37 @@ func collectPlatformSnapshot(ctx context.Context, client *kube.Observer) (platfo
 		pods, err = client.Pods(taskContext, "", "")
 		return err
 	}})
+	tasks = append(tasks, statusFamilyTask{name: "Kubernetes Nodes", run: func(taskContext context.Context) error {
+		var err error
+		nodes, err = client.Nodes(taskContext)
+		return err
+	}})
+	tasks = append(tasks, statusFamilyTask{name: "Kubernetes OIDC receipt", run: func(taskContext context.Context) error {
+		value, found, err := client.ConfigMapData(
+			taskContext,
+			orchestration.PlatformOIDCReceiptNamespace,
+			orchestration.PlatformOIDCReceiptName,
+		)
+		if err != nil {
+			return err
+		}
+		if found {
+			oidcReceipt = value
+		}
+		return nil
+	}})
+	tasks = append(tasks, statusFamilyTask{name: "Kubernetes version", run: func(taskContext context.Context) error {
+		var err error
+		serverVersion, err = client.ServerVersion(taskContext)
+		return err
+	}})
 	if err := runStatusFamilies(ctx, statusFamilyLimit, tasks); err != nil {
 		return platformSnapshot{}, fmt.Errorf("collect platform snapshot: %w", err)
 	}
 	canonicalizePlatformPods(pods)
 	snapshot := platformSnapshot{
 		resources: make(map[kube.Resource][]kube.Object, len(results)),
-		pods:      pods,
+		pods:      pods, nodes: nodes, oidcReceipt: oidcReceipt, serverVersion: serverVersion,
 	}
 	for index := range results {
 		snapshot.resources[results[index].resource] = results[index].items
@@ -361,6 +402,12 @@ type statusObservations struct {
 	sources   sourceObservation
 	registry  registryObservation
 	local     localAccessObservation
+	oidc      clusterOIDCObservation
+}
+
+type clusterOIDCObservation struct {
+	ready   bool
+	failure string
 }
 
 func (service Service) observeCoreCluster(
@@ -715,6 +762,8 @@ func mergeStatusObservations(service Service, observed statusObservations) Statu
 		ProfileAccessReady:     observed.core.profileAccessReady,
 		ProfileIdentityReady:   observed.core.profileIdentityReady,
 		ProfileIdentityFailure: observed.core.profileIdentityFailure,
+		ClusterOIDCReady:       observed.oidc.ready,
+		ClusterOIDCFailure:     observed.oidc.failure,
 		OCISources:             observed.sources.ociSources, HelmReleases: observed.workloads.helmReleases,
 		ActiveHelmReleases: observed.workloads.activeHelmReleases,
 		ReadyHelmReleases:  observed.workloads.readyHelmReleases,
@@ -741,6 +790,7 @@ func mergeStatusObservations(service Service, observed statusObservations) Statu
 		RoutesReady:           observed.local.routesReady,
 	}
 	_, result.ProfileIdentityRequired = service.Project.Desired.ActiveIdentityContractPath()
+	result.ClusterOIDCRequired = result.ProfileIdentityRequired
 	if !observed.registry.imageExact {
 		result.addImageIssue("Harbor publication differs from the locked image set")
 	}
@@ -951,6 +1001,15 @@ func reportExactStatus(ctx context.Context, status Status) {
 				"identity reconciliation complete", status.ProfileIdentityReady)
 		}
 	}
+	if status.ClusterOIDCRequired {
+		if status.ClusterOIDCFailure != "" {
+			progress.Fail(ctx, progress.Platform, "cluster-oidc",
+				"Cluster OIDC", errors.New(status.ClusterOIDCFailure))
+		} else {
+			report("cluster-oidc", "Cluster OIDC",
+				"all control-plane authentication digests exact", status.ClusterOIDCReady)
+		}
+	}
 	if status.LoadBalancerRequired {
 		report("kube-vip", "kube-vip", "gateway VIPs and allocator range exact", status.LoadBalancerReady)
 	}
@@ -974,6 +1033,7 @@ type certificateExpectation struct {
 type localCertificateObservation struct {
 	ready           bool
 	rootFingerprint string
+	rootPEM         []byte
 	resources       []ResourceStatus
 }
 
@@ -1054,6 +1114,7 @@ func (service Service) observeLocalCertificatesSnapshot(
 		certificate, validationErr := infra.ValidateRootCA(root, time.Now())
 		if validationErr == nil {
 			result.rootFingerprint = certificate.Fingerprint
+			result.rootPEM = append([]byte(nil), certificate.PEM...)
 			certificate.Clear()
 		} else {
 			result.ready = false
@@ -1063,6 +1124,49 @@ func (service Service) observeLocalCertificatesSnapshot(
 	}
 	result.ready = result.ready && localPKIReadySnapshot(snapshot)
 	return result, nil
+}
+
+func (service Service) observeClusterOIDC(
+	snapshot platformSnapshot,
+	certificates localCertificateObservation,
+) (clusterOIDCObservation, *orchestration.PlatformOIDCSpec, error) {
+	relative, required := service.Project.Desired.ActiveIdentityContractPath()
+	if !required {
+		return clusterOIDCObservation{ready: true}, nil, nil
+	}
+	if !certificates.ready || len(certificates.rootPEM) == 0 {
+		return clusterOIDCObservation{
+			failure: "validated local root CA is unavailable",
+		}, nil, nil
+	}
+	contract, err := identity.Load(service.Project.Root, relative)
+	if err != nil {
+		return clusterOIDCObservation{}, nil, err
+	}
+	spec, err := orchestration.NewPlatformOIDCSpec(contract, infra.ValidatedCA{
+		PEM: certificates.rootPEM, Fingerprint: certificates.rootFingerprint,
+	}, snapshot.serverVersion)
+	if err != nil {
+		return clusterOIDCObservation{}, nil, err
+	}
+	if snapshot.oidcReceipt == nil {
+		return clusterOIDCObservation{
+			failure: "kube-system/atum-authentication receipt is absent",
+		}, spec, nil
+	}
+	ready, failure := orchestration.ValidatePlatformOIDCReceipt(
+		spec, snapshot.oidcReceipt, controlPlaneNodeCount(snapshot.nodes))
+	return clusterOIDCObservation{ready: ready, failure: failure}, spec, nil
+}
+
+func controlPlaneNodeCount(nodes []kube.Node) int {
+	count := 0
+	for index := range nodes {
+		if nodes[index].ControlPlane {
+			count++
+		}
+	}
+	return count
 }
 
 func certificateReadySnapshot(
@@ -1489,12 +1593,11 @@ func (index platformReadinessIndex) match(candidates ...string) string {
 
 const applyReadinessInterval = 2 * time.Second
 
-func (service Service) waitPlatformReadiness(
+func (service Service) coordinatePlatformApply(
 	ctx context.Context,
 	client *kube.Observer,
 	bundle *delivery.DeploymentBundle,
 	publication publicationReceipt,
-	timeout time.Duration,
 ) error {
 	values, err := mergedBigBangValues(bundle, service.Project.Desired)
 	if err != nil {
@@ -1507,19 +1610,141 @@ func (service Service) waitPlatformReadiness(
 	index := newPlatformReadinessIndex(service.Project, wrapperConsumers)
 	assets := make(map[string]assetReadiness, len(index.ids))
 	namespaces := make(map[string]string, len(index.ids))
-	observe := func(roundContext context.Context) (bool, error) {
-		status, snapshot, err := service.collectStatus(
+	contract, err := service.identityContract()
+	if err != nil {
+		return err
+	}
+	observe := func(roundContext context.Context) (platformApplyObservation, error) {
+		status, snapshot, spec, err := service.collectStatus(
 			roundContext, client, bundle, nil, &publication)
 		if err != nil {
-			return false, err
+			return platformApplyObservation{}, err
 		}
 		reportApplyReadiness(roundContext, status)
 		projectAssetReadiness(snapshot, index, assets, namespaces)
 		reportAssetReadiness(roundContext, index, assets)
-		return status.Ready(), nil
+		return platformApplyObservation{
+			platformReady: status.readyBeforeClusterOIDC(),
+			oidcPrerequisitesReady: status.ProfileIdentityReady &&
+				status.CertificatesReady && status.RootCAFingerprint != "" &&
+				spec != nil,
+			oidcFailure: status.ProfileIdentityFailure,
+			oidcSpec:    spec,
+		}, nil
 	}
-	err = waitReadinessCycles(ctx, timeout, applyReadinessInterval, observe)
+	err = coordinateApplyObligations(
+		ctx, applyReadinessInterval, contract != nil, observe,
+		service.Orchestration.ReconcilePlatformOIDC,
+	)
 	return finishPlatformReadiness(ctx, err)
+}
+
+type platformApplyObservation struct {
+	platformReady          bool
+	oidcPrerequisitesReady bool
+	oidcFailure            string
+	oidcSpec               *orchestration.PlatformOIDCSpec
+}
+
+func (observation *platformApplyObservation) clear() {
+	if observation.oidcSpec != nil {
+		observation.oidcSpec.Clear()
+		observation.oidcSpec = nil
+	}
+}
+
+func coordinateApplyObligations(
+	ctx context.Context,
+	interval time.Duration,
+	oidcRequired bool,
+	observe func(context.Context) (platformApplyObservation, error),
+	reconcile func(context.Context, *orchestration.PlatformOIDCSpec) error,
+) error {
+	if interval <= 0 {
+		return errors.New("apply observation interval must be positive")
+	}
+	if observe == nil || (oidcRequired && reconcile == nil) {
+		return errors.New("complete apply observation and reconciliation functions are required")
+	}
+	coordinationContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	oidcResults := make(chan error, 1)
+	platformReady := false
+	oidcDone := !oidcRequired
+	oidcRunning := false
+
+	waitForOIDC := func(primary error) error {
+		if !oidcRunning {
+			return primary
+		}
+		oidcErr := <-oidcResults
+		oidcRunning = false
+		return joinPlatformObligations([2]error{primary, oidcErr})
+	}
+
+	for !platformReady || !oidcDone {
+		select {
+		case <-coordinationContext.Done():
+			cancel()
+			return waitForOIDC(coordinationContext.Err())
+		case oidcErr := <-oidcResults:
+			oidcRunning = false
+			if oidcErr != nil {
+				cancel()
+				return oidcErr
+			}
+			oidcDone = true
+		case <-timer.C:
+			observation, err := observe(coordinationContext)
+			if err != nil {
+				observation.clear()
+				if coordinationContext.Err() != nil {
+					cancel()
+					return waitForOIDC(coordinationContext.Err())
+				}
+				if !retryableObservationError(err) {
+					cancel()
+					return waitForOIDC(err)
+				}
+				reportPlatformObservationRetry(coordinationContext)
+			} else {
+				platformReady = platformReady || observation.platformReady
+				if observation.oidcFailure != "" {
+					observation.clear()
+					cancel()
+					return waitForOIDC(errors.New(observation.oidcFailure))
+				}
+				if !oidcDone && !oidcRunning {
+					if observation.oidcPrerequisitesReady {
+						if observation.oidcSpec == nil {
+							cancel()
+							return errors.New(
+								"OIDC prerequisites are ready without an immutable specification")
+						}
+						spec := observation.oidcSpec
+						observation.oidcSpec = nil
+						oidcRunning = true
+						go func() {
+							defer spec.Clear()
+							oidcResults <- reconcile(coordinationContext, spec)
+						}()
+					} else {
+						progress.Update(
+							coordinationContext, progress.Platform,
+							"cluster-oidc", "Cluster OIDC",
+							"waiting for profile identity and local root CA", 0, 0)
+					}
+				}
+				observation.clear()
+			}
+			if !platformReady || !oidcDone {
+				timer.Reset(interval)
+			}
+		}
+	}
+	return nil
 }
 
 func finishPlatformReadiness(ctx context.Context, err error) error {
@@ -1527,6 +1752,9 @@ func finishPlatformReadiness(ctx context.Context, err error) error {
 		return nil
 	}
 	if parentErr := ctx.Err(); parentErr != nil {
+		if errors.Is(parentErr, context.DeadlineExceeded) {
+			return fmt.Errorf("wait for platform readiness: %w", parentErr)
+		}
 		return parentErr
 	}
 	result := fmt.Errorf("wait for platform readiness: %w", err)
@@ -1539,14 +1767,23 @@ func waitReadinessCycles(
 	timeout, interval time.Duration,
 	observe func(context.Context) (bool, error),
 ) error {
+	waitContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return waitReadinessCyclesContext(waitContext, interval, observe, reportPlatformObservationRetry)
+}
+
+func waitReadinessCyclesContext(
+	waitContext context.Context,
+	interval time.Duration,
+	observe func(context.Context) (bool, error),
+	reportRetry func(context.Context),
+) error {
 	if interval <= 0 {
 		return errors.New("readiness observation interval must be positive")
 	}
 	if observe == nil {
 		return errors.New("readiness observer is required")
 	}
-	waitContext, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
@@ -1566,11 +1803,17 @@ func waitReadinessCycles(
 			if !retryableObservationError(err) {
 				return err
 			}
-			progress.Update(waitContext, progress.Platform, "bigbang", "Big Bang",
-				"Kubernetes API observation interrupted; retrying", 0, 0)
+			if reportRetry != nil {
+				reportRetry(waitContext)
+			}
 		}
 		timer.Reset(interval)
 	}
+}
+
+func reportPlatformObservationRetry(ctx context.Context) {
+	progress.Update(ctx, progress.Platform, "bigbang", "Big Bang",
+		"Kubernetes API observation interrupted; retrying", 0, 0)
 }
 
 func retryableObservationError(err error) bool {

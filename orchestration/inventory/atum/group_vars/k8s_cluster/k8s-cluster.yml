@@ -10,6 +10,19 @@ upstream_dns_servers:
   - 1.1.1.1
   - 8.8.8.8
 
+# Kubespray owns the mounted authentication file and kubeadm flag. The
+# orchestration projection comes from the active identity contract. Its
+# issuer is intentionally allowed to be offline while the self-hosted identity
+# plane starts; the post-platform owner replaces the file with its CA-bearing
+# exact form.
+kube_apiserver_use_authentication_config_file: >-
+  {{ (atum_kubernetes_oidc | default({})).enabled | default(false) }}
+kube_apiserver_authentication_config_anonymous: >-
+  {{ (atum_kubernetes_oidc | default({})).anonymous |
+     default({'enabled': kube_api_anonymous_auth, 'conditions': []}) }}
+kube_apiserver_authentication_config_jwt: >-
+  {{ (atum_kubernetes_oidc | default({})).jwt | default([]) }}
+
 cilium_version: "1.19.4"
 cilium_memory_limit: 2Gi
 cilium_cpu_limit: 1000m

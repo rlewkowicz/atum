@@ -42,6 +42,7 @@ var displayNames = map[string]string{
 	"opensearch-dashboards": "OpenSearch Dashboards", "opensearch-operator": "OpenSearch operator",
 	"platform-profile-access": "Platform profile access", "platform-profile-prep": "Platform profile prerequisites",
 	"platform-profile-identity": "Platform profile identity",
+	"cluster-oidc":              "Cluster OIDC",
 	"prometheus-operator-crds":  "Prometheus operator CRDs", "python": "Python",
 	"systemd-resolved": "systemd-resolved", "terraform-cli": "Terraform CLI",
 	"tempo": "Tempo", "vault": "OpenBao", "velero": "Velero", "virsh": "virsh",
@@ -93,12 +94,14 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 		}
 		if _, required := project.Desired.ActiveIdentityContractPath(); required {
 			items = append(items,
-				itemSpec{id: "platform-profile-identity", label: "Platform profile identity"})
+				itemSpec{id: "platform-profile-identity", label: "Platform profile identity"},
+				itemSpec{id: "cluster-oidc", label: "Cluster OIDC"})
 		}
 		seen := map[string]struct{}{
 			"bundle": {}, "bundle-materialization": {}, "compatibility-builds": {}, "harbor-seed": {}, "forgejo": {}, "flux": {}, "prep": {},
 			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {},
 			"platform-profile-access": {}, "platform-profile-identity": {},
+			"cluster-oidc": {},
 		}
 		appendItem := func(id string) {
 			if id == "" {
