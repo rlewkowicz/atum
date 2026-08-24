@@ -36,6 +36,92 @@ func TestLatestOnlyBigBangCandidateDiscardsOlderReleaseCatalog(t *testing.T) {
 	}
 }
 
+func TestBigBangPackageAdmissionPrecedesHistoricalArtifactBaseline(t *testing.T) {
+	t.Parallel()
+
+	resolved := resolvedGit{Source: config.GitSource{Version: "3.31.0"}}
+	malformed := map[string]any{"packages": map[string]any{
+		"new": map[string]any{"enabled": true, "sourceType": "git"},
+	}}
+	if _, err := admitBigBangPackageSelection(
+		resolved, map[string]any{}, malformed, malformed, config.Platform{},
+	); err == nil {
+		t.Fatal("undeclared enabled package passed the pre-artifact admission handoff")
+	}
+	untrackedChart := map[string]any{"packages": map[string]any{
+		"untracked": map[string]any{"enabled": true, "sourceType": "helmRepo"},
+	}}
+	if _, err := admitBigBangPackageSelection(
+		resolved, map[string]any{}, untrackedChart, untrackedChart, config.Platform{},
+	); err == nil {
+		t.Fatal("untracked HelmRepository declaration passed the pre-artifact admission handoff")
+	}
+
+	operational := map[string]any{"packages": map[string]any{
+		"new": map[string]any{
+			"enabled": true, "sourceType": "git",
+			"wrapper": map[string]any{"enabled": true},
+			"atum": map[string]any{
+				"id": "new", "fluxName": "new", "license": "MIT",
+				"integration": "generic",
+				"source": map[string]any{
+					"repo": "https://example.test/new.git",
+					"tag": "1.0.0", "path": "chart",
+				},
+			},
+		},
+	}}
+	defaults := map[string]any{"wrapper": map[string]any{
+		"sourceType": "git",
+		"git": map[string]any{
+			"repo": "https://example.test/wrapper.git",
+			"tag": "0.4.15", "path": "chart",
+		},
+	}}
+	configured, err := config.StripPackageSelectionMetadata(operational, defaults)
+	if err != nil {
+		t.Fatalf("project package values: %v", err)
+	}
+	admitted, err := admitBigBangPackageSelection(
+		resolved, defaults, operational, configured, config.Platform{},
+	)
+	if err != nil || len(admitted.packages) != 1 || admitted.packages[0].ID != "new" ||
+		len(admitted.wrapperConsumers) != 1 ||
+		!admitted.wrapperRequirement.Required ||
+		admitted.wrapperRequirement.Declaration.Tag != "0.4.15" {
+		t.Fatalf("admitted package handoff = %#v, error %v", admitted, err)
+	}
+	collision := map[string]any{"packages": map[string]any{
+		"bigbang-wrapper": map[string]any{
+			"enabled": true, "sourceType": "git",
+			"helmRelease": map[string]any{"namespace": "bigbang"},
+			"atum": map[string]any{
+				"id": "generic-wrapper", "fluxName": "bigbang-wrapper",
+				"license": "MIT", "integration": "generic",
+				"source": map[string]any{
+					"repo": "https://example.test/generic-wrapper.git",
+					"tag": "1.0.0", "path": "chart",
+				},
+			},
+		},
+	}}
+	collisionConfigured, err := config.StripPackageSelectionMetadata(collision, defaults)
+	if err != nil {
+		t.Fatalf("project collision package values: %v", err)
+	}
+	if _, err := admitBigBangPackageSelection(
+		resolved, defaults, collision, collisionConfigured, config.Platform{},
+	); err == nil {
+		t.Fatal("generic package overwrote the consumer-independent shared-wrapper source obligation")
+	}
+	paired, err := pairArtifacts(nil, []artifactInput{{
+		ID: "package/new", Path: "new/chart",
+	}})
+	if err != nil || len(paired) != 1 || !paired[0].IntroductionBaseline {
+		t.Fatalf("new package introduction baseline = %#v, error %v", paired, err)
+	}
+}
+
 func TestBigBangIncompatibilityIsTerminalForLatestAndHistoricalSelections(t *testing.T) {
 	t.Parallel()
 

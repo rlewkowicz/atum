@@ -1533,7 +1533,7 @@ func newPlatformReadinessIndex(
 		appendAsset(chart.ID, chart.Name)
 	}
 	for _, pkg := range project.Desired.Platform.Packages {
-		appendAsset(pkg.ID, valuesPathLeaf(pkg.ValuesPath))
+		appendAsset(pkg.ID, pkg.RenderedFluxName())
 	}
 	for _, chart := range project.Desired.Platform.Charts {
 		appendAsset(chart.ID, chart.Name, valuesPathLeaf(chart.ValuesPath))
@@ -2108,69 +2108,96 @@ func (service Service) exactGitSourcesSnapshot(
 ) (bool, error) {
 	sources := service.Project.Desired.Platform.Sources
 	clusterURL := strings.TrimSuffix(sources.ClusterURL, "/")
-	expectedByKey := make(map[string]sourceIdentity, 2)
-	expectedByKey["flux-system/flux-system"] = sourceIdentity{
+	expectedByKey := make(map[string]sourceIdentity, 2+len(service.Project.Desired.Platform.Packages))
+	addExpected := func(reference config.PackageSourceReference, identity sourceIdentity) error {
+		key := reference.Key()
+		if _, duplicate := expectedByKey[key]; duplicate {
+			return fmt.Errorf("exact source status has duplicate expected GitRepository %s", key)
+		}
+		expectedByKey[key] = identity
+		return nil
+	}
+	if err := addExpected(config.PackageSourceReference{
+		Name: "flux-system", Namespace: "flux-system",
+	}, sourceIdentity{
 		url:    clusterURL + "/" + sources.Organization + "/" + sources.Repository + ".git",
 		branch: deployedBranch, revision: bundle.SourceCommit, interval: "1m0s", timeout: "60s", secret: "flux-system",
+	}); err != nil {
+		return false, err
 	}
 	packageInterval, bigBang, err := expectedBigBangSources(bundle, service.Project.Desired)
 	if err != nil {
 		return false, err
 	}
-	expectedByKey["bigbang/bigbang"] = bigBang
+	if err := addExpected(config.PackageSourceReference{
+		Name: "bigbang", Namespace: "bigbang",
+	}, bigBang); err != nil {
+		return false, err
+	}
+	values, err := mergedBigBangValues(bundle, service.Project.Desired)
+	if err != nil {
+		return false, err
+	}
 	inventory, err := config.RepositoryInventory(service.Project.Desired, service.Project.Lock.Resolved)
 	if err != nil {
 		return false, err
 	}
-	expectedPackages := make(map[string]sourceIdentity, len(inventory))
+	packages := make(map[string]config.Package, len(service.Project.Desired.Platform.Packages))
+	for _, pkg := range service.Project.Desired.Platform.Packages {
+		packages[pkg.ID] = pkg
+	}
 	for _, repository := range inventory {
 		if repository.ID == "bigbang" || repository.ID == "flux" {
 			continue
 		}
 		url := internalGitSourceURL(sources, sources.UpstreamOrganization, repository.ID)
 		if repository.ID == "wrapper" {
-			expectedByKey["bigbang/bigbang-wrapper"] = sourceIdentity{
+			if err := addExpected(config.BigBangWrapperSourceReference(), sourceIdentity{
 				url: url, branch: repository.Source.Branch, commit: repository.Source.Commit,
 				revision: repository.Source.Commit, interval: packageInterval, timeout: "60s",
+			}); err != nil {
+				return false, err
 			}
 			continue
 		}
-		addGitSourceIdentity(
-			expectedPackages,
-			url,
-			url,
-			repository.Source,
-			packageInterval,
-		)
+		pkg, found := packages[repository.ID]
+		if !found {
+			return false, fmt.Errorf("repository inventory package %s has no desired package", repository.ID)
+		}
+		packageValues, found := nestedValuesMap(values, pkg.ValuesPath)
+		if !found {
+			return false, fmt.Errorf("Big Bang values omit package path %s", pkg.ValuesPath)
+		}
+		reference, err := config.RenderedPackageSourceReference(pkg, packageValues)
+		if err != nil {
+			return false, err
+		}
+		if err := addExpected(
+			reference,
+			gitSourceIdentity(url, repository.Source, packageInterval),
+		); err != nil {
+			return false, err
+		}
 	}
 	seenKeys := make(map[string]struct{}, len(expectedByKey))
-	seenPackages := make(map[string]struct{}, len(expectedPackages))
 	for index := range objects {
 		item := &objects[index]
-		key := item.GetNamespace() + "/" + item.GetName()
-		identity, fixedSource := expectedByKey[key]
-		if !fixedSource {
-			url, _, _ := unstructured.NestedString(item.Object, "spec", "url")
-			var packageSource bool
-			identity, packageSource = expectedPackages[url]
-			if !packageSource {
-				return false, nil
-			}
-			if _, duplicate := seenPackages[url]; duplicate {
-				return false, nil
-			}
-			seenPackages[url] = struct{}{}
-		} else {
-			if _, duplicate := seenKeys[key]; duplicate {
-				return false, nil
-			}
-			seenKeys[key] = struct{}{}
+		key := (config.PackageSourceReference{
+			Name: item.GetName(), Namespace: item.GetNamespace(),
+		}).Key()
+		identity, found := expectedByKey[key]
+		if !found {
+			return false, nil
 		}
+		if _, duplicate := seenKeys[key]; duplicate {
+			return false, nil
+		}
+		seenKeys[key] = struct{}{}
 		if !exactGitSource(item, identity) {
 			return false, nil
 		}
 	}
-	return len(seenKeys) == len(expectedByKey) && len(seenPackages) == len(expectedPackages), nil
+	return len(seenKeys) == len(expectedByKey), nil
 }
 
 func exactGitSource(item *kube.Object, identity sourceIdentity) bool {
@@ -2221,17 +2248,16 @@ func exactGitSource(item *kube.Object, identity sourceIdentity) bool {
 		(revision == wantedRevision || strings.HasSuffix(revision, ":"+wantedRevision))
 }
 
-func addGitSourceIdentity(
-	expected map[string]sourceIdentity,
-	key, url string,
+func gitSourceIdentity(
+	url string,
 	source config.GitSource,
 	interval string,
-) {
+) sourceIdentity {
 	tag := selectedGitTag(source)
 	if source.Commit != "" && source.Branch != "" {
 		tag = ""
 	}
-	expected[key] = sourceIdentity{
+	return sourceIdentity{
 		url: url,
 		tag: tag, branch: source.Branch, commit: source.Commit,
 		revision: source.Commit, interval: interval, timeout: "60s", requireIgnore: true,
@@ -2796,22 +2822,14 @@ func (service Service) exactFluxConsumersSnapshot(
 		if !found {
 			return false, fmt.Errorf("Big Bang values omit package path %s", pkg.ValuesPath)
 		}
-		gitValues, _ := packageValues["git"].(map[string]any)
-		chartPath, _ := gitValues["path"].(string)
-		if strings.TrimSpace(chartPath) == "" {
-			chartPath = "./chart"
-		}
-		repository, _ := gitValues["repo"].(string)
-		expectedURL := internalGitSourceURL(
-			service.Project.Desired.Platform.Sources,
-			service.Project.Desired.Platform.Sources.UpstreamOrganization,
-			pkg.ID,
+		reference, expected, exact := packageGitConsumerExpectation(
+			pkg, packageValues, service.Project.Desired.Platform.Sources,
 		)
-		if normalizedGitSourceURL(repository) != normalizedGitSourceURL(expectedURL) {
+		if !exact {
 			return false, nil
 		}
-		expectedGitSources[normalizedGitSourceURL(expectedURL)] = consumerGitSource{
-			chartPath: chartPath, reconcileStrategy: "ChartVersion",
+		if err := addExpectedConsumerGitSource(expectedGitSources, reference, expected); err != nil {
+			return false, err
 		}
 	}
 	for _, support := range service.Project.Lock.Resolved.SupportSources {
@@ -2820,13 +2838,17 @@ func (service Service) exactFluxConsumersSnapshot(
 			service.Project.Desired.Platform.Sources.UpstreamOrganization,
 			support.ID,
 		)
-		releases := make(map[string]string, len(wrapperConsumers))
+		releaseKeys := make(map[string]struct{}, len(wrapperConsumers))
 		for _, consumer := range wrapperConsumers {
-			releases[consumer.ReleaseName] = consumer.Namespace
+			releaseKeys[consumer.ReleaseKey()] = struct{}{}
 		}
-		expectedGitSources[normalizedGitSourceURL(expectedURL)] = consumerGitSource{
+		reference := config.BigBangWrapperSourceReference()
+		if err := addExpectedConsumerGitSource(expectedGitSources, reference, consumerGitSource{
+			url: expectedURL, sourceName: reference.Name, sourceNamespace: reference.Namespace,
 			chartPath: support.ChartPath, reconcileStrategy: "Revision",
-			releases: releases, restrictReleases: true,
+			releaseKeys: releaseKeys, consumption: consumerReleaseExactSet,
+		}); err != nil {
+			return false, err
 		}
 	}
 	gitSources, exact := packageConsumerSourcesSnapshot(
@@ -2855,8 +2877,7 @@ func (service Service) exactFluxConsumersSnapshot(
 			releases = append(releases, release)
 		}
 	}
-	seenGit := make(map[string]struct{}, len(gitSources))
-	seenSupportReleases := make(map[string]struct{})
+	seenGitConsumers := make(map[string]map[string]struct{}, len(gitSources))
 	seenHelm := make(map[string]struct{}, len(service.Project.Desired.Platform.Charts))
 	for index := range releases {
 		object := releases[index].Object
@@ -2866,27 +2887,23 @@ func (service Service) exactFluxConsumersSnapshot(
 		reconcileStrategy, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "reconcileStrategy")
 		switch kind {
 		case "GitRepository":
-			expected, found := gitSources[name]
-			sourceNamespace := releases[index].GetNamespace()
-			if expected.reconcileStrategy == "Revision" {
-				sourceNamespace = "bigbang"
-			}
-			if !found || reconcileStrategy != expected.reconcileStrategy ||
-				!exactChartSource(object, kind, name, sourceNamespace) ||
-				chart != expected.chartPath || !config.SafeRepositoryChartPath(chart) {
+			expected, sourceKey, exact := exactGitConsumerRelease(releases[index], gitSources)
+			if !exact {
 				return false, nil
 			}
-			if expected.restrictReleases {
-				if !recordExpectedConsumerRelease(
-					expected,
-					releases[index].GetName(),
-					releases[index].GetNamespace(),
-					seenSupportReleases,
-				) {
-					return false, nil
-				}
+			seen := seenGitConsumers[sourceKey]
+			if seen == nil {
+				seen = make(map[string]struct{})
+				seenGitConsumers[sourceKey] = seen
 			}
-			seenGit[name] = struct{}{}
+			if !recordExpectedConsumerRelease(
+				expected,
+				releases[index].GetName(),
+				releases[index].GetNamespace(),
+				seen,
+			) {
+				return false, nil
+			}
 		case "HelmRepository":
 			version, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "version")
 			bindingID, found := knownChartBinding(helmSources[name], chart, version)
@@ -2899,20 +2916,103 @@ func (service Service) exactFluxConsumersSnapshot(
 			return false, nil
 		}
 	}
-	expectedSupportReleases := 0
-	for _, source := range gitSources {
-		expectedSupportReleases += len(source.releases)
-	}
-	return len(seenGit) == len(gitSources) &&
-		len(seenSupportReleases) == expectedSupportReleases &&
+	return exactConsumerReleaseSets(gitSources, seenGitConsumers) &&
 		len(seenHelm) == len(service.Project.Desired.Platform.Charts), nil
 }
 
+func packageGitConsumerExpectation(
+	pkg config.Package,
+	values map[string]any,
+	registry config.SourceRegistry,
+) (config.PackageSourceReference, consumerGitSource, bool) {
+	gitValues, _ := values["git"].(map[string]any)
+	chartPath, _ := gitValues["path"].(string)
+	if strings.TrimSpace(chartPath) == "" {
+		chartPath = "./chart"
+	}
+	repository, _ := gitValues["repo"].(string)
+	expectedURL := internalGitSourceURL(
+		registry, registry.UpstreamOrganization, pkg.ID,
+	)
+	if normalizedGitSourceURL(repository) != normalizedGitSourceURL(expectedURL) {
+		return config.PackageSourceReference{}, consumerGitSource{}, false
+	}
+	sourceReference, err := config.RenderedPackageSourceReference(pkg, values)
+	if err != nil {
+		return config.PackageSourceReference{}, consumerGitSource{}, false
+	}
+	reconcileStrategy := "ChartVersion"
+	var releaseKeys map[string]struct{}
+	consumption := consumerReleaseAtLeastOne
+	defaultReconcile := true
+	if pkg.Integration == "generic" {
+		reconcileStrategy = "Revision"
+		releaseKeys = map[string]struct{}{
+			sourceReference.Key(): {},
+		}
+		consumption = consumerReleaseExactSet
+		defaultReconcile = false
+	}
+	expected := consumerGitSource{
+		url: expectedURL, sourceName: sourceReference.Name, sourceNamespace: sourceReference.Namespace,
+		chartPath: chartPath, reconcileStrategy: reconcileStrategy,
+		defaultReconcile: defaultReconcile,
+		releaseKeys: releaseKeys, consumption: consumption,
+	}
+	return sourceReference, expected, true
+}
+
+func exactGitConsumerRelease(
+	release kube.Object,
+	sources map[string]consumerGitSource,
+) (consumerGitSource, string, bool) {
+	object := release.Object
+	kind, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "sourceRef", "kind")
+	name, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "sourceRef", "name")
+	namespace, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "sourceRef", "namespace")
+	chart, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "chart")
+	strategy, _, _ := unstructured.NestedString(object, "spec", "chart", "spec", "reconcileStrategy")
+	key := (config.PackageSourceReference{Name: name, Namespace: namespace}).Key()
+	expected, found := sources[key]
+	reconcileMatches := strategy == expected.reconcileStrategy ||
+		(expected.defaultReconcile && strategy == "")
+	if !found || kind != "GitRepository" || !reconcileMatches ||
+		!exactChartSource(object, kind, name, namespace) ||
+		chart != expected.chartPath || !config.SafeRepositoryChartPath(chart) {
+		return consumerGitSource{}, "", false
+	}
+	return expected, key, true
+}
+
+type consumerReleaseMode uint8
+
+const (
+	consumerReleaseAtLeastOne consumerReleaseMode = iota + 1
+	consumerReleaseExactSet
+)
+
 type consumerGitSource struct {
+	url               string
+	sourceName        string
+	sourceNamespace   string
 	chartPath         string
 	reconcileStrategy string
-	releases          map[string]string
-	restrictReleases  bool
+	defaultReconcile  bool
+	releaseKeys       map[string]struct{}
+	consumption       consumerReleaseMode
+}
+
+func addExpectedConsumerGitSource(
+	expected map[string]consumerGitSource,
+	reference config.PackageSourceReference,
+	source consumerGitSource,
+) error {
+	key := reference.Key()
+	if _, duplicate := expected[key]; duplicate {
+		return fmt.Errorf("exact consumer status has duplicate expected GitRepository %s", key)
+	}
+	expected[key] = source
+	return nil
 }
 
 func recordExpectedConsumerRelease(
@@ -2920,14 +3020,40 @@ func recordExpectedConsumerRelease(
 	name, namespace string,
 	seen map[string]struct{},
 ) bool {
-	expectedNamespace, known := source.releases[name]
-	if !source.restrictReleases || !known || expectedNamespace != namespace {
+	key := (config.PackageSourceReference{Name: name, Namespace: namespace}).Key()
+	if source.consumption == consumerReleaseExactSet {
+		if _, known := source.releaseKeys[key]; !known {
+			return false
+		}
+	} else if source.consumption != consumerReleaseAtLeastOne {
 		return false
 	}
-	if _, duplicate := seen[name]; duplicate {
+	if _, duplicate := seen[key]; duplicate {
 		return false
 	}
-	seen[name] = struct{}{}
+	seen[key] = struct{}{}
+	return true
+}
+
+func exactConsumerReleaseSets(
+	sources map[string]consumerGitSource,
+	seen map[string]map[string]struct{},
+) bool {
+	for key, source := range sources {
+		count := len(seen[key])
+		switch source.consumption {
+		case consumerReleaseAtLeastOne:
+			if count == 0 {
+				return false
+			}
+		case consumerReleaseExactSet:
+			if count != len(source.releaseKeys) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
 	return true
 }
 
@@ -2936,23 +3062,29 @@ func packageConsumerSourcesSnapshot(
 	expected map[string]consumerGitSource,
 ) (map[string]consumerGitSource, bool) {
 	result := make(map[string]consumerGitSource, len(expected))
-	seenURLs := make(map[string]struct{}, len(expected))
 	for index := range objects {
 		item := &objects[index]
-		if item.GetNamespace() != "bigbang" || item.GetName() == "bigbang" {
+		if item.GetNamespace() == "bigbang" && item.GetName() == "bigbang" {
+			continue
+		}
+		key := (config.PackageSourceReference{
+			Name: item.GetName(), Namespace: item.GetNamespace(),
+		}).Key()
+		source, found := expected[key]
+		if !found {
+			if item.GetLabels()["app.kubernetes.io/part-of"] == "bigbang" {
+				return nil, false
+			}
 			continue
 		}
 		url, _, _ := unstructured.NestedString(item.Object, "spec", "url")
-		normalized := normalizedGitSourceURL(url)
-		source, found := expected[normalized]
-		if !found {
+		if normalizedGitSourceURL(url) != normalizedGitSourceURL(source.url) {
 			return nil, false
 		}
-		if _, duplicate := seenURLs[normalized]; duplicate {
+		if _, duplicate := result[key]; duplicate {
 			return nil, false
 		}
-		seenURLs[normalized] = struct{}{}
-		result[item.GetName()] = source
+		result[key] = source
 	}
 	return result, len(result) == len(expected)
 }

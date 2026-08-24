@@ -170,6 +170,50 @@ func TestWrapperReleaseTopologyUsesOneSharedSource(t *testing.T) {
 	}
 }
 
+func TestWrapperReleaseTopologyUsesDeclaredConsumerCardinality(t *testing.T) {
+	t.Parallel()
+
+	collector, support, consumers, _, _ := wrapperTopologyFixture()
+	generic := config.WrapperConsumer{
+		OwnerID: "redis", ReleaseName: "redis-wrapper", Namespace: "redis",
+	}
+	source := resourceKey{namespace: "bigbang", name: "bigbang-wrapper", kind: "GitRepository"}
+	collector.releases[generic.ReleaseName] = []releaseValues{{
+		key: resourceKey{namespace: generic.Namespace, name: generic.ReleaseName},
+		source: source, chart: support.ChartPath, reconcile: "Revision",
+	}}
+	consumers = append(consumers, generic)
+	if err := validateWrapperReleaseTopology(collector, consumers, support); err != nil {
+		t.Fatalf("declared three-consumer topology: %v", err)
+	}
+}
+
+func TestWrapperReleaseTopologyAllowsSameNameInDistinctNamespaces(t *testing.T) {
+	t.Parallel()
+
+	collector, support, _, _, _ := wrapperTopologyFixture()
+	source := resourceKey{namespace: "bigbang", name: "bigbang-wrapper", kind: "GitRepository"}
+	consumers := []config.WrapperConsumer{
+		{OwnerID: "first", ReleaseName: "shared-wrapper", Namespace: "first"},
+		{OwnerID: "second", ReleaseName: "shared-wrapper", Namespace: "second"},
+	}
+	collector.releases = map[string][]releaseValues{
+		"shared-wrapper": {
+			{
+				key: resourceKey{namespace: "first", name: "shared-wrapper"},
+				source: source, chart: support.ChartPath, reconcile: "Revision",
+			},
+			{
+				key: resourceKey{namespace: "second", name: "shared-wrapper"},
+				source: source, chart: support.ChartPath, reconcile: "Revision",
+			},
+		},
+	}
+	if err := validateWrapperReleaseTopology(collector, consumers, support); err != nil {
+		t.Fatalf("namespaced same-name wrapper topology: %v", err)
+	}
+}
+
 func TestWrapperReleaseTopologyRejectsSourceAndSchemaDrift(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -304,7 +348,12 @@ func TestCurrentWrapperContractValuesOnlySuppressesStaleConsumers(t *testing.T) 
 		},
 	}
 	inputSnapshot := cloneMap(values)
-	stale, err := currentWrapperContractValues(values, platform, nil)
+	consumers, err := config.ActiveWrapperConsumers(platform, values)
+	if err != nil {
+		t.Fatalf("derive wrapper consumers: %v", err)
+	}
+	requirement := config.WrapperSourceRequirement{Required: true}
+	stale, err := currentWrapperContractValues(values, nil, requirement, consumers)
 	if err != nil {
 		t.Fatalf("prepare stale wrapper baseline: %v", err)
 	}
@@ -322,14 +371,16 @@ func TestCurrentWrapperContractValuesOnlySuppressesStaleConsumers(t *testing.T) 
 	if !reflect.DeepEqual(values, inputSnapshot) {
 		t.Fatal("stale baseline mutated its input")
 	}
-	secondStale, err := currentWrapperContractValues(stale, platform, nil)
+	secondStale, err := currentWrapperContractValues(stale, nil, requirement, consumers)
 	if err != nil {
 		t.Fatalf("repeat stale wrapper baseline: %v", err)
 	}
 	if !reflect.DeepEqual(stale, secondStale) {
 		t.Fatal("stale wrapper baseline changed on the second pass")
 	}
-	current, err := currentWrapperContractValues(values, platform, []config.SupportSource{{ID: "wrapper"}})
+	current, err := currentWrapperContractValues(
+		values, []config.SupportSource{{ID: "wrapper"}}, requirement, consumers,
+	)
 	if err != nil {
 		t.Fatalf("prepare current wrapper baseline: %v", err)
 	}
@@ -344,6 +395,8 @@ func TestWrapperMeshContractIsInactiveWithoutConsumers(t *testing.T) {
 		resolvedGit{},
 		config.Platform{},
 		nil,
+		nil,
+		config.WrapperSourceRequirement{},
 		nil,
 		map[string]any{},
 		"",
@@ -371,7 +424,15 @@ func TestWrapperMeshContractRequiresSupportForActiveConsumers(t *testing.T) {
 			"namespace": map[string]any{"name": openSearchNamespace},
 		},
 	}}
-	err := validatePlatformMeshContract(resolvedGit{}, platform, nil, nil, values, "", "")
+	consumers, consumerErr := config.ActiveWrapperConsumers(platform, values)
+	if consumerErr != nil {
+		t.Fatalf("derive active wrapper consumers: %v", consumerErr)
+	}
+	err := validatePlatformMeshContract(
+		resolvedGit{}, platform, nil, nil,
+		config.WrapperSourceRequirement{Required: true}, consumers,
+		values, "", "",
+	)
 	if err == nil || !strings.Contains(err.Error(), "one resolved wrapper support source") {
 		t.Fatalf("active wrapper contract without support = %v", err)
 	}
@@ -403,7 +464,7 @@ func TestWrappedPackagesDependOnTheirPolicyOwners(t *testing.T) {
 			{namespace: openSearchNamespace, name: "opensearch"},
 		},
 	}}
-	if err := validateMainReleaseDependencies(collector, consumers); err != nil {
+	if err := validateMainReleaseDependencies(collector, consumers, true); err != nil {
 		t.Fatalf("canonical dependency graph: %v", err)
 	}
 	dashboards := collector.releases["opensearch-dashboards"]
@@ -412,8 +473,63 @@ func TestWrappedPackagesDependOnTheirPolicyOwners(t *testing.T) {
 		resourceKey{namespace: openSearchNamespace, name: "opensearch-dashboards-wrapper"},
 	)
 	collector.releases["opensearch-dashboards"] = dashboards
-	if err := validateMainReleaseDependencies(collector, consumers); err == nil {
+	if err := validateMainReleaseDependencies(collector, consumers, true); err == nil {
 		t.Fatal("separate Dashboards wrapper dependency was accepted")
+	}
+}
+
+func TestGenericWrappedPackageDoesNotRequireOpenSearchDashboards(t *testing.T) {
+	t.Parallel()
+
+	collector := newReleaseValueCollector("bigbang")
+	consumer := config.WrapperConsumer{
+		OwnerID: "redis", PackageKey: "redis",
+		ReleaseName: "redis-wrapper", Namespace: openSearchNamespace,
+	}
+	collector.releases["redis"] = []releaseValues{{
+		key: resourceKey{namespace: openSearchNamespace, name: "redis"},
+		dependencies: []resourceKey{{
+			namespace: openSearchNamespace, name: "redis-wrapper",
+		}},
+	}}
+	if err := validateMainReleaseDependencies(
+		collector, []config.WrapperConsumer{consumer}, false,
+	); err != nil {
+		t.Fatalf("generic wrapper dependency graph: %v", err)
+	}
+	if err := validateMainReleaseDependencies(
+		collector, []config.WrapperConsumer{consumer}, true,
+	); err == nil {
+		t.Fatal("active OpenSearch owner pair did not require Dashboards")
+	}
+}
+
+func TestOpenSearchWrapperOwnersUseDeclaredOwnerAndCanonicalNamespace(t *testing.T) {
+	t.Parallel()
+
+	generic := []config.WrapperConsumer{
+		{OwnerID: "redis", Namespace: openSearchNamespace},
+		{OwnerID: "postgresql", Namespace: operatorNamespace},
+	}
+	owners, err := activeOpenSearchWrapperOwners(generic)
+	if err != nil || len(owners) != 0 {
+		t.Fatalf("generic consumers activated OpenSearch policy: %#v, error %v", owners, err)
+	}
+
+	pair := []config.WrapperConsumer{
+		{OwnerID: "opensearch", Namespace: openSearchNamespace},
+		{OwnerID: "opensearch-operator", Namespace: operatorNamespace},
+	}
+	owners, err = activeOpenSearchWrapperOwners(pair)
+	if err != nil || len(owners) != 2 {
+		t.Fatalf("canonical OpenSearch owner pair = %#v, error %v", owners, err)
+	}
+	pair[1].Namespace = "other"
+	if _, err := activeOpenSearchWrapperOwners(pair); err == nil {
+		t.Fatal("OpenSearch owner pair with a noncanonical namespace was accepted")
+	}
+	if _, err := activeOpenSearchWrapperOwners(pair[:1]); err == nil {
+		t.Fatal("partial OpenSearch owner pair was accepted")
 	}
 }
 

@@ -31,12 +31,6 @@ type resolvedSupportSource struct {
 	Checkout string
 }
 
-type wrapperSourceDeclaration struct {
-	URL       string
-	Tag       string
-	ChartPath string
-}
-
 type resolvedVendor struct {
 	Vendor    config.Vendor
 	Directory string
@@ -161,6 +155,7 @@ func resolvePackages(
 	parallelism int,
 	bigBangValues map[string]any,
 	configured []config.Package,
+	previous []config.Package,
 	allowDowngrade bool,
 ) ([]resolvedPackage, error) {
 	resolved := make([]resolvedPackage, len(configured))
@@ -170,47 +165,65 @@ func resolvePackages(
 		i := i
 		group.Go(func() error {
 			current := configured[i]
-			packageValues, err := valuesAt(bigBangValues, current.ValuesPath)
-			if err != nil {
-				return fmt.Errorf("resolve Big Bang package %s: %w", current.ID, err)
+			url, version := current.Source.URL, current.Source.Version
+			if current.Integration == "integrated" {
+				packageValues, err := valuesAt(bigBangValues, current.ValuesPath)
+				if err != nil {
+					return fmt.Errorf("resolve Big Bang package %s: %w", current.ID, err)
+				}
+				gitValues, ok := packageValues["git"].(map[string]any)
+				if !ok {
+					return fmt.Errorf("Big Bang package %s has no Git source", current.ID)
+				}
+				defaultURL, _ := gitValues["repo"].(string)
+				defaultVersion, _ := gitValues["tag"].(string)
+				defaultURL, defaultVersion = strings.TrimSpace(defaultURL), strings.TrimSpace(defaultVersion)
+				if defaultURL == "" || defaultVersion == "" {
+					return fmt.Errorf("Big Bang package %s has an incomplete Git source", current.ID)
+				}
+				sameRepository, err := samePackageRepository(defaultURL, url)
+				if err != nil {
+					return fmt.Errorf("compare Big Bang package %s repository: %w", current.ID, err)
+				}
+				if !sameRepository || defaultVersion != version {
+					return fmt.Errorf("Big Bang package %s selection differs from its defaults", current.ID)
+				}
 			}
-			gitValues, ok := packageValues["git"].(map[string]any)
-			if !ok {
-				return fmt.Errorf("Big Bang package %s has no Git source", current.ID)
-			}
-			url, _ := gitValues["repo"].(string)
-			version, _ := gitValues["tag"].(string)
-			url = strings.TrimSpace(url)
-			version = strings.TrimSpace(version)
-			if url == "" || version == "" {
-				return fmt.Errorf("Big Bang package %s has an incomplete Git source", current.ID)
-			}
-			if normalizedGitURL(url) != normalizedGitURL(current.Source.URL) {
-				return fmt.Errorf("Big Bang package %s changed repository from %s to %s", current.ID, current.Source.URL, url)
-			}
-			url = current.Source.URL
 			if !allowDowngrade {
-				if err := requireNonDowngrade(current.ID, current.Source.Version, version); err != nil {
-					return err
+				if previousVersion := configuredPackageVersion(current.ID, previous); previousVersion != "" {
+					if err := requireNonDowngrade(current.ID, previousVersion, version); err != nil {
+						return err
+					}
+				}
+			}
+			old, hadPrevious := configuredPackageByID(current.ID, previous)
+			if hadPrevious {
+				sameRepository, err := samePackageRepository(old.Source.URL, url)
+				if err != nil {
+					return fmt.Errorf("compare package %s repository continuity: %w", current.ID, err)
+				}
+				if !sameRepository {
+					return fmt.Errorf("package %s changed repository from %s to %s", current.ID, old.Source.URL, url)
 				}
 			}
 			release, branch, err := cache.ResolveTagWithDefaultBranch(groupContext, url, version)
 			if err != nil {
 				return err
 			}
-			if version == current.Source.Version && release.Commit != current.Source.Commit {
-				return fmt.Errorf("Big Bang package %s tag %s moved from %s to %s", current.ID, version, current.Source.Commit, release.Commit)
+			if hadPrevious && old.Source.Version == version &&
+				old.Source.Commit != "" && release.Commit != old.Source.Commit {
+				return fmt.Errorf("package %s tag %s moved from %s to %s", current.ID, version, old.Source.Commit, release.Commit)
 			}
 			checkout, err := cache.Hydrate(groupContext, "package-"+current.ID, url, release)
 			if err != nil {
 				return err
 			}
-			metadata, err := readChartMetadata(filepath.Join(checkout, "chart"))
+			metadata, err := readChartMetadata(filepath.Join(checkout, filepath.FromSlash(current.RepositoryChartPath())))
 			if err != nil {
-				return fmt.Errorf("inspect Big Bang package %s: %w", current.ID, err)
+				return fmt.Errorf("inspect package %s: %w", current.ID, err)
 			}
 			if metadata.Version != version {
-				return fmt.Errorf("Big Bang package %s tag %s contains chart version %s", current.ID, version, metadata.Version)
+				return fmt.Errorf("package %s tag %s contains chart version %s", current.ID, version, metadata.Version)
 			}
 			current.Source = config.GitSource{
 				URL:         url,
@@ -229,6 +242,36 @@ func resolvePackages(
 	return resolved, nil
 }
 
+func configuredPackageVersion(id string, configured []config.Package) string {
+	for index := range configured {
+		if configured[index].ID == id {
+			return configured[index].Source.Version
+		}
+	}
+	return ""
+}
+
+func configuredPackageByID(id string, configured []config.Package) (config.Package, bool) {
+	for index := range configured {
+		if configured[index].ID == id {
+			return configured[index], true
+		}
+	}
+	return config.Package{}, false
+}
+
+func samePackageRepository(left, right string) (bool, error) {
+	leftCanonical, err := config.CanonicalPackageRepositoryURL(left)
+	if err != nil {
+		return false, err
+	}
+	rightCanonical, err := config.CanonicalPackageRepositoryURL(right)
+	if err != nil {
+		return false, err
+	}
+	return leftCanonical == rightCanonical, nil
+}
+
 func readBigBangValues(bigBangCheckout string) (map[string]any, error) {
 	data, err := os.ReadFile(filepath.Join(bigBangCheckout, "chart", "values.yaml"))
 	if err != nil {
@@ -245,18 +288,13 @@ func resolveWrapperSupportSource(
 	ctx context.Context,
 	cache *gitcache.Manager,
 	bigBang resolvedGit,
-	platform config.Platform,
-	bigBangValues map[string]any,
-	effectiveValues map[string]any,
+	requirement config.WrapperSourceRequirement,
 	previous config.Resolved,
 ) ([]resolvedSupportSource, error) {
-	declaration, consumers, err := wrapperSourceFromBigBang(platform, bigBangValues, effectiveValues)
-	if err != nil {
-		return nil, err
-	}
-	if len(consumers) == 0 {
+	if !requirement.Required {
 		return nil, nil
 	}
+	declaration := requirement.Declaration
 	release, branch, err := cache.ResolveTagWithDefaultBranch(ctx, declaration.URL, declaration.Tag)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Big Bang wrapper tag %s: %w", declaration.Tag, err)
@@ -290,41 +328,10 @@ func resolveWrapperSupportSource(
 	}}, nil
 }
 
-func wrapperSourceFromBigBang(
-	platform config.Platform,
-	bigBangValues map[string]any,
-	effectiveValues map[string]any,
-) (wrapperSourceDeclaration, []config.WrapperConsumer, error) {
-	consumers, err := config.ActiveWrapperConsumers(platform, effectiveValues)
-	if err != nil {
-		return wrapperSourceDeclaration{}, nil, err
-	}
-	if len(consumers) == 0 {
-		return wrapperSourceDeclaration{}, nil, nil
-	}
-	wrapper, err := valuesAt(bigBangValues, "wrapper")
-	if err != nil {
-		return wrapperSourceDeclaration{}, consumers, fmt.Errorf("resolve Big Bang wrapper source: %w", err)
-	}
-	gitValues, ok := wrapper["git"].(map[string]any)
-	if !ok {
-		return wrapperSourceDeclaration{}, consumers, errors.New("Big Bang wrapper has no Git source")
-	}
-	url, _ := gitValues["repo"].(string)
-	tag, _ := gitValues["tag"].(string)
-	chartPath, _ := gitValues["path"].(string)
-	if err := config.ValidateWrapperSupportDeclaration(url, tag, chartPath); err != nil {
-		return wrapperSourceDeclaration{}, consumers, err
-	}
-	return wrapperSourceDeclaration{
-		URL: url, Tag: tag, ChartPath: filepath.ToSlash(filepath.Clean(chartPath)),
-	}, consumers, nil
-}
-
 func validateWrapperSourceContinuity(
 	previous config.Resolved,
 	bigBang config.GitSource,
-	declaration wrapperSourceDeclaration,
+	declaration config.WrapperSourceDeclaration,
 	commit string,
 ) error {
 	for _, old := range previous.SupportSources {

@@ -15,6 +15,8 @@ const (
 	operatorNamespace   = "opensearch-operator"
 	fluentBitNamespace  = "fluentbit"
 	openSearchPort      = 9200
+	openSearchOwnerID   = "opensearch"
+	operatorOwnerID     = "opensearch-operator"
 )
 
 // currentWrapperContractValues keeps a pre-migration artifact baseline
@@ -25,17 +27,20 @@ const (
 // the ownership cutover.
 func currentWrapperContractValues(
 	values map[string]any,
-	platform config.Platform,
 	supportSources []config.SupportSource,
+	requirement config.WrapperSourceRequirement,
+	consumers []config.WrapperConsumer,
 ) (map[string]any, error) {
-	consumers, err := config.ActiveWrapperConsumers(platform, values)
-	if err != nil || len(consumers) == 0 || len(supportSources) != 0 {
-		return values, err
+	if !requirement.Required || len(supportSources) != 0 {
+		return values, nil
 	}
 	result := cloneMap(values)
-	if err := setScalar(result, "wrapper.sourceType", "helmRepo"); err != nil {
-		return nil, err
+	wrapper, _ := result["wrapper"].(map[string]any)
+	if wrapper == nil {
+		wrapper = make(map[string]any, 1)
+		result["wrapper"] = wrapper
 	}
+	wrapper["sourceType"] = "helmRepo"
 	for _, consumer := range consumers {
 		if err := setNestedValue(result, consumer.ValuesPath+".wrapper.enabled", false); err != nil {
 			return nil, err
@@ -52,23 +57,19 @@ func validatePlatformMeshContract(
 	platform config.Platform,
 	packages []resolvedPackage,
 	supportSources []resolvedSupportSource,
+	wrapperRequirement config.WrapperSourceRequirement,
+	consumers []config.WrapperConsumer,
 	values map[string]any,
 	kubernetesVersion string,
 	openSearchIdentityHost string,
 ) error {
-	consumers, err := config.ActiveWrapperConsumers(platform, values)
-	if err != nil {
-		return err
-	}
 	networkPoliciesEnabled, _ := mapAt(values, "networkPolicies")["enabled"].(bool)
-	if len(consumers) == 0 && !networkPoliciesEnabled {
+	if !wrapperRequirement.Required && len(consumers) == 0 && !networkPoliciesEnabled {
 		return nil
 	}
-	if len(consumers) != 0 && len(consumers) != 2 {
-		return fmt.Errorf("wrapper mesh contract requires exactly two active consumers, rendered %d", len(consumers))
-	}
 	var support resolvedSupportSource
-	if len(consumers) != 0 {
+	if wrapperRequirement.Required {
+		var err error
 		support, err = activeWrapperSupport(supportSources)
 		if err != nil {
 			return err
@@ -92,23 +93,33 @@ func validatePlatformMeshContract(
 			return err
 		}
 	}
+	if wrapperRequirement.Required {
+		if err := validateSharedWrapperSource(collector, platform.Sources, support.Support); err != nil {
+			return err
+		}
+	}
 	if len(consumers) == 0 {
 		return nil
-	}
-	if err := validateSharedWrapperSource(collector, platform.Sources, support.Support); err != nil {
-		return err
 	}
 	if err := validateWrapperReleaseTopology(collector, consumers, support.Support); err != nil {
 		return err
 	}
-	for _, namespace := range []string{fluentBitNamespace, operatorNamespace, openSearchNamespace} {
-		if !hasInjectedNamespace(collector.rendered, namespace) {
-			return fmt.Errorf("selected Big Bang does not enable Istio injection for namespace %s", namespace)
+	openSearchOwners, err := activeOpenSearchWrapperOwners(consumers)
+	if err != nil {
+		return err
+	}
+	openSearchActive := len(openSearchOwners) != 0
+	if openSearchActive {
+		for _, namespace := range []string{fluentBitNamespace, operatorNamespace, openSearchNamespace} {
+			if !hasInjectedNamespace(collector.rendered, namespace) {
+				return fmt.Errorf("selected Big Bang does not enable Istio injection for namespace %s", namespace)
+			}
 		}
 	}
 
 	for _, consumer := range consumers {
-		release, err := exactRenderedRelease(collector, consumer.ReleaseName, consumer.Namespace)
+		consumerKey := wrapperConsumerResourceKey(consumer)
+		release, err := exactRenderedRelease(collector, consumerKey.name, consumerKey.namespace)
 		if err != nil {
 			return err
 		}
@@ -134,13 +145,13 @@ func validatePlatformMeshContract(
 		if err := validateNamespaceWrapper(rendered.rendered, consumer.Namespace); err != nil {
 			return fmt.Errorf("%s: %w", consumer.ReleaseName, err)
 		}
-		switch consumer.Namespace {
-		case operatorNamespace:
+		switch consumer.OwnerID {
+		case operatorOwnerID:
 			cidr, _ := mapAt(values, "networkPolicies")["controlPlaneCidr"].(string)
 			if !hasControlPlaneEgress(rendered.rendered, cidr) {
 				return fmt.Errorf("%s has no exact control-plane egress policy for %s", consumer.ReleaseName, cidr)
 			}
-		case openSearchNamespace:
+		case openSearchOwnerID:
 			if !hasOpenSearchIngress(rendered.rendered) {
 				return fmt.Errorf("%s has no exact Fluent Bit ingress policy on TCP 9200", consumer.ReleaseName)
 			}
@@ -154,20 +165,57 @@ func validatePlatformMeshContract(
 					return fmt.Errorf("%s: %w", consumer.ReleaseName, err)
 				}
 			}
-		default:
-			return fmt.Errorf("unexpected wrapper namespace %s", consumer.Namespace)
 		}
 	}
 
-	if err := validateMainReleaseDependencies(collector, consumers); err != nil {
+	if err := validateMainReleaseDependencies(collector, consumers, openSearchActive); err != nil {
 		return err
 	}
-	if err := validateFluentBitEgress(
-		collector, packages, platform.Sources, kubernetesVersion,
-	); err != nil {
-		return err
+	if openSearchActive {
+		if err := validateFluentBitEgress(
+			collector, packages, platform.Sources, kubernetesVersion,
+		); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func activeOpenSearchWrapperOwners(
+	consumers []config.WrapperConsumer,
+) (map[string]config.WrapperConsumer, error) {
+	owners := make(map[string]config.WrapperConsumer, 2)
+	for _, consumer := range consumers {
+		if consumer.OwnerID != openSearchOwnerID && consumer.OwnerID != operatorOwnerID {
+			continue
+		}
+		if _, duplicate := owners[consumer.OwnerID]; duplicate {
+			return nil, fmt.Errorf("OpenSearch wrapper owner %s is declared more than once", consumer.OwnerID)
+		}
+		owners[consumer.OwnerID] = consumer
+	}
+	if len(owners) == 0 {
+		return owners, nil
+	}
+	if len(owners) != 2 {
+		return nil, fmt.Errorf("OpenSearch wrapper contract requires operator and workload owners")
+	}
+	canonicalOwners := [...]struct {
+		id        string
+		namespace string
+	}{
+		{id: openSearchOwnerID, namespace: openSearchNamespace},
+		{id: operatorOwnerID, namespace: operatorNamespace},
+	}
+	for _, owner := range canonicalOwners {
+		if owners[owner.id].Namespace != owner.namespace {
+			return nil, fmt.Errorf(
+				"OpenSearch wrapper owner %s requires canonical namespace %s",
+				owner.id, owner.namespace,
+			)
+		}
+	}
+	return owners, nil
 }
 
 func validateIstiodWebhookIngress(
@@ -195,7 +243,7 @@ func validateIstiodWebhookIngress(
 	}
 	rendered := newReleaseValueCollector("istio-system").captureResources()
 	if _, err := renderChart(
-		filepath.Join(pkg.Checkout, "chart"),
+		filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
 		kubernetesVersion,
 		values,
 		rendered,
@@ -225,7 +273,7 @@ func validateSharedWrapperSource(
 	registry config.SourceRegistry,
 	support config.SupportSource,
 ) error {
-	key := resourceKey{namespace: "bigbang", name: "bigbang-wrapper", kind: "GitRepository"}
+	key := renderedSourceResourceKey(config.BigBangWrapperSourceReference())
 	source, found := collector.repositories[key]
 	if !found {
 		return fmt.Errorf("selected Big Bang rendered no shared wrapper GitRepository")
@@ -263,7 +311,7 @@ func validateWrapperReleaseTopology(
 ) error {
 	expected := make(map[resourceKey]config.WrapperConsumer, len(consumers))
 	for _, consumer := range consumers {
-		expected[resourceKey{namespace: consumer.Namespace, name: consumer.ReleaseName}] = consumer
+		expected[wrapperConsumerResourceKey(consumer)] = consumer
 	}
 	count := 0
 	for _, releases := range collector.releases {
@@ -275,7 +323,7 @@ func validateWrapperReleaseTopology(
 			if _, found := expected[release.key]; !found {
 				return fmt.Errorf("selected Big Bang rendered unexpected wrapper HelmRelease %s/%s", release.key.namespace, release.key.name)
 			}
-			if release.source != (resourceKey{namespace: "bigbang", name: "bigbang-wrapper", kind: "GitRepository"}) ||
+			if release.source != renderedSourceResourceKey(config.BigBangWrapperSourceReference()) ||
 				release.chart != support.ChartPath || release.reconcile != "Revision" {
 				return fmt.Errorf("wrapper HelmRelease %s/%s has an inexact source binding", release.key.namespace, release.key.name)
 			}
@@ -286,6 +334,19 @@ func validateWrapperReleaseTopology(
 		return fmt.Errorf("selected Big Bang rendered %d canonical wrapper HelmReleases, require %d", count, len(consumers))
 	}
 	return nil
+}
+
+func renderedSourceResourceKey(reference config.PackageSourceReference) resourceKey {
+	return resourceKey{
+		namespace: reference.Namespace,
+		name:      reference.Name,
+		kind:      "GitRepository",
+	}
+}
+
+func wrapperConsumerResourceKey(consumer config.WrapperConsumer) resourceKey {
+	namespace, name, _ := strings.Cut(consumer.ReleaseKey(), "/")
+	return resourceKey{namespace: namespace, name: name}
 }
 
 func exactRenderedRelease(collector *releaseValueCollector, name, namespace string) (releaseValues, error) {
@@ -477,17 +538,21 @@ func isDashboardGatewayAuthorization(object map[string]any) bool {
 func validateMainReleaseDependencies(
 	collector *releaseValueCollector,
 	consumers []config.WrapperConsumer,
+	openSearchActive bool,
 ) error {
 	for _, consumer := range consumers {
 		release, err := exactRenderedRelease(collector, consumer.PackageKey, consumer.Namespace)
 		if err != nil {
 			return fmt.Errorf("resolve wrapped package dependency: %w", err)
 		}
-		required := resourceKey{namespace: consumer.Namespace, name: consumer.ReleaseName}
+		required := wrapperConsumerResourceKey(consumer)
 		if !slices.Contains(release.dependencies, required) {
 			return fmt.Errorf("HelmRelease %s/%s does not depend on wrapper %s/%s",
 				release.key.namespace, release.key.name, required.namespace, required.name)
 		}
+	}
+	if !openSearchActive {
+		return nil
 	}
 	dashboards, err := exactRenderedRelease(collector, "opensearch-dashboards", openSearchNamespace)
 	if err != nil {
@@ -549,7 +614,7 @@ func validateFluentBitEgress(
 	}
 	rendered := newReleaseValueCollector(fluentBitNamespace).captureResources()
 	if _, err := renderChart(
-		filepath.Join(pkg.Checkout, "chart"),
+		filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
 		kubernetesVersion,
 		fluentInstances[0].values,
 		rendered,

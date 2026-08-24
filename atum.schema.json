@@ -232,6 +232,9 @@
         "id": {"$ref": "#/$defs/nonEmpty"},
         "valuesPath": {"$ref": "#/$defs/nonEmpty"},
         "license": {"$ref": "#/$defs/nonEmpty"},
+        "integration": {"enum": ["integrated", "generic"]},
+        "chartPath": {"$ref": "#/$defs/nonEmpty"},
+        "fluxName": {"$ref": "#/$defs/nonEmpty"},
         "source": {"$ref": "#/$defs/gitSource"}
       }
     },

@@ -102,6 +102,24 @@ Included packages use OSI-approved open-source licenses such as Apache-2.0, MIT,
 | Source control and CI | GitLab Community Edition | MIT | [gitlab-org/gitlab](https://gitlab.com/gitlab-org/gitlab) |
 | In-cluster OCI image registry | Harbor | Apache-2.0 | [goharbor/harbor](https://github.com/goharbor/harbor) |
 
+## GitLab Stateful Dependencies
+
+| Function | Package | License | Source |
+| --- | --- | --- | --- |
+| PostgreSQL reconciliation authority | CloudNativePG | Apache-2.0 | [cloudnative-pg/cloudnative-pg](https://github.com/cloudnative-pg/cloudnative-pg) |
+| Independent PostgreSQL 17 operand wrapper | PostgreSQL | Apache-2.0 | [Big Bang wrapper](https://repo1.dso.mil/big-bang/product/packages/wrapper) |
+| Independent persistent cache | Redis | BSD-3-Clause | [Big Bang maintained Redis](https://repo1.dso.mil/big-bang/product/maintained/redis) |
+| Independent S3-compatible object storage | Garage | AGPL-3.0-only | [Big Bang maintained Garage](https://repo1.dso.mil/big-bang/product/maintained/garage) |
+
+CloudNativePG owns PostgreSQL reconciliation and the PostgreSQL service and
+application credential. The PostgreSQL package owns only the independently
+rendered `Cluster` operand. Redis and Garage each own their release,
+persistence, service, and credentials. GitLab consumes those endpoints and
+projected credential forms; it does not own any dependency lifecycle. The
+shared `wrapper` support source remains Big Bang's mesh companion for
+OpenSearch and is distinct from the independently published `postgresql`
+repository identity.
+
 ## Recovery
 
 | Function | Package | License | Source |

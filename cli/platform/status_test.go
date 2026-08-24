@@ -755,10 +755,12 @@ func TestSharedWrapperSourceRejectsUnexpectedAndDuplicateConsumers(t *testing.T)
 	t.Parallel()
 
 	source := consumerGitSource{
-		restrictReleases: true,
-		releases: map[string]string{
-			"open-search-wrapper":         "open-search",
-			"opensearch-operator-wrapper": "opensearch-system",
+		consumption: consumerReleaseExactSet,
+		releaseKeys: map[string]struct{}{
+			"open-search/open-search-wrapper":                 {},
+			"opensearch-system/opensearch-operator-wrapper": {},
+			"first/shared-wrapper":                          {},
+			"second/shared-wrapper":                         {},
 		},
 	}
 	seen := make(map[string]struct{})
@@ -774,6 +776,10 @@ func TestSharedWrapperSourceRejectsUnexpectedAndDuplicateConsumers(t *testing.T)
 	if recordExpectedConsumerRelease(source, "opensearch-operator-wrapper", "wrong", seen) {
 		t.Fatal("wrapper consumer with a conflicting namespace was accepted")
 	}
+	if !recordExpectedConsumerRelease(source, "shared-wrapper", "first", seen) ||
+		!recordExpectedConsumerRelease(source, "shared-wrapper", "second", seen) {
+		t.Fatal("same-name wrapper consumers in disjoint namespaces were rejected")
+	}
 }
 
 func TestPackageConsumerSourcesAcceptSharedWrapperSource(t *testing.T) {
@@ -786,7 +792,8 @@ func TestPackageConsumerSourcesAcceptSharedWrapperSource(t *testing.T) {
 		},
 	}
 	expected := map[string]consumerGitSource{
-		"http://forgejo/atum-upstreams/wrapper": {
+		"bigbang/bigbang-wrapper": {
+			url: "http://forgejo/atum-upstreams/wrapper.git",
 			chartPath: "chart", reconcileStrategy: "Revision",
 		},
 	}
@@ -794,8 +801,227 @@ func TestPackageConsumerSourcesAcceptSharedWrapperSource(t *testing.T) {
 	if !exact {
 		t.Fatal("shared wrapper source was not exact")
 	}
-	if got := sources["bigbang-wrapper"]; got.reconcileStrategy != "Revision" || got.chartPath != "chart" {
+	if got := sources["bigbang/bigbang-wrapper"]; got.reconcileStrategy != "Revision" || got.chartPath != "chart" {
 		t.Fatalf("wrapper consumer source = %#v", got)
+	}
+}
+
+func TestConsumerlessWrapperSourceHasAnExactEmptyReleaseSet(t *testing.T) {
+	t.Parallel()
+
+	const wrapperKey = "bigbang/bigbang-wrapper"
+	sources := map[string]consumerGitSource{
+		wrapperKey: {
+			consumption: consumerReleaseExactSet,
+			releaseKeys:  map[string]struct{}{},
+		},
+	}
+	if !exactConsumerReleaseSets(sources, nil) {
+		t.Fatal("consumerless wrapper source required a HelmRelease")
+	}
+	if recordExpectedConsumerRelease(
+		sources[wrapperKey], "bigbang-wrapper", "bigbang", make(map[string]struct{}),
+	) {
+		t.Fatal("consumerless wrapper source accepted an unexpected HelmRelease")
+	}
+	generic := map[string]consumerGitSource{
+		"postgresql/postgresql": {
+			consumption: consumerReleaseExactSet,
+			releaseKeys: map[string]struct{}{
+				"postgresql/postgresql": {},
+			},
+		},
+	}
+	if exactConsumerReleaseSets(generic, nil) {
+		t.Fatal("generic package source accepted a missing required HelmRelease")
+	}
+	integrated := map[string]consumerGitSource{
+		"bigbang/istio-gateway": {consumption: consumerReleaseAtLeastOne},
+	}
+	if exactConsumerReleaseSets(integrated, nil) {
+		t.Fatal("integrated package source accepted missing template-owned fan-out")
+	}
+}
+
+func TestExpectedConsumerSourcesRejectPackageWrapperKeyCollision(t *testing.T) {
+	t.Parallel()
+
+	expected := make(map[string]consumerGitSource)
+	wrapper := config.BigBangWrapperSourceReference()
+	if err := addExpectedConsumerGitSource(
+		expected, wrapper, consumerGitSource{sourceName: wrapper.Name},
+	); err != nil {
+		t.Fatalf("add wrapper source expectation: %v", err)
+	}
+	if err := addExpectedConsumerGitSource(
+		expected, wrapper, consumerGitSource{sourceName: "generic"},
+	); err == nil {
+		t.Fatal("package expectation overwrote the shared wrapper source key")
+	}
+	disjoint := config.PackageSourceReference{
+		Name: "bigbang-wrapper", Namespace: "generic",
+	}
+	if err := addExpectedConsumerGitSource(
+		expected, disjoint, consumerGitSource{sourceName: disjoint.Name},
+	); err != nil {
+		t.Fatalf("disjoint generic source expectation collided: %v", err)
+	}
+}
+
+func TestGenericPackageConsumerSourcesAndReleasesAreNamespaced(t *testing.T) {
+	t.Parallel()
+
+	ids := []string{"cloudnative-pg", "postgresql", "redis", "garage"}
+	expected := make(map[string]consumerGitSource, len(ids))
+	repositories := make([]kube.Object, 0, len(ids))
+	for _, id := range ids {
+		url := "http://forgejo/atum-upstreams/" + id + ".git"
+		key := (config.PackageSourceReference{Name: id, Namespace: id}).Key()
+		expected[key] = consumerGitSource{
+			url: url, sourceName: id, sourceNamespace: id,
+			chartPath: "chart", reconcileStrategy: "Revision",
+			releaseKeys: map[string]struct{}{key: {}},
+			consumption: consumerReleaseExactSet,
+		}
+		repositories = append(repositories, kube.Object{
+			Name: id, Namespace: id,
+			Object: map[string]any{"spec": map[string]any{"url": url}},
+		})
+	}
+	sources, exact := packageConsumerSourcesSnapshot(repositories, expected)
+	if !exact || len(sources) != len(ids) {
+		t.Fatalf("generic package source projection = %#v, exact %v", sources, exact)
+	}
+	for _, id := range ids {
+		release := genericConsumerReleaseFixture(id, id, "chart", "Revision")
+		source, key, accepted := exactGitConsumerRelease(release, sources)
+		if !accepted || key != (config.PackageSourceReference{Name: id, Namespace: id}).Key() ||
+			source.sourceName != id || source.sourceNamespace != id {
+			t.Fatalf("generic release %s source = %#v, key %q, accepted %v", id, source, key, accepted)
+		}
+	}
+	sharedNameSources := []consumerGitSource{
+		{
+			releaseKeys: map[string]struct{}{"first/shared": {}},
+			consumption: consumerReleaseExactSet,
+		},
+		{
+			releaseKeys: map[string]struct{}{"second/shared": {}},
+			consumption: consumerReleaseExactSet,
+		},
+	}
+	seen := make(map[string]struct{}, len(sharedNameSources))
+	if !recordExpectedConsumerRelease(sharedNameSources[0], "shared", "first", seen) ||
+		!recordExpectedConsumerRelease(sharedNameSources[1], "shared", "second", seen) {
+		t.Fatal("disjoint namespaced generic releases collided in exact status")
+	}
+
+	wrongNamespace := append([]kube.Object(nil), repositories...)
+	wrongNamespace[0].Namespace = "bigbang"
+	if _, exact := packageConsumerSourcesSnapshot(wrongNamespace, expected); exact {
+		t.Fatal("generic GitRepository in the integrated namespace was accepted")
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"source namespace": func(chart map[string]any) {
+			chart["sourceRef"].(map[string]any)["namespace"] = "bigbang"
+		},
+		"source name": func(chart map[string]any) {
+			chart["sourceRef"].(map[string]any)["name"] = "wrapper"
+		},
+		"chart path": func(chart map[string]any) {
+			chart["chart"] = "charts/wrapper"
+		},
+		"strategy": func(chart map[string]any) {
+			chart["reconcileStrategy"] = "ChartVersion"
+		},
+	} {
+		release := genericConsumerReleaseFixture("postgresql", "postgresql", "chart", "Revision")
+		chart := release.Object["spec"].(map[string]any)["chart"].(map[string]any)["spec"].(map[string]any)
+		mutate(chart)
+		if _, _, accepted := exactGitConsumerRelease(release, sources); accepted {
+			t.Fatalf("generic release with wrong %s was accepted", name)
+		}
+	}
+}
+
+func TestIntegratedConsumerUsesMaterializedFluxIdentity(t *testing.T) {
+	t.Parallel()
+
+	registry := config.SourceRegistry{
+		ClusterURL: "http://forgejo", UpstreamOrganization: "atum-upstreams",
+	}
+	pkg := config.Package{
+		ID: "fluent-bit", FluxName: "fluentbit", Integration: "integrated",
+	}
+	values := map[string]any{"git": map[string]any{
+		"repo": "http://forgejo/atum-upstreams/fluent-bit.git", "path": "chart",
+	}}
+	reference, expected, exact := packageGitConsumerExpectation(pkg, values, registry)
+	if !exact || reference.Key() != "bigbang/fluentbit" ||
+		expected.sourceName != "fluentbit" ||
+		expected.consumption != consumerReleaseAtLeastOne ||
+		expected.url != "http://forgejo/atum-upstreams/fluent-bit.git" {
+		t.Fatalf("integrated Fluent Bit expectation = %#v %#v, exact %v", reference, expected, exact)
+	}
+	release := genericConsumerReleaseFixture("fluentbit", "bigbang", "chart", "ChartVersion")
+	if _, _, accepted := exactGitConsumerRelease(
+		release, map[string]consumerGitSource{reference.Key(): expected},
+	); !accepted {
+		t.Fatal("rendered Fluent Bit source/release identity was rejected")
+	}
+	release = genericConsumerReleaseFixture("fluent-bit", "bigbang", "chart", "ChartVersion")
+	if _, _, accepted := exactGitConsumerRelease(
+		release, map[string]consumerGitSource{reference.Key(): expected},
+	); accepted {
+		t.Fatal("repository identity was accepted as the rendered Flux identity")
+	}
+	release = genericConsumerReleaseFixture("fluentbit", "bigbang", "chart", "")
+	if _, _, accepted := exactGitConsumerRelease(
+		release, map[string]consumerGitSource{reference.Key(): expected},
+	); !accepted {
+		t.Fatal("omitted integrated reconcileStrategy default was rejected")
+	}
+	release = genericConsumerReleaseFixture("fluentbit", "bigbang", "chart", "Revision")
+	if _, _, accepted := exactGitConsumerRelease(
+		release, map[string]consumerGitSource{reference.Key(): expected},
+	); accepted {
+		t.Fatal("incorrect integrated reconcileStrategy was accepted")
+	}
+}
+
+func TestIntegratedSourceAcceptsTemplateOwnedReleaseFanOut(t *testing.T) {
+	t.Parallel()
+
+	source := consumerGitSource{
+		url: "http://forgejo/atum-upstreams/istio-gateway.git",
+		sourceName: "istio-gateway", sourceNamespace: "bigbang",
+		chartPath: "chart", reconcileStrategy: "ChartVersion",
+		defaultReconcile: true,
+		consumption:      consumerReleaseAtLeastOne,
+	}
+	sources := map[string]consumerGitSource{"bigbang/istio-gateway": source}
+	for _, releaseName := range []string{"public-ingressgateway", "passthrough-ingressgateway"} {
+		release := genericConsumerReleaseFixture(releaseName, "bigbang", "chart", "")
+		sourceRef := release.Object["spec"].(map[string]any)["chart"].(map[string]any)["spec"].(map[string]any)["sourceRef"].(map[string]any)
+		sourceRef["name"] = "istio-gateway"
+		if _, key, accepted := exactGitConsumerRelease(release, sources); !accepted ||
+			key != "bigbang/istio-gateway" {
+			t.Fatalf("integrated consumer %s was rejected", releaseName)
+		}
+	}
+}
+
+func genericConsumerReleaseFixture(
+	name, namespace, chartPath, strategy string,
+) kube.Object {
+	return kube.Object{
+		Name: name, Namespace: namespace,
+		Object: map[string]any{"spec": map[string]any{"chart": map[string]any{"spec": map[string]any{
+			"chart": chartPath, "reconcileStrategy": strategy,
+			"sourceRef": map[string]any{
+				"kind": "GitRepository", "name": name, "namespace": namespace,
+			},
+		}}}},
 	}
 }
 

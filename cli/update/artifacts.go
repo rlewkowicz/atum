@@ -60,17 +60,30 @@ func artifactBindings(
 		if strings.TrimSpace(chartPath) == "" {
 			chartPath = "./chart"
 		}
-		bindings = append(bindings, artifactBinding{
+		sourceReference, err := config.RenderedPackageSourceReference(pkg, packageValues)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve package %s rendered source: %w", pkg.ID, err)
+		}
+		binding := artifactBinding{
 			id:                pkg.ID,
 			sourceKind:        "GitRepository",
+			sourceName:        sourceReference.Name,
+			sourceNamespace:   sourceReference.Namespace,
 			sourceURL:         internalSourceURL(registry, registry.UpstreamOrganization, pkg.ID),
 			sourceTag:         renderedPackageGitTag(pkg.Source),
 			sourceBranch:      pkg.Source.Branch,
 			sourceCommit:      pkg.Source.Commit,
 			chart:             chartPath,
-			reconcileStrategy: "Revision",
-			defaultReconcile:  true,
-		})
+		}
+		if pkg.Integration == "generic" {
+			binding.reconcileStrategy = "Revision"
+			binding.releaseName = sourceReference.Name
+			binding.releaseNamespace = sourceReference.Namespace
+		} else {
+			binding.reconcileStrategy = "ChartVersion"
+			binding.defaultReconcile = true
+		}
+		bindings = append(bindings, binding)
 	}
 	loadedSources := make(map[string]map[string]any, len(charts))
 	for _, chart := range charts {
@@ -181,7 +194,9 @@ func (service *Service) currentArtifacts(
 	}
 	for _, pkg := range desired.Platform.Packages {
 		id := "package/" + pkg.ID
-		inputs[id] = artifactInput{ID: id, Path: filepath.Join(packagePaths[pkg.ID], "chart")}
+		inputs[id] = artifactInput{
+			ID: id, Path: filepath.Join(packagePaths[pkg.ID], filepath.FromSlash(pkg.RepositoryChartPath())),
+		}
 	}
 	for _, chart := range desired.Platform.Charts {
 		id := "chart/" + chart.ID
@@ -233,7 +248,7 @@ func candidateArtifacts(
 	for _, pkg := range packages {
 		inputs = append(inputs, artifactInput{
 			ID:   "package/" + pkg.Package.ID,
-			Path: filepath.Join(pkg.Checkout, "chart"),
+			Path: filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
 		})
 	}
 	for _, chart := range charts {
@@ -267,11 +282,33 @@ func candidateArtifacts(
 }
 
 func pairArtifacts(current map[string]artifactInput, candidate []artifactInput) ([]chartArtifact, error) {
+	candidateIDs := make(map[string]struct{}, len(candidate))
+	for index := range candidate {
+		if _, duplicate := candidateIDs[candidate[index].ID]; duplicate {
+			return nil, fmt.Errorf("candidate chart %s is duplicated", candidate[index].ID)
+		}
+		candidateIDs[candidate[index].ID] = struct{}{}
+	}
+	for id := range current {
+		if strings.HasPrefix(id, "package/") {
+			if _, retained := candidateIDs[id]; !retained {
+				return nil, fmt.Errorf("current package chart %s has no candidate contract", id)
+			}
+		}
+	}
 	paired := make([]chartArtifact, len(candidate))
 	for i := range candidate {
 		old, exists := current[candidate[i].ID]
+		introductionBaseline := false
 		if !exists {
-			return nil, fmt.Errorf("candidate chart %s has no current contract", candidate[i].ID)
+			if !strings.HasPrefix(candidate[i].ID, "package/") {
+				return nil, fmt.Errorf("candidate chart %s has no current contract", candidate[i].ID)
+			}
+			// A newly declared package has no historical render. Its immutable
+			// declared source is the explicit introduction baseline; existing
+			// packages continue to compare against their prior artifact.
+			old = candidate[i]
+			introductionBaseline = true
 		}
 		paired[i] = chartArtifact{
 			ID:                     candidate[i].ID,
@@ -287,6 +324,7 @@ func pairArtifacts(current map[string]artifactInput, candidate []artifactInput) 
 			CandidateBindings:      candidate[i].Bindings,
 			CurrentSources:         old.Sources,
 			CandidateSources:       candidate[i].Sources,
+			IntroductionBaseline:   introductionBaseline,
 		}
 	}
 	return paired, nil
@@ -427,6 +465,10 @@ func inspectArtifactPairs(
 					}
 				}
 				candidateInspections[i] = candidate
+				if artifacts[i].IntroductionBaseline {
+					currentInspections[i] = candidate
+					return nil
+				}
 				if artifacts[i].CurrentPath == artifacts[i].CandidatePath &&
 					reflect.DeepEqual(currentReleaseValues[releaseName], candidateReleaseValues[releaseName]) {
 					currentInspections[i] = candidate
@@ -548,6 +590,7 @@ func validateAppliedArtifacts(
 	currentGenerated map[string]any,
 	candidateGenerated map[string]any,
 	profile map[string]any,
+	bigBangDefaults map[string]any,
 	bootstrapValues map[string]map[string]any,
 	artifacts []chartArtifact,
 	files map[string][]byte,
@@ -558,11 +601,23 @@ func validateAppliedArtifacts(
 		switch {
 		case exact[i].ID == "bigbang":
 			var err error
-			exact[i].CurrentValues, err = config.MergePlatformValues(operational, currentGenerated, profile)
+			currentOperational, err := config.CurrentPackageSelectionValues(
+				operational, bigBangDefaults, currentDesired.Platform.Packages,
+			)
+			if err != nil {
+				return fmt.Errorf("project current package selection values: %w", err)
+			}
+			exact[i].CurrentValues, err = config.MergePlatformValues(currentOperational, currentGenerated, profile)
 			if err != nil {
 				return err
 			}
-			exact[i].CandidateValues, err = config.MergePlatformValues(operational, candidateGenerated, profile)
+			candidateOperational, err := config.StripPackageSelectionMetadata(
+				operational, bigBangDefaults,
+			)
+			if err != nil {
+				return fmt.Errorf("project candidate package selection values: %w", err)
+			}
+			exact[i].CandidateValues, err = config.MergePlatformValues(candidateOperational, candidateGenerated, profile)
 			if err != nil {
 				return err
 			}

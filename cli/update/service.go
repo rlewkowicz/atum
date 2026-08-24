@@ -57,6 +57,7 @@ type chartArtifact struct {
 	CandidateBindings      []artifactBinding
 	CurrentSources         []map[string]any
 	CandidateSources       []map[string]any
+	IntroductionBaseline   bool
 }
 
 func NewService(root string, logger *slog.Logger) *Service {
@@ -151,31 +152,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	if err := verifySelectedPackages(mergedRenderValues, desired.Platform.Packages, desired.Platform.Charts); err != nil {
-		return Result{}, err
-	}
-	if err := verifyTrackedChartBindings(service.root, mergedRenderValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, managedFiles); err != nil {
-		return Result{}, err
-	}
-	currentRenderValues, err := sourceVersionValues(
-		mergedRenderValues,
-		desired.Platform.Sources,
-		desired.Platform.Packages,
-		lock.Resolved.SupportSources,
-		desired.Platform.Charts,
-		desired.Delivery.Images,
-	)
-	if err != nil {
-		return Result{}, err
-	}
-	currentRenderValues, err = currentWrapperContractValues(
-		currentRenderValues,
-		desired.Platform,
-		lock.Resolved.SupportSources,
-	)
-	if err != nil {
-		return Result{}, err
-	}
 
 	service.logger.InfoContext(ctx, "resolving stable upstream Git releases")
 	var bigBang, kubespray, flux resolvedGit
@@ -203,6 +179,59 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return resolveErr
 	})
 	if err := group.Wait(); err != nil {
+		return Result{}, err
+	}
+	bigBangDefaults, err := readBigBangValues(bigBang.Checkout)
+	if err != nil {
+		return Result{}, fmt.Errorf("read Big Bang %s values: %w", bigBang.Source.Version, err)
+	}
+	renderOperational, err := config.StripPackageSelectionMetadata(operational, bigBangDefaults)
+	if err != nil {
+		return Result{}, fmt.Errorf("project candidate package selection values: %w", err)
+	}
+	configuredValues, err := config.MergePlatformValues(
+		renderOperational, generated, profileRenderValues,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	admittedBigBang, err := admitBigBangPackageSelection(
+		bigBang,
+		bigBangDefaults,
+		operational,
+		configuredValues,
+		desired.Platform,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	currentSelectionValues, err := config.CurrentPackageSelectionValues(
+		mergedRenderValues, bigBangDefaults, desired.Platform.Packages,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("project current package selection values: %w", err)
+	}
+	if err := verifyTrackedChartBindings(service.root, currentSelectionValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, managedFiles); err != nil {
+		return Result{}, err
+	}
+	currentRenderValues, err := sourceVersionValues(
+		currentSelectionValues,
+		desired.Platform.Sources,
+		desired.Platform.Packages,
+		lock.Resolved.SupportSources,
+		desired.Platform.Charts,
+		desired.Delivery.Images,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	currentRenderValues, err = currentWrapperContractValues(
+		currentRenderValues,
+		lock.Resolved.SupportSources,
+		admittedBigBang.wrapperRequirement,
+		admittedBigBang.wrapperConsumers,
+	)
+	if err != nil {
 		return Result{}, err
 	}
 	currentFluxManifest, err := tree.Data(project.Desired.Platform.Flux.Assets[0].File)
@@ -274,11 +303,12 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	service.logger.InfoContext(ctx, "selecting compatible Kubernetes and charts for the newest Big Bang")
 	selection, err := service.selectCompatiblePlatform(
 		ctx,
-		bigBang,
+		admittedBigBang,
 		kubespray,
 		desired,
 		lock,
-		operational,
+		renderOperational,
+		configuredValues,
 		generated,
 		profileRenderValues,
 		trackedChartCatalogs,
@@ -306,6 +336,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	candidateInspections := selection.candidateInspections
 	renderedImages := renderedImageIDs(desired.Delivery.Images, candidateInspections)
 	desired.Platform.BigBang = bigBang.Source
+	desired.Platform.Packages = make([]config.Package, len(packages))
 	for i := range packages {
 		desired.Platform.Packages[i] = packages[i].Package
 	}
@@ -523,6 +554,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		generated,
 		candidateGenerated,
 		profileRenderValues,
+		admittedBigBang.defaults,
 		bootstrapValues,
 		artifacts,
 		tree.Files(),
@@ -889,6 +921,15 @@ type platformSelection struct {
 	clusterReleases      []config.ClusterRelease
 }
 
+type admittedBigBangSelection struct {
+	candidate          resolvedGit
+	defaults           map[string]any
+	platform           config.Platform
+	packages           []config.Package
+	wrapperConsumers   []config.WrapperConsumer
+	wrapperRequirement config.WrapperSourceRequirement
+}
+
 func incompatibleBigBangError(version string, pinned bool, failures []string) error {
 	selection := "newest Big Bang"
 	if pinned {
@@ -904,13 +945,87 @@ func latestOnlyBigBangCandidate(latest resolvedGit) resolvedGit {
 	return latest
 }
 
+func admitBigBangPackageSelection(
+	resolved resolvedGit,
+	defaults map[string]any,
+	operational map[string]any,
+	configured map[string]any,
+	platform config.Platform,
+) (admittedBigBangSelection, error) {
+	candidate := latestOnlyBigBangCandidate(resolved)
+	packages, err := config.PackageSelection(operational, defaults)
+	if err != nil {
+		return admittedBigBangSelection{}, fmt.Errorf(
+			"Big Bang %s package inventory: %w", candidate.Source.Version, err,
+		)
+	}
+	effective := mergeValues(defaults, configured)
+	candidatePlatform := platform
+	candidatePlatform.Packages = append([]config.Package(nil), packages...)
+	if err := verifySelectedPackages(
+		operational, defaults, packages, candidatePlatform.Charts,
+	); err != nil {
+		return admittedBigBangSelection{}, fmt.Errorf(
+			"Big Bang %s selection: %w", candidate.Source.Version, err,
+		)
+	}
+	wrapperConsumers, err := config.ActiveWrapperConsumers(candidatePlatform, effective)
+	if err != nil {
+		return admittedBigBangSelection{}, fmt.Errorf(
+			"Big Bang %s wrapper admission: %w", candidate.Source.Version, err,
+		)
+	}
+	wrapperRequirement, err := config.BigBangWrapperSourceRequirement(
+		defaults, effective, wrapperConsumers,
+	)
+	if err != nil {
+		return admittedBigBangSelection{}, fmt.Errorf(
+			"Big Bang %s wrapper source admission: %w", candidate.Source.Version, err,
+		)
+	}
+	obligations := []config.RenderedSourceObligation{
+		{
+			Owner: "Flux deployment source",
+			Reference: config.PackageSourceReference{
+				Name: "flux-system", Namespace: "flux-system",
+			},
+		},
+		{
+			Owner: "Big Bang deployment source",
+			Reference: config.PackageSourceReference{
+				Name: "bigbang", Namespace: "bigbang",
+			},
+		},
+	}
+	if wrapperRequirement.Required {
+		obligations = append(obligations, config.RenderedSourceObligation{
+			Owner: "Big Bang shared wrapper source",
+			Reference: config.BigBangWrapperSourceReference(),
+		})
+	}
+	if err := config.ValidateRenderedSourceReferences(effective, packages, obligations); err != nil {
+		return admittedBigBangSelection{}, fmt.Errorf(
+			"Big Bang %s rendered source admission: %w", candidate.Source.Version, err,
+		)
+	}
+	return admittedBigBangSelection{
+		candidate:          candidate,
+		defaults:           defaults,
+		platform:           candidatePlatform,
+		packages:           packages,
+		wrapperConsumers:   wrapperConsumers,
+		wrapperRequirement: wrapperRequirement,
+	}, nil
+}
+
 func (service *Service) selectCompatiblePlatform(
 	ctx context.Context,
-	bigBangLatest resolvedGit,
+	admitted admittedBigBangSelection,
 	kubesprayLatest resolvedGit,
 	desired config.Document,
 	lock config.Lock,
-	operational map[string]any,
+	renderOperational map[string]any,
+	configuredValues map[string]any,
 	generated map[string]any,
 	profile map[string]any,
 	trackedChartCatalogs []*chartCatalog,
@@ -937,15 +1052,13 @@ func (service *Service) selectCompatiblePlatform(
 	if resetToPinnedBigBang {
 		minimumRelease = desired.Orchestration.Releases[0]
 	}
-	configuredValues, err := config.MergePlatformValues(operational, generated, profile)
-	if err != nil {
-		return platformSelection{}, err
-	}
 	var failures []string
 	if err := ctx.Err(); err != nil {
 		return platformSelection{}, err
 	}
-	candidate := latestOnlyBigBangCandidate(bigBangLatest)
+	candidate := admitted.candidate
+	bigBangValues := admitted.defaults
+	selectedPackages := admitted.packages
 		metadata, err := readChartMetadata(filepath.Join(candidate.Checkout, "chart"))
 		if err != nil {
 			return platformSelection{}, fmt.Errorf("inspect Big Bang chart %s: %w", candidate.Source.Version, err)
@@ -960,21 +1073,17 @@ func (service *Service) selectCompatiblePlatform(
 			)
 		}
 		candidate.Source.KubeVersion = metadata.KubeVersion
-		bigBangValues, err := readBigBangValues(candidate.Checkout)
-		if err != nil {
-			return platformSelection{}, fmt.Errorf(
-				"read Big Bang %s values: %w", candidate.Source.Version, err,
-			)
-		}
 		effectiveValues := mergeValues(bigBangValues, configuredValues)
-		if err := verifySelectedPackages(effectiveValues, desired.Platform.Packages, desired.Platform.Charts); err != nil {
-			return platformSelection{}, fmt.Errorf("Big Bang %s selection: %w", candidate.Source.Version, err)
-		}
 		if err := verifyTrackedChartBindings(service.root, effectiveValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, files); err != nil {
 			return platformSelection{}, fmt.Errorf("Big Bang %s chart sources: %w", candidate.Source.Version, err)
 		}
+		candidatePlatform := admitted.platform
 		supportSources, err := resolveWrapperSupportSource(
-			ctx, service.cache, candidate, desired.Platform, bigBangValues, effectiveValues, lock.Resolved,
+			ctx,
+			service.cache,
+			candidate,
+			admitted.wrapperRequirement,
+			lock.Resolved,
 		)
 		if err != nil {
 			failures = append(
@@ -986,7 +1095,8 @@ func (service *Service) selectCompatiblePlatform(
 			)
 		}
 		packages, err := resolvePackages(
-			ctx, service.cache, parallelism, bigBangValues, desired.Platform.Packages, resetToPinnedBigBang,
+			ctx, service.cache, parallelism, bigBangValues, selectedPackages,
+			desired.Platform.Packages, resetToPinnedBigBang,
 		)
 		if err != nil {
 			return platformSelection{}, fmt.Errorf(
@@ -994,6 +1104,7 @@ func (service *Service) selectCompatiblePlatform(
 			)
 		}
 		candidateDesired := desired
+		candidateDesired.Platform = candidatePlatform
 		candidateDesired.Platform.BigBang = candidate.Source
 		candidateDesired.Platform.Packages = make([]config.Package, len(packages))
 		for i := range packages {
@@ -1078,7 +1189,9 @@ func (service *Service) selectCompatiblePlatform(
 						"prepare generated values for %s: %w", coordinate, err,
 					)
 				}
-				candidateConfiguredValues, err := config.MergePlatformValues(operational, candidateGenerated, profile)
+				candidateConfiguredValues, err := config.MergePlatformValues(
+					renderOperational, candidateGenerated, profile,
+				)
 				if err != nil {
 					return platformSelection{}, fmt.Errorf(
 						"merge platform values for %s: %w", coordinate, err,
@@ -1177,6 +1290,8 @@ func (service *Service) selectCompatiblePlatform(
 					attemptDesired.Platform,
 					packages,
 					supportSources,
+					admitted.wrapperRequirement,
+					admitted.wrapperConsumers,
 					candidateRenderValues,
 					kubernetesCandidate.kubernetes.Version,
 					openSearchIdentity.Host,
@@ -1315,62 +1430,13 @@ func lockConstraints(constraints []versionConstraint) []config.CompatibilityCons
 	return result
 }
 
-func verifySelectedPackages(operational map[string]any, packages []config.Package, charts []config.TrackedChart) error {
-	selected := make(map[string]struct{}, len(packages)+len(charts))
-	for _, pkg := range packages {
-		selected[pkg.ValuesPath] = struct{}{}
-		values, err := valuesAt(operational, pkg.ValuesPath)
-		if err != nil {
-			return fmt.Errorf("selected package %s: %w", pkg.ID, err)
-		}
-		if enabled, _ := values["enabled"].(bool); !enabled {
-			return fmt.Errorf("selected package %s is not enabled in operational values", pkg.ID)
-		}
-		if sourceType, _ := values["sourceType"].(string); sourceType != "git" {
-			return fmt.Errorf("selected package %s uses sourceType %q, want git", pkg.ID, sourceType)
-		}
-	}
-	for _, chart := range charts {
-		selected[chart.ValuesPath] = struct{}{}
-		values, err := valuesAt(operational, chart.ValuesPath)
-		if err != nil {
-			return fmt.Errorf("selected chart %s: %w", chart.ID, err)
-		}
-		if enabled, _ := values["enabled"].(bool); !enabled {
-			return fmt.Errorf("selected chart %s is not enabled in operational values", chart.ID)
-		}
-		if sourceType, _ := values["sourceType"].(string); sourceType != "helmRepo" {
-			return fmt.Errorf("selected chart %s uses sourceType %q, want helmRepo", chart.ID, sourceType)
-		}
-	}
-	var walk func(map[string]any, string) error
-	walk = func(values map[string]any, prefix string) error {
-		for key, raw := range values {
-			nested, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			path := key
-			if prefix != "" {
-				path = prefix + "." + key
-			}
-			enabled, hasEnabled := nested["enabled"].(bool)
-			sourceType, _ := nested["sourceType"].(string)
-			if hasEnabled && enabled && sourceType != "" {
-				if sourceType != "git" && sourceType != "helmRepo" {
-					return fmt.Errorf("enabled Big Bang source %s uses unsupported sourceType %q", path, sourceType)
-				}
-				if _, exists := selected[path]; !exists {
-					return fmt.Errorf("enabled Big Bang source %s is absent from the declarative package inventory", path)
-				}
-			}
-			if err := walk(nested, path); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(operational, "")
+func verifySelectedPackages(
+	operational map[string]any,
+	defaults map[string]any,
+	packages []config.Package,
+	charts []config.TrackedChart,
+) error {
+	return config.ValidatePackageSelectionCoverage(operational, defaults, packages, charts)
 }
 
 func updateGeneratedVersions(
@@ -1490,6 +1556,7 @@ func pinPackageSource(values map[string]any, sources config.SourceRegistry, pkg 
 		{name: "semver", value: pkg.Source.Version},
 		{name: "branch", value: pkg.Source.Branch},
 		{name: "commit", value: pkg.Source.Commit},
+		{name: "path", value: pkg.RepositoryChartPath()},
 	}
 	for _, field := range fields {
 		if err := setNestedValue(values, pkg.ValuesPath+".git."+field.name, field.value); err != nil {

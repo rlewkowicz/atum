@@ -36,10 +36,12 @@ gatewayAPI:
 istioCRDs:
   enabled: true
   sourceType: git
+  atum: {id: istio-crds, fluxName: istio-crds, license: Apache-2.0, integration: integrated}
   git: {}
 istiod:
   enabled: true
   sourceType: git
+  atum: {id: istiod, fluxName: istiod, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     networkPolicies:
@@ -63,6 +65,7 @@ istiod:
 istioGateway:
   enabled: true
   sourceType: git
+  atum: {id: istio-gateway, fluxName: istio-gateway, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     gateways:
@@ -87,6 +90,7 @@ ztunnel:
 kiali:
   enabled: true
   sourceType: git
+  atum: {id: kiali, fluxName: kiali, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     waitJob:
@@ -102,6 +106,7 @@ gatekeeper:
 kyverno:
   enabled: true
   sourceType: git
+  atum: {id: kyverno, fluxName: kyverno, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     global:
@@ -156,6 +161,7 @@ kyverno:
 kyvernoPolicies:
   enabled: true
   sourceType: git
+  atum: {id: kyverno-policies, fluxName: kyverno-policies, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     bbtests:
@@ -180,6 +186,7 @@ kyvernoPolicies:
 kyvernoReporter:
   enabled: true
   sourceType: git
+  atum: {id: kyverno-reporter, fluxName: kyverno-reporter, license: MIT, integration: integrated}
   git: {}
   values:
     waitJob:
@@ -203,6 +210,7 @@ eckOperator:
 fluentbit:
   enabled: true
   sourceType: git
+  atum: {id: fluent-bit, fluxName: fluentbit, license: Apache-2.0, integration: integrated}
   git: {}
   istio:
     injection: enabled
@@ -255,6 +263,7 @@ neuvector:
 tempo:
   enabled: true
   sourceType: git
+  atum: {id: tempo, fluxName: tempo, license: AGPL-3.0-only, integration: integrated}
   git: {}
   values:
     waitJob:
@@ -272,10 +281,12 @@ tempo:
 prometheusOperatorCRDs:
   enabled: true
   sourceType: git
+  atum: {id: prometheus-operator-crds, fluxName: prometheus-operator-crds, license: Apache-2.0, integration: integrated}
   git: {}
 monitoring:
   enabled: true
   sourceType: git
+  atum: {id: monitoring, fluxName: monitoring, license: Apache-2.0, integration: integrated}
   git: {}
   values:
     waitJob:
@@ -320,6 +331,7 @@ monitoring:
 grafana:
   enabled: true
   sourceType: git
+  atum: {id: grafana, fluxName: grafana, license: AGPL-3.0-only, integration: integrated}
   git: {}
   values:
     global: {}
@@ -361,6 +373,7 @@ addons:
   authservice:
     enabled: true
     sourceType: git
+    atum: {id: authservice, fluxName: authservice, license: Apache-2.0, integration: integrated}
     git: {}
     chains:
       local:
@@ -385,6 +398,7 @@ addons:
   gitlab:
     enabled: true
     sourceType: git
+    atum: {id: gitlab, fluxName: gitlab, license: MIT, integration: integrated}
     git: {}
     flux:
       upgrade:
@@ -482,6 +496,7 @@ addons:
   harbor:
     enabled: true
     sourceType: git
+    atum: {id: harbor, fluxName: harbor, license: Apache-2.0, integration: integrated}
     git: {}
     values:
       bbtests:
@@ -521,6 +536,7 @@ addons:
   headlamp:
     enabled: true
     sourceType: git
+    atum: {id: headlamp, fluxName: headlamp, license: Apache-2.0, integration: integrated}
     git: {}
     sso:
       enabled: false
@@ -532,6 +548,7 @@ addons:
   keycloak:
     enabled: true
     sourceType: git
+    atum: {id: keycloak, fluxName: keycloak, license: Apache-2.0, integration: integrated}
     git: {}
     values:
       upstream:
@@ -563,6 +580,7 @@ addons:
   vault:
     enabled: true
     sourceType: git
+    atum: {id: vault, fluxName: vault, license: MPL-2.0, integration: integrated}
     git: {}
     values:
       autoInit:
@@ -587,6 +605,7 @@ addons:
   velero:
     enabled: true
     sourceType: git
+    atum: {id: velero, fluxName: velero, license: Apache-2.0, integration: integrated}
     git: {}
     values:
       waitJob:
@@ -627,6 +646,83 @@ addons:
       bbtests:
         enabled: false
 packages:
+  cloudnative-pg:
+    enabled: true
+    sourceType: git
+    atum:
+      id: cloudnative-pg
+      fluxName: cloudnative-pg
+      license: Apache-2.0
+      integration: generic
+      source:
+        repo: https://repo1.dso.mil/big-bang/product/maintained/cloudnative-pg.git
+        path: chart
+        tag: 0.29.0-bb.0
+    git: {}
+    namespace:
+      create: true
+      name: cloudnative-pg
+
+  postgresql:
+    enabled: true
+    sourceType: git
+    atum:
+      id: postgresql
+      fluxName: postgresql
+      license: Apache-2.0
+      integration: generic
+      source:
+        repo: https://repo1.dso.mil/big-bang/product/packages/wrapper.git
+        path: chart
+        tag: 0.4.15
+    git: {}
+    namespace:
+      create: true
+      name: postgresql
+    values:
+      package:
+        name: postgresql
+        namespace:
+          name: postgresql
+        configMaps:
+          - name: postgresql
+            data:
+              placeholder: replaced-by-flux-post-renderer
+
+  redis:
+    enabled: true
+    sourceType: git
+    atum:
+      id: redis
+      fluxName: redis
+      license: BSD-3-Clause
+      integration: generic
+      source:
+        repo: https://repo1.dso.mil/big-bang/product/maintained/redis.git
+        path: chart
+        tag: 27.0.14-bb.0
+    git: {}
+    namespace:
+      create: true
+      name: redis
+
+  garage:
+    enabled: true
+    sourceType: git
+    atum:
+      id: garage
+      fluxName: garage
+      license: AGPL-3.0-only
+      integration: generic
+      source:
+        repo: https://repo1.dso.mil/big-bang/product/maintained/garage.git
+        path: chart
+        tag: 0.9.3-bb.2
+    git: {}
+    namespace:
+      create: true
+      name: garage
+
   opensearch-operator:
     enabled: true
     sourceType: helmRepo

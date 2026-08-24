@@ -43,6 +43,8 @@ type artifactBinding struct {
 	version           string
 	reconcileStrategy string
 	defaultReconcile  bool
+	releaseName       string
+	releaseNamespace  string
 }
 
 type releaseValueSource struct {
@@ -340,6 +342,11 @@ func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBi
 		for _, candidate := range candidates {
 			for _, binding := range bindings {
 				if candidate.source != sources[binding.id] {
+					continue
+				}
+				if binding.releaseName != "" &&
+					(candidate.key.name != binding.releaseName ||
+						candidate.key.namespace != binding.releaseNamespace) {
 					continue
 				}
 				reconcileMatches := candidate.reconcile == binding.reconcileStrategy ||
