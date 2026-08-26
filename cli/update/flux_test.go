@@ -37,6 +37,32 @@ func TestRenderFluxSyncOwnsPostAdmissionRoot(t *testing.T) {
 	}
 }
 
+func TestRenderFluxSecretKustomizationUsesRootSource(t *testing.T) {
+	t.Parallel()
+	desired := config.Document{
+		Project: config.ProjectConfig{Cluster: "atum"},
+		Platform: config.Platform{
+			Directory: "platform",
+		},
+	}
+	data, err := renderFluxSecretKustomization(desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	for _, required := range []string{
+		"name: platform-secrets",
+		"name: flux-system",
+		"path: ./platform/secrets/atum",
+		"provider: sops",
+		"name: atum-sops-age",
+	} {
+		if !strings.Contains(source, required) {
+			t.Fatalf("rendered Flux secret source does not contain %q:\n%s", required, source)
+		}
+	}
+}
+
 func TestFluxProfilePatch(t *testing.T) {
 	t.Parallel()
 
@@ -65,16 +91,10 @@ func TestFluxProfilePatch(t *testing.T) {
 		t.Fatalf("local substitutions = %#v", localSubstitute)
 	}
 
-	cloud, err := fluxProfilePatch(current, config.InfrastructureTarget{
+	if _, err := fluxProfilePatch(current, config.InfrastructureTarget{
 		PlatformProfile: "cloud",
-	})
-	if err != nil {
-		t.Fatalf("cloud patch: %v", err)
-	}
-	substitute := cloud["spec"].(map[string]any)["postBuild"].(map[string]any)["substitute"].(map[string]any)
-	if substitute["ATUM_PLATFORM_PROFILE"] != "cloud" ||
-		substitute["ATUM_PLATFORM_DOMAIN"] != "" {
-		t.Fatalf("cloud substitutions = %#v", substitute)
+	}); err == nil {
+		t.Fatal("unsupported cloud profile was rendered")
 	}
 
 	current["metadata"].(map[string]any)["name"] = "other"

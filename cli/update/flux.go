@@ -58,6 +58,35 @@ spec:
 `, repositoryURL, clusterPath)), nil
 }
 
+func renderFluxSecretKustomization(desired config.Document) ([]byte, error) {
+	if desired.Platform.Directory == "" || desired.Project.Cluster == "" {
+		return nil, fmt.Errorf("render Flux secret Kustomization: platform and cluster identity are required")
+	}
+	secretPath := filepath.ToSlash(filepath.Join(
+		desired.Platform.Directory, "secrets", desired.Project.Cluster,
+	))
+	return []byte(fmt.Sprintf(`apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-secrets
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./%s
+  decryption:
+    provider: sops
+    secretRef:
+      name: atum-sops-age
+`, secretPath)), nil
+}
+
 var fluxOverlayFiles = map[string]string{
 	"namespace.yaml": `---
 apiVersion: v1
@@ -221,7 +250,6 @@ func (service *Service) selectCompatibleFlux(
 	ctx context.Context,
 	current config.GitSource,
 	latest resolvedGit,
-	currentInspection chartInspection,
 	desired config.Document,
 ) (resolvedGit, []byte, chartInspection, error) {
 	failures := make([]string, 0, len(latest.Releases))
@@ -247,14 +275,6 @@ func (service *Service) selectCompatibleFlux(
 		}
 		inspection, err := inspectManifestData("flux", manifest)
 		if err != nil {
-			failures = append(failures, candidate.Source.Version+": "+err.Error())
-			continue
-		}
-		if err := validateImageContract(&desired, "flux", currentInspection, inspection, nil, false); err != nil {
-			service.logger.WarnContext(ctx, "candidate Flux contract changed; trying the next compatible release",
-				"version", candidate.Source.Version,
-				"error", err,
-			)
 			failures = append(failures, candidate.Source.Version+": "+err.Error())
 			continue
 		}
@@ -374,9 +394,8 @@ func fluxProfilePatch(current map[string]any, target config.InfrastructureTarget
 		name != "flux-system" || namespace != "flux-system" {
 		return nil, fmt.Errorf("Flux profile patch does not target kustomize.toolkit.fluxcd.io/v1 Kustomization flux-system/flux-system")
 	}
-	domain := ""
-	if target.LocalAccess != nil {
-		domain = target.LocalAccess.Domain
+	if target.PlatformProfile != "local" || target.LocalAccess == nil {
+		return nil, fmt.Errorf("only the local end-to-end platform profile can be rendered")
 	}
 	return map[string]any{
 		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
@@ -388,8 +407,8 @@ func fluxProfilePatch(current map[string]any, target config.InfrastructureTarget
 		"spec": map[string]any{
 			"postBuild": map[string]any{
 				"substitute": map[string]any{
-					"ATUM_PLATFORM_DOMAIN":  domain,
-					"ATUM_PLATFORM_PROFILE": target.PlatformProfile,
+					"ATUM_PLATFORM_DOMAIN":  target.LocalAccess.Domain,
+					"ATUM_PLATFORM_PROFILE": "local",
 				},
 			},
 		},

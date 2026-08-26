@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -eu
+
+LD_LIBRARY_PATH=/usr/local/lib/atum-curl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH
+exec /usr/local/lib/atum-curl/curl "$@"

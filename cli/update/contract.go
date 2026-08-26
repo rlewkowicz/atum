@@ -2,11 +2,13 @@ package update
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -21,30 +23,49 @@ import (
 	releaseutil "helm.sh/helm/v4/pkg/release/v1/util"
 )
 
+const (
+	maxMountedConfigFileBytes  = 1 << 20
+	maxMountedConfigTotalBytes = 8 << 20
+)
+
 type chartInspection struct {
-	Name              string
-	Version           string
-	AppVersion        string
-	KubeVersion       string
-	Images            []string
-	SourceImages      []string
-	Declared          []string
-	Invocations       []containerInvocation
-	ContractSHA       string
-	IstioDependencies []releaseDependencyPosition
+	Name         string
+	Description  string
+	Home         string
+	Sources      []string
+	Version      string
+	AppVersion   string
+	KubeVersion  string
+	Images       []string
+	SourceImages []string
+	Declared     []string
+	Invocations  []containerInvocation
+	ContractSHA  string
 }
 
 type containerInvocation struct {
-	Location   string
-	Name       string
-	Repository string
-	Command    any
-	Args       any
+	Location              string
+	Name                  string
+	Reference             string
+	Repository            string
+	Command               any
+	Args                  any
+	Runtime               map[string]any
+	PodRuntime            map[string]any
+	PodMountPaths         []string
+	MountedFiles          []mountedConfigFile
+	RuntimeContractSHA256 string
 }
 
 type runtimeContract struct {
-	AnnotatedRepositories []string      `json:"annotatedRepositories"`
-	Pods                  []podContract `json:"pods"`
+	AnnotatedRepositories []string             `json:"annotatedRepositories"`
+	Pods                  []podContract        `json:"pods"`
+	ImageFields           []imageFieldContract `json:"imageFields,omitempty"`
+}
+
+type imageFieldContract struct {
+	Location  string `json:"location"`
+	Reference string `json:"reference"`
 }
 
 type podContract struct {
@@ -57,11 +78,27 @@ type podContract struct {
 }
 
 type containerContract struct {
-	Name           string         `json:"name"`
-	Repository     string         `json:"repository"`
-	Runtime        map[string]any `json:"runtime,omitempty"`
-	LiteralCommand any            `json:"-"`
-	LiteralArgs    any            `json:"-"`
+	Name           string              `json:"name"`
+	Reference      string              `json:"-"`
+	Repository     string              `json:"repository"`
+	Runtime        map[string]any      `json:"runtime,omitempty"`
+	MountedFiles   []mountedConfigFile `json:"mountedFiles,omitempty"`
+	LiteralCommand any                 `json:"-"`
+	LiteralArgs    any                 `json:"-"`
+}
+
+type mountedConfigFile struct {
+	Source      string `json:"source"`
+	Key         string `json:"key"`
+	Destination string `json:"destination"`
+	SHA256      string `json:"sha256"`
+	Content     []byte `json:"-"`
+}
+
+type renderedConfigFile struct {
+	key     string
+	content []byte
+	sha256  string
 }
 
 type annotatedImage struct {
@@ -85,6 +122,9 @@ func readChartMetadata(path string) (chartInspection, error) {
 	}
 	return chartInspection{
 		Name:        loaded.Metadata.Name,
+		Description: loaded.Metadata.Description,
+		Home:        loaded.Metadata.Home,
+		Sources:     append([]string(nil), loaded.Metadata.Sources...),
 		Version:     loaded.Metadata.Version,
 		AppVersion:  loaded.Metadata.AppVersion,
 		KubeVersion: normalizeConstraint(loaded.Metadata.KubeVersion),
@@ -92,7 +132,7 @@ func readChartMetadata(path string) (chartInspection, error) {
 }
 
 func inspectChart(path, kubernetesVersion string, values map[string]any) (chartInspection, error) {
-	return renderChart(path, kubernetesVersion, values, nil, releaseOptions("atum-contract", "atum-contract"), nil)
+	return renderChart(path, kubernetesVersion, values, nil, releaseOptions("atum-contract", "atum-contract"))
 }
 
 func inspectChartInstances(
@@ -112,7 +152,6 @@ func inspectChartInstances(
 			instances[i].values,
 			nil,
 			releaseOptions(instances[i].name, instances[i].namespace),
-			instances[i].renderers,
 		)
 		if err != nil {
 			return chartInspection{}, fmt.Errorf("render release %s: %w", instances[i].identity, err)
@@ -161,13 +200,12 @@ func renderChart(
 	values map[string]any,
 	collector *releaseValueCollector,
 	options common.ReleaseOptions,
-	postRenderers []releasePostRenderer,
 ) (chartInspection, error) {
 	loaded, err := loader.Load(path)
 	if err != nil {
 		return chartInspection{}, fmt.Errorf("load Helm chart %s: %w", path, err)
 	}
-	return inspectLoadedChart(loaded, kubernetesVersion, values, collector, options, postRenderers)
+	return inspectLoadedChart(loaded, kubernetesVersion, values, collector, options)
 }
 
 func inspectLoadedChart(
@@ -176,13 +214,12 @@ func inspectLoadedChart(
 	values map[string]any,
 	collector *releaseValueCollector,
 	options common.ReleaseOptions,
-	postRenderers []releasePostRenderer,
 ) (chartInspection, error) {
 	if loaded.Metadata == nil {
 		return chartInspection{}, errors.New("Helm chart has no metadata")
 	}
 	values = cloneMap(values)
-	pruneShadowedScalarDefaults(loaded, values)
+	normalizeIgnoredChartDefaults(loaded.Values, values)
 	if err := chartutil.ProcessDependencies(loaded, common.Values(values)); err != nil {
 		return chartInspection{}, fmt.Errorf("resolve Helm dependencies for %s: %w", loaded.Name(), err)
 	}
@@ -204,60 +241,48 @@ func inspectLoadedChart(
 	if err != nil {
 		return chartInspection{}, fmt.Errorf("render Helm chart %s: %w", loaded.Name(), err)
 	}
-	sourceImages, distinctSource, err := inspectSourceImages(rendered, annotated, postRenderers)
-	if err != nil {
-		return chartInspection{}, fmt.Errorf("inspect source images for Helm chart %s: %w", loaded.Name(), err)
-	}
-	if len(postRenderers) != 0 {
-		rendered, err = applyPostRenderers(rendered, postRenderers)
-		if err != nil {
-			return chartInspection{}, fmt.Errorf("post-render Helm chart %s: %w", loaded.Name(), err)
-		}
-	}
-
 	images, invocations, contractSHA, err := inspectRenderedResources(rendered, nil, annotated, collector)
 	if err != nil {
 		return chartInspection{}, err
 	}
-	if !distinctSource {
-		sourceImages = images
-	}
-	var istioDependencies []releaseDependencyPosition
-	if collector != nil {
-		istioDependencies = collector.dependencyPositions("bigbang", "istiod")
-	}
 	return chartInspection{
-		Name:              loaded.Metadata.Name,
-		Version:           loaded.Metadata.Version,
-		AppVersion:        loaded.Metadata.AppVersion,
-		KubeVersion:       normalizeConstraint(loaded.Metadata.KubeVersion),
-		Images:            images,
-		SourceImages:      sourceImages,
-		Declared:          annotated,
-		Invocations:       invocations,
-		ContractSHA:       contractSHA,
-		IstioDependencies: istioDependencies,
+		Name:         loaded.Metadata.Name,
+		Description:  loaded.Metadata.Description,
+		Home:         loaded.Metadata.Home,
+		Sources:      append([]string(nil), loaded.Metadata.Sources...),
+		Version:      loaded.Metadata.Version,
+		AppVersion:   loaded.Metadata.AppVersion,
+		KubeVersion:  normalizeConstraint(loaded.Metadata.KubeVersion),
+		Images:       images,
+		SourceImages: images,
+		Declared:     annotated,
+		Invocations:  invocations,
+		ContractSHA:  contractSHA,
 	}, nil
 }
 
-func inspectSourceImages(
-	rendered map[string]string,
-	annotated []string,
-	renderers []releasePostRenderer,
-) ([]string, bool, error) {
-	sourceRenderers, changed := postRenderersWithoutImages(renderers)
-	if !changed {
-		return nil, false, nil
+// normalizeIgnoredChartDefaults removes only chart defaults that Helm's
+// coalescer would discard because an explicit value has a different container
+// shape. This preserves Helm's precedence semantics while avoiding warnings
+// from upstream charts whose documented configurable maps default to lists or
+// whose documented scalar replacements default to maps.
+func normalizeIgnoredChartDefaults(defaults, overrides map[string]any) {
+	for key, override := range overrides {
+		defaultValue, exists := defaults[key]
+		if !exists {
+			continue
+		}
+		overrideMap, overrideIsMap := override.(map[string]any)
+		defaultMap, defaultIsMap := defaultValue.(map[string]any)
+		switch {
+		case overrideIsMap && defaultIsMap:
+			normalizeIgnoredChartDefaults(defaultMap, overrideMap)
+		case overrideIsMap && defaultValue != nil:
+			defaults[key] = map[string]any{}
+		case override != nil && defaultIsMap:
+			delete(defaults, key)
+		}
 	}
-	sourceRendered, err := applyPostRenderers(rendered, sourceRenderers)
-	if err != nil {
-		return nil, false, err
-	}
-	images, _, _, err := inspectRenderedResources(sourceRendered, nil, annotated, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	return images, true, nil
 }
 
 func observedSourceImages(inspection chartInspection) []string {
@@ -265,40 +290,6 @@ func observedSourceImages(inspection chartInspection) []string {
 		return inspection.SourceImages
 	}
 	return inspection.Images
-}
-
-// pruneShadowedScalarDefaults removes lower-priority scalar defaults that Helm
-// would ignore when an object override has already replaced them. Helm logs
-// those valid type migrations as warnings during each coalescing pass.
-func pruneShadowedScalarDefaults(loaded *chart.Chart, overrides map[string]any) {
-	pruneShadowedScalars(loaded.Values, overrides)
-	for _, dependency := range loaded.Dependencies() {
-		dependencyOverrides, ok := overrides[dependency.Name()].(map[string]any)
-		if ok {
-			pruneShadowedScalarDefaults(dependency, dependencyOverrides)
-		}
-	}
-}
-
-func pruneShadowedScalars(defaults, overrides map[string]any) {
-	for key, override := range overrides {
-		overrideMap, overrideIsMap := override.(map[string]any)
-		if !overrideIsMap {
-			continue
-		}
-		value, exists := defaults[key]
-		if !exists {
-			continue
-		}
-		defaultMap, defaultIsMap := value.(map[string]any)
-		if defaultIsMap {
-			pruneShadowedScalars(defaultMap, overrideMap)
-			continue
-		}
-		if value != nil {
-			delete(defaults, key)
-		}
-	}
 }
 
 func releaseOptions(name, namespace string) common.ReleaseOptions {
@@ -311,11 +302,19 @@ func releaseOptions(name, namespace string) common.ReleaseOptions {
 }
 
 func inspectManifestData(name string, data []byte) (chartInspection, error) {
-	images, contractSHA, err := inspectRendered(map[string]string{name: string(data)}, nil)
+	images, invocations, contractSHA, err := inspectRenderedResources(
+		map[string]string{name: string(data)},
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		return chartInspection{}, err
 	}
-	return chartInspection{Images: images, ContractSHA: contractSHA}, nil
+	return chartInspection{
+		Images: images, SourceImages: images,
+		Invocations: invocations, ContractSHA: contractSHA,
+	}, nil
 }
 
 func inspectRendered(rendered map[string]string, images []string) ([]string, string, error) {
@@ -330,6 +329,8 @@ func inspectRenderedResources(
 	collector *releaseValueCollector,
 ) ([]string, []containerInvocation, string, error) {
 	contract := runtimeContract{}
+	configMaps := make(map[string][]renderedConfigFile)
+	var mountedConfigBytes int64
 	for _, image := range annotated {
 		contract.AnnotatedRepositories = append(contract.AnnotatedRepositories, imageRepository(image))
 	}
@@ -353,18 +354,47 @@ func inspectRenderedResources(
 			if err := yaml.Unmarshal([]byte(documents[key]), &value); err != nil {
 				return nil, nil, "", fmt.Errorf("decode rendered object %s: %w", filename, err)
 			}
+			if !installActiveHelmResource(value) {
+				continue
+			}
 			if collector != nil {
 				if err := collector.observe(value); err != nil {
 					return nil, nil, "", fmt.Errorf("inspect rendered object %s: %w", filename, err)
 				}
 			}
-			walkRuntime(value, filename+fmt.Sprintf("#%d", document), nil, &contract, &images)
+			if err := collectRenderedConfigFiles(value, configMaps, &mountedConfigBytes); err != nil {
+				return nil, nil, "", fmt.Errorf("inspect rendered object %s: %w", filename, err)
+			}
+			location := filename + fmt.Sprintf("#%d", document)
+			collectControllerConfigImages(value, location, &contract, &images)
+			walkRuntime(value, location, nil, &contract, &images)
 		}
 	}
+	if err := attachMountedConfigFiles(contract.Pods, configMaps); err != nil {
+		return nil, nil, "", err
+	}
 	contract.AnnotatedRepositories = compactSorted(contract.AnnotatedRepositories)
+	sort.Slice(contract.ImageFields, func(i, j int) bool {
+		if contract.ImageFields[i].Location != contract.ImageFields[j].Location {
+			return contract.ImageFields[i].Location < contract.ImageFields[j].Location
+		}
+		return contract.ImageFields[i].Reference < contract.ImageFields[j].Reference
+	})
+	compactImageFields := contract.ImageFields[:0]
+	for _, field := range contract.ImageFields {
+		if len(compactImageFields) != 0 &&
+			compactImageFields[len(compactImageFields)-1] == field {
+			continue
+		}
+		compactImageFields = append(compactImageFields, field)
+	}
+	contract.ImageFields = compactImageFields
 	images = compactSorted(images)
 	sort.Slice(contract.Pods, func(i, j int) bool { return contract.Pods[i].Location < contract.Pods[j].Location })
-	invocations := applicationInvocations(contract.Pods)
+	invocations, err := applicationInvocations(contract.Pods, contract.ImageFields)
+	if err != nil {
+		return nil, nil, "", err
+	}
 	encoded, err := json.Marshal(contract)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("encode runtime contract: %w", err)
@@ -373,29 +403,494 @@ func inspectRenderedResources(
 	return images, invocations, hex.EncodeToString(hash[:]), nil
 }
 
-func applicationInvocations(pods []podContract) []containerInvocation {
-	count := 0
+func collectControllerConfigImages(
+	value any,
+	location string,
+	contract *runtimeContract,
+	images *[]string,
+) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return
+	}
+	kind, _ := object["kind"].(string)
+	if kind != "ConfigMap" {
+		return
+	}
+	for _, section := range []string{"data", "binaryData"} {
+		entries, _ := object[section].(map[string]any)
+		for key, raw := range entries {
+			content, ok := raw.(string)
+			if !ok || section == "binaryData" {
+				continue
+			}
+			var decoded any
+			if err := yaml.Unmarshal([]byte(content), &decoded); err != nil {
+				continue
+			}
+			hub, tag := structuredImageDefaults(decoded)
+			collectStructuredControllerImages(
+				decoded,
+				hub,
+				tag,
+				location+"/data/"+key,
+				contract,
+				images,
+			)
+		}
+	}
+}
+
+func structuredImageDefaults(value any) (string, string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		if global, ok := typed["global"].(map[string]any); ok {
+			hub, _ := global["hub"].(string)
+			tag, _ := global["tag"].(string)
+			if hub != "" && tag != "" {
+				return hub, tag
+			}
+		}
+		for _, nested := range typed {
+			if hub, tag := structuredImageDefaults(nested); hub != "" && tag != "" {
+				return hub, tag
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if hub, tag := structuredImageDefaults(nested); hub != "" && tag != "" {
+				return hub, tag
+			}
+		}
+	}
+	return "", ""
+}
+
+func collectStructuredControllerImages(
+	value any,
+	inheritedHub string,
+	inheritedTag string,
+	location string,
+	contract *runtimeContract,
+	images *[]string,
+) {
+	switch typed := value.(type) {
+	case map[string]any:
+		hub, _ := typed["hub"].(string)
+		if hub == "" {
+			hub = inheritedHub
+		}
+		tag, _ := typed["tag"].(string)
+		if tag == "" {
+			tag = inheritedTag
+		}
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			field := typed[key]
+			if key == "image" {
+				imageName, _ := field.(string)
+				reference := ""
+				if strings.Contains(imageName, "/") {
+					reference = imageName
+				} else if imageName != "" && hub != "" && tag != "" {
+					reference = strings.TrimSuffix(hub, "/") + "/" +
+						imageName + ":" + strings.TrimPrefix(tag, "v")
+				}
+				if validImageReference(reference) {
+					*images = append(*images, reference)
+					contract.ImageFields = append(
+						contract.ImageFields,
+						imageFieldContract{
+							Location:  location + "/" + key,
+							Reference: reference,
+						},
+					)
+				}
+			}
+			collectStructuredControllerImages(
+				field,
+				hub,
+				tag,
+				location+"/"+key,
+				contract,
+				images,
+			)
+		}
+	case []any:
+		for index, entry := range typed {
+			collectStructuredControllerImages(
+				entry,
+				inheritedHub,
+				inheritedTag,
+				fmt.Sprintf("%s/%d", location, index),
+				contract,
+				images,
+			)
+		}
+	}
+}
+
+// installActiveHelmResource keeps only objects that Helm can create during
+// the selected install render. Hook annotations are lifecycle declarations,
+// not image inventory. A resource with hooks is install-active only when at
+// least one install hook is present.
+func installActiveHelmResource(value any) bool {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return true
+	}
+	metadata, _ := object["metadata"].(map[string]any)
+	annotations, _ := metadata["annotations"].(map[string]any)
+	hooks, _ := annotations["helm.sh/hook"].(string)
+	if strings.TrimSpace(hooks) == "" {
+		return true
+	}
+	for _, hook := range strings.Split(hooks, ",") {
+		switch strings.TrimSpace(hook) {
+		case "pre-install", "post-install":
+			return true
+		}
+	}
+	return false
+}
+
+func applicationInvocations(
+	pods []podContract,
+	imageFields []imageFieldContract,
+) ([]containerInvocation, error) {
+	count := len(imageFields)
 	for i := range pods {
 		count += len(pods[i].Containers) + len(pods[i].InitContainers) + len(pods[i].Ephemeral)
 	}
 	invocations := make([]containerInvocation, 0, count)
 	for i := range pods {
-		appendContainers := func(kind string, containers []containerContract) {
+		podMountPaths := podContainerMountPaths(pods[i])
+		appendContainers := func(kind string, containers []containerContract) error {
 			for j := range containers {
+				runtimeContractSHA256, err := invocationRuntimeContractSHA256(
+					pods[i],
+					kind,
+					containers[j],
+				)
+				if err != nil {
+					return err
+				}
 				invocations = append(invocations, containerInvocation{
-					Location:   pods[i].Location + "/" + kind + "/" + containers[j].Name,
-					Name:       containers[j].Name,
-					Repository: containers[j].Repository,
-					Command:    containers[j].LiteralCommand,
-					Args:       containers[j].LiteralArgs,
+					Location:              pods[i].Location + "/" + kind + "/" + containers[j].Name,
+					Name:                  containers[j].Name,
+					Reference:             containers[j].Reference,
+					Repository:            containers[j].Repository,
+					Command:               containers[j].LiteralCommand,
+					Args:                  containers[j].LiteralArgs,
+					Runtime:               containers[j].Runtime,
+					PodRuntime:            pods[i].Runtime,
+					PodMountPaths:         podMountPaths,
+					MountedFiles:          cloneMountedConfigFiles(containers[j].MountedFiles),
+					RuntimeContractSHA256: runtimeContractSHA256,
 				})
 			}
+			return nil
 		}
-		appendContainers("containers", pods[i].Containers)
-		appendContainers("initContainers", pods[i].InitContainers)
-		appendContainers("ephemeralContainers", pods[i].Ephemeral)
+		for _, group := range []struct {
+			kind       string
+			containers []containerContract
+		}{
+			{kind: "containers", containers: pods[i].Containers},
+			{kind: "initContainers", containers: pods[i].InitContainers},
+			{kind: "ephemeralContainers", containers: pods[i].Ephemeral},
+		} {
+			if err := appendContainers(group.kind, group.containers); err != nil {
+				return nil, err
+			}
+		}
 	}
-	return invocations
+	for _, field := range imageFields {
+		encoded, err := json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("encode image field contract %s: %w", field.Location, err)
+		}
+		digest := sha256.Sum256(encoded)
+		invocations = append(invocations, containerInvocation{
+			Location:              field.Location,
+			Reference:             field.Reference,
+			Repository:            imageRepository(field.Reference),
+			Runtime:               map[string]any{},
+			PodRuntime:            map[string]any{},
+			RuntimeContractSHA256: hex.EncodeToString(digest[:]),
+		})
+	}
+	sort.Slice(invocations, func(i, j int) bool {
+		if invocations[i].Location != invocations[j].Location {
+			return invocations[i].Location < invocations[j].Location
+		}
+		return invocations[i].Reference < invocations[j].Reference
+	})
+	return invocations, nil
+}
+
+func podContainerMountPaths(pod podContract) []string {
+	containers := make([]containerContract, 0,
+		len(pod.Containers)+len(pod.InitContainers)+len(pod.Ephemeral))
+	containers = append(containers, pod.Containers...)
+	containers = append(containers, pod.InitContainers...)
+	containers = append(containers, pod.Ephemeral...)
+	var paths []string
+	for index := range containers {
+		paths = append(paths, invocationMountPaths(containers[index].Runtime)...)
+	}
+	return compactSorted(paths)
+}
+
+func collectRenderedConfigFiles(
+	value any,
+	destination map[string][]renderedConfigFile,
+	totalBytes *int64,
+) error {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if kind, _ := object["kind"].(string); kind == "ConfigMap" {
+		metadata, _ := object["metadata"].(map[string]any)
+		name, _ := metadata["name"].(string)
+		namespace, _ := metadata["namespace"].(string)
+		if name != "" {
+			files, err := renderedConfigFiles(object, totalBytes)
+			if err != nil {
+				return fmt.Errorf("ConfigMap %s/%s: %w", namespace, name, err)
+			}
+			if len(files) != 0 {
+				destination[namespacedObjectKey(namespace, name)] = files
+			}
+		}
+	}
+	for _, field := range object {
+		switch nested := field.(type) {
+		case map[string]any:
+			if err := collectRenderedConfigFiles(nested, destination, totalBytes); err != nil {
+				return err
+			}
+		case []any:
+			for _, entry := range nested {
+				if err := collectRenderedConfigFiles(entry, destination, totalBytes); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func renderedConfigFiles(
+	object map[string]any,
+	totalBytes *int64,
+) ([]renderedConfigFile, error) {
+	files := make(map[string][]byte)
+	data, _ := object["data"].(map[string]any)
+	for key, raw := range data {
+		content, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("data key %q is not a string", key)
+		}
+		files[key] = []byte(content)
+	}
+	binaryData, _ := object["binaryData"].(map[string]any)
+	for key, raw := range binaryData {
+		encoded, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("binaryData key %q is not a string", key)
+		}
+		content, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("decode binaryData key %q: %w", key, err)
+		}
+		files[key] = content
+	}
+	keys := make([]string, 0, len(files))
+	for key := range files {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]renderedConfigFile, 0, len(keys))
+	for _, key := range keys {
+		content := files[key]
+		if len(content) > maxMountedConfigFileBytes {
+			return nil, fmt.Errorf(
+				"key %q exceeds %d bytes",
+				key,
+				maxMountedConfigFileBytes,
+			)
+		}
+		*totalBytes += int64(len(content))
+		if *totalBytes > maxMountedConfigTotalBytes {
+			return nil, fmt.Errorf(
+				"mounted ConfigMap content exceeds %d bytes",
+				maxMountedConfigTotalBytes,
+			)
+		}
+		digest := sha256.Sum256(content)
+		result = append(result, renderedConfigFile{
+			key:     key,
+			content: append([]byte(nil), content...),
+			sha256:  hex.EncodeToString(digest[:]),
+		})
+	}
+	return result, nil
+}
+
+func attachMountedConfigFiles(
+	pods []podContract,
+	configMaps map[string][]renderedConfigFile,
+) error {
+	for podIndex := range pods {
+		namespace, _ := pods[podIndex].Metadata["namespace"].(string)
+		volumes, _ := pods[podIndex].Runtime["volumes"].([]any)
+		type configVolume struct {
+			name  string
+			items map[string]string
+		}
+		configMapByVolume := make(map[string]configVolume, len(volumes))
+		for _, rawVolume := range volumes {
+			volume, _ := rawVolume.(map[string]any)
+			name, _ := volume["name"].(string)
+			configMap, _ := volume["configMap"].(map[string]any)
+			configMapName, _ := configMap["name"].(string)
+			if name != "" && configMapName != "" {
+				items := make(map[string]string)
+				rawItems, _ := configMap["items"].([]any)
+				for _, rawItem := range rawItems {
+					item, _ := rawItem.(map[string]any)
+					key, _ := item["key"].(string)
+					destination, _ := item["path"].(string)
+					if key == "" || destination == "" ||
+						path.IsAbs(destination) || path.Clean(destination) == ".." ||
+						strings.HasPrefix(path.Clean(destination), "../") {
+						return fmt.Errorf("ConfigMap volume %s has invalid item projection", name)
+					}
+					items[key] = path.Clean(destination)
+				}
+				configMapByVolume[name] = configVolume{name: configMapName, items: items}
+			}
+		}
+		for _, containers := range [...]*[]containerContract{
+			&pods[podIndex].Containers,
+			&pods[podIndex].InitContainers,
+			&pods[podIndex].Ephemeral,
+		} {
+			for containerIndex := range *containers {
+				mounts, _ := (*containers)[containerIndex].Runtime["volumeMounts"].([]any)
+				var mounted []mountedConfigFile
+				for _, rawMount := range mounts {
+					mount, _ := rawMount.(map[string]any)
+					volumeName, _ := mount["name"].(string)
+					volume, found := configMapByVolume[volumeName]
+					if !found {
+						continue
+					}
+					mountPath, _ := mount["mountPath"].(string)
+					if !path.IsAbs(mountPath) {
+						return fmt.Errorf("ConfigMap volume %s has non-absolute mountPath", volumeName)
+					}
+					subPath, _ := mount["subPath"].(string)
+					files := renderedConfigMapFiles(configMaps, namespace, volume.name)
+					for _, file := range files {
+						projected := file.key
+						if len(volume.items) != 0 {
+							var selected bool
+							projected, selected = volume.items[file.key]
+							if !selected {
+								continue
+							}
+						}
+						destination := path.Join(mountPath, projected)
+						if subPath != "" {
+							if subPath != file.key && subPath != projected {
+								continue
+							}
+							destination = path.Clean(mountPath)
+						}
+						mounted = append(mounted, mountedConfigFile{
+							Source:      namespacedObjectKey(namespace, volume.name),
+							Key:         file.key,
+							Destination: destination,
+							SHA256:      file.sha256,
+							Content:     append([]byte(nil), file.content...),
+						})
+					}
+				}
+				sort.Slice(mounted, func(i, j int) bool {
+					if mounted[i].Destination != mounted[j].Destination {
+						return mounted[i].Destination < mounted[j].Destination
+					}
+					return mounted[i].Key < mounted[j].Key
+				})
+				(*containers)[containerIndex].MountedFiles = mounted
+			}
+		}
+	}
+	return nil
+}
+
+func renderedConfigMapFiles(
+	configMaps map[string][]renderedConfigFile,
+	namespace, name string,
+) []renderedConfigFile {
+	if files := configMaps[namespacedObjectKey(namespace, name)]; len(files) != 0 {
+		return files
+	}
+	if files := configMaps[namespacedObjectKey("", name)]; len(files) != 0 {
+		return files
+	}
+	suffix := "\x00" + name
+	var result []renderedConfigFile
+	for key, files := range configMaps {
+		if strings.HasSuffix(key, suffix) {
+			result = append(result, files...)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].key < result[j].key })
+	return result
+}
+
+func cloneMountedConfigFiles(files []mountedConfigFile) []mountedConfigFile {
+	result := make([]mountedConfigFile, len(files))
+	for i := range files {
+		result[i] = files[i]
+		result[i].Content = append([]byte(nil), files[i].Content...)
+	}
+	return result
+}
+
+func namespacedObjectKey(namespace, name string) string {
+	return namespace + "\x00" + name
+}
+
+func invocationRuntimeContractSHA256(
+	pod podContract,
+	kind string,
+	container containerContract,
+) (string, error) {
+	contract := struct {
+		Metadata  map[string]any    `json:"metadata,omitempty"`
+		Pod       map[string]any    `json:"pod,omitempty"`
+		Kind      string            `json:"kind"`
+		Container containerContract `json:"container"`
+	}{
+		Metadata:  pod.Metadata,
+		Pod:       pod.Runtime,
+		Kind:      kind,
+		Container: container,
+	}
+	encoded, err := json.Marshal(contract)
+	if err != nil {
+		return "", fmt.Errorf("encode runtime contract for %s/%s: %w", pod.Location, container.Name, err)
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func annotatedImages(loaded *chart.Chart) ([]string, error) {
@@ -429,6 +924,7 @@ func annotatedImages(loaded *chart.Chart) ([]string, error) {
 func walkRuntime(value any, location string, inheritedMetadata any, contract *runtimeContract, images *[]string) {
 	switch typed := value.(type) {
 	case map[string]any:
+		collectResourceImageFields(typed, location, contract, images)
 		if containers, hasContainers := typed["containers"].([]any); hasContainers && len(containers) != 0 {
 			runtime := make(map[string]any, max(0, len(typed)-3))
 			for key, field := range typed {
@@ -466,9 +962,39 @@ func walkRuntime(value any, location string, inheritedMetadata any, contract *ru
 	}
 }
 
+func collectResourceImageFields(
+	value map[string]any,
+	location string,
+	contract *runtimeContract,
+	images *[]string,
+) {
+	containerName, _ := value["name"].(string)
+	for _, field := range [...]string{"image", "imageName", "image_name"} {
+		reference, _ := value[field].(string)
+		if field == "image_name" && imageTag(reference) == "" {
+			if version, _ := value["image_version"].(string); version != "" {
+				reference += ":" + version
+			}
+		}
+		if reference != "auto" && validImageReference(reference) {
+			*images = append(*images, reference)
+			if field == "image" && containerName != "" {
+				continue
+			}
+			contract.ImageFields = append(contract.ImageFields, imageFieldContract{
+				Location:  location + "/" + field,
+				Reference: reference,
+			})
+		}
+	}
+}
+
 func runtimeMetadata(value any, images *[]string) map[string]any {
 	metadata, _ := value.(map[string]any)
-	result := make(map[string]any, 2)
+	result := make(map[string]any, 3)
+	if namespace, _ := metadata["namespace"].(string); namespace != "" {
+		result["namespace"] = namespace
+	}
 	for _, field := range [...]string{"labels", "annotations"} {
 		entries, _ := metadata[field].(map[string]any)
 		filtered := make(map[string]any, len(entries))
@@ -516,6 +1042,7 @@ func extractContainers(value any, images *[]string) []containerContract {
 		name, _ := container["name"].(string)
 		containers = append(containers, containerContract{
 			Name:           name,
+			Reference:      image,
 			Repository:     imageRepository(image),
 			Runtime:        runtime,
 			LiteralCommand: container["command"],
@@ -637,6 +1164,9 @@ func compactSorted(values []string) []string {
 			continue
 		}
 		result = append(result, value)
+	}
+	if result == nil {
+		return []string{}
 	}
 	return result
 }

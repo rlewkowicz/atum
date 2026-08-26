@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -33,9 +32,8 @@ type Service struct {
 }
 
 type Options struct {
-	Check                  bool
-	BigBangCommit          string
-	ApproveAuxiliaryImages []string
+	Check         bool
+	BigBangCommit string
 }
 
 type Result struct {
@@ -44,20 +42,12 @@ type Result struct {
 }
 
 type chartArtifact struct {
-	ID                     string
-	CurrentPath            string
-	CandidatePath          string
-	InvocationBaselinePath string
-	InvocationRepositories []string
-	CurrentValues          map[string]any
-	CandidateValues        map[string]any
-	CurrentInstances       []releaseValueInstance
-	CandidateInstances     []releaseValueInstance
-	CurrentBindings        []artifactBinding
-	CandidateBindings      []artifactBinding
-	CurrentSources         []map[string]any
-	CandidateSources       []map[string]any
-	IntroductionBaseline   bool
+	ID        string
+	Path      string
+	Values    map[string]any
+	Instances []releaseValueInstance
+	Bindings  []artifactBinding
+	Sources   []map[string]any
 }
 
 func NewService(root string, logger *slog.Logger) *Service {
@@ -88,18 +78,8 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	if err := approveAuxiliaryImages(&desired, options.ApproveAuxiliaryImages); err != nil {
-		return Result{}, err
-	}
-	reconcileDeliveryEvidence(&desired)
-	sourceSnapshotChanged := false
-	if project.Lock.Bundle != nil {
-		currentSourceSHA, err := config.AtumSourceSHA256(project)
-		if err != nil {
-			return Result{}, fmt.Errorf("identify current deployment source: %w", err)
-		}
-		sourceSnapshotChanged = currentSourceSHA != project.Lock.Bundle.AtumSourceSHA256
-	}
+	initialImageTargets := imageTargetsByID(desired.Delivery.Images)
+	resetRenderedImageInventory(&desired)
 	currentClusterTarget, err := desired.Orchestration.TargetRelease()
 	if err != nil {
 		return Result{}, err
@@ -115,6 +95,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	tree := newCandidateTree(service.root)
 	if err := trackUpdateInputs(tree, project.Desired); err != nil {
 		return Result{}, fmt.Errorf("snapshot managed update inputs: %w", err)
+	}
+	if err := projectImageEvidenceSchema(tree); err != nil {
+		return Result{}, err
 	}
 	desiredSnapshot, _ := tree.Data(config.DesiredFilename)
 	lockSnapshot, _ := tree.Data(config.LockFilename)
@@ -139,20 +122,38 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	operational := platformValues.Operational
-	generated := platformValues.Generated
+	currentGenerated := platformValues.Generated
+	generated := make(map[string]any)
 	profileValues := platformValues.Profile
+	if err := validateNoConfiguredStatefulCredentials(operational, currentGenerated); err != nil {
+		return Result{}, err
+	}
 	if collision := firstNestedCollision(profileValues, generatedIdentityValues, nil); collision != "" {
 		return Result{}, fmt.Errorf("profile value %s is owned by the local identity contract", collision)
 	}
-	profileRenderValues, err := mergeIdentityValues(profileValues, generatedIdentityValues)
+	statefulValues, err := loadStatefulValuesOverlay(managedFiles, desired)
 	if err != nil {
 		return Result{}, err
 	}
-	mergedRenderValues, err := config.MergePlatformValues(operational, generated, profileRenderValues)
+	renderedStatefulValues, err := renderStatefulValuesOverlay(statefulValues, operational)
 	if err != nil {
 		return Result{}, err
 	}
-
+	if collision := firstNestedCollision(renderedStatefulValues, generatedIdentityValues, nil); collision != "" {
+		return Result{}, fmt.Errorf(
+			"stateful value %s collides with the local identity projection",
+			collision,
+		)
+	}
+	profileWithStateful := cloneMap(profileValues)
+	mergeMaps(profileWithStateful, renderedStatefulValues)
+	profileRenderValues, err := mergeIdentityValues(
+		profileWithStateful,
+		generatedIdentityValues,
+	)
+	if err != nil {
+		return Result{}, err
+	}
 	service.logger.InfoContext(ctx, "resolving stable upstream Git releases")
 	var bigBang, kubespray, flux resolvedGit
 	group, groupContext := errgroup.WithContext(ctx)
@@ -185,12 +186,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, fmt.Errorf("read Big Bang %s values: %w", bigBang.Source.Version, err)
 	}
-	renderOperational, err := config.StripPackageSelectionMetadata(operational, bigBangDefaults)
+	renderOperational := operational
+	discoveryGenerated, err := trackedChartDiscoveryValues(desired.Platform.Charts)
 	if err != nil {
-		return Result{}, fmt.Errorf("project candidate package selection values: %w", err)
+		return Result{}, err
 	}
 	configuredValues, err := config.MergePlatformValues(
-		renderOperational, generated, profileRenderValues,
+		renderOperational, discoveryGenerated, profileRenderValues,
 	)
 	if err != nil {
 		return Result{}, err
@@ -198,52 +200,15 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	admittedBigBang, err := admitBigBangPackageSelection(
 		bigBang,
 		bigBangDefaults,
-		operational,
 		configuredValues,
 		desired.Platform,
+		currentClusterTarget.Kubernetes,
 	)
 	if err != nil {
 		return Result{}, err
-	}
-	currentSelectionValues, err := config.CurrentPackageSelectionValues(
-		mergedRenderValues, bigBangDefaults, desired.Platform.Packages,
-	)
-	if err != nil {
-		return Result{}, fmt.Errorf("project current package selection values: %w", err)
-	}
-	if err := verifyTrackedChartBindings(service.root, currentSelectionValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, managedFiles); err != nil {
-		return Result{}, err
-	}
-	currentRenderValues, err := sourceVersionValues(
-		currentSelectionValues,
-		desired.Platform.Sources,
-		desired.Platform.Packages,
-		lock.Resolved.SupportSources,
-		desired.Platform.Charts,
-		desired.Delivery.Images,
-	)
-	if err != nil {
-		return Result{}, err
-	}
-	currentRenderValues, err = currentWrapperContractValues(
-		currentRenderValues,
-		lock.Resolved.SupportSources,
-		admittedBigBang.wrapperRequirement,
-		admittedBigBang.wrapperConsumers,
-	)
-	if err != nil {
-		return Result{}, err
-	}
-	currentFluxManifest, err := tree.Data(project.Desired.Platform.Flux.Assets[0].File)
-	if err != nil {
-		return Result{}, fmt.Errorf("read current Flux install manifest: %w", err)
-	}
-	currentFluxInspection, err := inspectManifestData("flux", currentFluxManifest)
-	if err != nil {
-		return Result{}, fmt.Errorf("inspect current Flux install manifest: %w", err)
 	}
 	flux, fluxManifest, candidateFluxInspection, err := service.selectCompatibleFlux(
-		ctx, desired.Platform.Flux, flux, currentFluxInspection, desired,
+		ctx, desired.Platform.Flux, flux, desired,
 	)
 	if err != nil {
 		return Result{}, err
@@ -252,7 +217,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	var trackedChartCatalogs []*chartCatalog
 	var bootstrapChartCatalogs []*chartCatalog
 	var vendors []resolvedVendor
-	applicationRepositories := directChartApplicationRepositories(&desired)
 	group, groupContext = errgroup.WithContext(ctx)
 	group.SetLimit(3)
 	group.Go(func() error {
@@ -263,7 +227,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	group.Go(func() error {
 		var resolveErr error
 		trackedChartCatalogs, resolveErr = resolveTrackedChartCatalogs(
-			groupContext, service.charts, parallelism, desired.Platform.Charts, applicationRepositories,
+			groupContext, service.charts, parallelism, desired.Platform.Charts,
 		)
 		return resolveErr
 	})
@@ -281,25 +245,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		desired.Platform.Vendors[i] = vendors[i].Vendor
 	}
 
-	currentInputs, err := service.currentArtifacts(ctx, project.Desired, currentRenderValues, parallelism, managedFiles)
-	if err != nil {
-		return Result{}, err
-	}
-	inferredMappings, err := inferTrackedChartVersionMappings(
-		ctx,
-		parallelism,
-		service.cache,
-		tree,
-		&desired,
-		currentInputs,
-		currentClusterTarget.Kubernetes,
-	)
-	if err != nil {
-		return Result{}, err
-	}
-	if inferredMappings > 0 {
-		service.logger.InfoContext(ctx, "inferred tracked chart delivery mappings", "count", inferredMappings)
-	}
 	service.logger.InfoContext(ctx, "selecting compatible Kubernetes and charts for the newest Big Bang")
 	selection, err := service.selectCompatiblePlatform(
 		ctx,
@@ -313,8 +258,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		profileRenderValues,
 		trackedChartCatalogs,
 		bootstrapChartCatalogs,
-		currentInputs,
-		applicationRepositories,
 		parallelism,
 		managedFiles,
 		historicalBigBang,
@@ -332,9 +275,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	bootstrapCharts := selection.bootstrap
 	artifacts := selection.artifacts
 	selectedKubernetes := selection.kubernetes
-	currentInspections := selection.currentInspections
-	candidateInspections := selection.candidateInspections
-	renderedImages := renderedImageIDs(desired.Delivery.Images, candidateInspections)
+	inspections := selection.inspections
 	desired.Platform.BigBang = bigBang.Source
 	desired.Platform.Packages = make([]config.Package, len(packages))
 	for i := range packages {
@@ -347,81 +288,34 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	for i := range bootstrapCharts {
 		desired.Platform.Bootstrap.Charts[i] = bootstrapCharts[i].Chart
 	}
-
-	replacements, err := reconcileBootstrapImageVersions(&desired, &lock, bootstrapCharts)
-	if err != nil {
-		return Result{}, err
-	}
-	for i := range artifacts {
-		if strings.HasPrefix(artifacts[i].ID, "bootstrap/") {
-			continue
-		}
-		artifactReplacements, err := reconcileImageContract(
-			ctx,
-			service.cache,
-			tree,
-			&desired,
-			&lock,
-			artifacts[i].ID,
-			currentInspections[i],
-			candidateInspections[i],
-			renderedImages,
-			true,
-			historicalBigBang,
-		)
-		if err != nil {
-			return Result{}, err
-		}
-		replacements = append(replacements, artifactReplacements...)
-	}
-	fluxReplacements, err := reconcileImageContract(
-		ctx,
-		service.cache,
-		tree,
-		&desired,
-		&lock,
-		"flux",
-		currentFluxInspection,
-		candidateFluxInspection,
-		nil,
-		true,
-		false,
+	imageArtifacts := append([]chartArtifact(nil), artifacts...)
+	imageArtifacts = append(imageArtifacts, chartArtifact{ID: "flux"})
+	imageInspections := append([]chartInspection(nil), inspections...)
+	imageInspections = append(imageInspections, candidateFluxInspection)
+	_, err = reconstructRenderedImages(
+		ctx, &desired, imageArtifacts, imageInspections,
+		selectedKubernetes.Version,
 	)
 	if err != nil {
 		return Result{}, err
 	}
-	replacements = append(replacements, fluxReplacements...)
-	kubernetesReplacements, err := reconcileKubernetesImages(&desired, &lock, selectedKubernetes.Version)
+
+	_, err = reconcileBootstrapImageVersions(&desired, &lock, bootstrapCharts)
 	if err != nil {
 		return Result{}, err
 	}
-	replacements = append(replacements, kubernetesReplacements...)
-	replacements, err = compactReplacements(replacements)
+	replacements, err := imageTargetReplacements(
+		initialImageTargets,
+		desired.Delivery.Images,
+	)
 	if err != nil {
 		return Result{}, err
 	}
 	if err := replaceImageReferences(candidateGenerated, replacements); err != nil {
 		return Result{}, err
 	}
-	auxiliaryChanges, err := projectTrackedChartAuxiliaryImages(
-		generated,
-		candidateGenerated,
-		trackedCharts,
-		artifacts,
-		candidateInspections,
-		desired.Delivery.Images,
-	)
-	if err != nil {
+	if err := projectSelectedImageValues(candidateGenerated, desired); err != nil {
 		return Result{}, err
-	}
-	for _, change := range auxiliaryChanges {
-		service.logger.WarnContext(
-			ctx,
-			"tracked chart auxiliary runtime contract changed",
-			"artifact", change.Artifact,
-			"added", change.Added,
-			"removed", change.Removed,
-		)
 	}
 	const bigBangHelmReleasePath = "platform/apps/bigbang/helmrelease.yaml"
 	currentBigBangHelmRelease, err := tree.YAML(bigBangHelmReleasePath)
@@ -429,14 +323,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	candidateBigBangHelmRelease := cloneMap(currentBigBangHelmRelease)
-	if err := configureIdentityValuesFrom(candidateBigBangHelmRelease); err != nil {
-		return Result{}, err
-	}
-	if err := pinIstioHelmReleaseGates(
-		candidateBigBangHelmRelease,
-		packages,
-		bigBangIstioDependencies(artifacts, candidateInspections),
-	); err != nil {
+	if err := configurePlatformValuesFrom(candidateBigBangHelmRelease); err != nil {
 		return Result{}, err
 	}
 	if err := setCandidateYAML(
@@ -454,7 +341,17 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	fluxKustomizationPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "kustomization.yaml")
 	fluxSyncPath := filepath.Join(filepath.Dir(desired.Platform.Flux.Assets[0].File), "gotk-sync.yaml")
+	fluxSecretSourcePath := filepath.Join(
+		desired.Platform.Directory,
+		"clusters",
+		desired.Project.Cluster,
+		"platform-secrets.yaml",
+	)
 	candidateFluxSync, err := renderFluxSync(desired)
+	if err != nil {
+		return Result{}, err
+	}
+	candidateFluxSecretSource, err := renderFluxSecretKustomization(desired)
 	if err != nil {
 		return Result{}, err
 	}
@@ -465,10 +362,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	candidateFluxKustomization := cloneMap(fluxKustomization)
 	if err := replaceImageReferences(candidateFluxKustomization, replacements); err != nil {
 		return Result{}, err
-	}
-	currentFluxKustomizationData, err := tree.Data(fluxKustomizationPath)
-	if err != nil {
-		return Result{}, fmt.Errorf("read current Flux Kustomization: %w", err)
 	}
 	candidateFluxKustomizationData, err := yaml.Marshal(candidateFluxKustomization)
 	if err != nil {
@@ -487,26 +380,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	currentFluxProfilePatchData, err := tree.Data(fluxProfilePatchPath)
-	if err != nil {
-		return Result{}, err
-	}
 	candidateFluxProfilePatchData, err := yaml.Marshal(candidateFluxProfilePatch)
 	if err != nil {
 		return Result{}, fmt.Errorf("encode candidate Flux profile patch: %w", err)
 	}
 	fluxOverlayDirectory := filepath.Join(service.root, filepath.Dir(desired.Platform.Flux.Assets[0].File))
-	currentFluxOverlay, err := service.renderFluxOverlay(
-		fluxOverlayDirectory,
-		filepath.Base(desired.Platform.Flux.Assets[0].File),
-		currentFluxManifest,
-		currentFluxKustomizationData,
-		filepath.Base(fluxProfilePatchPath),
-		currentFluxProfilePatchData,
-	)
-	if err != nil {
-		return Result{}, fmt.Errorf("render current Flux overlay: %w", err)
-	}
 	candidateFluxOverlay, err := service.renderFluxOverlay(
 		fluxOverlayDirectory,
 		filepath.Base(desired.Platform.Flux.Assets[0].File),
@@ -518,20 +396,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, fmt.Errorf("render candidate Flux overlay: %w", err)
 	}
-	currentFluxOverlayInspection, err := inspectManifestData("flux-overlay", currentFluxOverlay)
-	if err != nil {
-		return Result{}, fmt.Errorf("inspect current Flux overlay: %w", err)
-	}
-	candidateFluxOverlayInspection, err := inspectManifestData("flux-overlay", candidateFluxOverlay)
+	finalFluxInspection, err := inspectManifestData("flux-overlay", candidateFluxOverlay)
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect candidate Flux overlay: %w", err)
-	}
-	if currentFluxOverlayInspection.ContractSHA != candidateFluxOverlayInspection.ContractSHA {
-		return Result{}, fmt.Errorf(
-			"runtime contract changed for the applied Flux overlay (%s -> %s); update aborted for explicit compatibility review",
-			currentFluxOverlayInspection.ContractSHA,
-			candidateFluxOverlayInspection.ContractSHA,
-		)
 	}
 
 	bootstrapValues, err := readBootstrapValues(service.root, desired.Platform.Bootstrap.Charts, managedFiles)
@@ -543,30 +410,39 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 			return Result{}, err
 		}
 	}
-	if err := validateAppliedArtifacts(
+	finalArtifacts, finalInspections, err := inspectAppliedArtifacts(
 		ctx,
 		parallelism,
 		selectedKubernetes.Version,
 		service.root,
-		project.Desired,
 		desired,
 		operational,
-		generated,
 		candidateGenerated,
 		profileRenderValues,
-		admittedBigBang.defaults,
 		bootstrapValues,
 		artifacts,
 		tree.Files(),
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	finalArtifacts = append(finalArtifacts, chartArtifact{ID: "flux"})
+	finalInspections = append(finalInspections, finalFluxInspection)
+	if err := admitFinalRenderedImages(
+		ctx,
+		&desired,
+		finalArtifacts,
+		finalInspections,
 	); err != nil {
 		return Result{}, err
 	}
-	desired.Delivery.RenderedBaseline.BigBang = config.VersionedCommit{
-		Version: desired.Platform.BigBang.Version,
-		Commit:  desired.Platform.BigBang.Commit,
+	buildGraph, err := renderBuildGraph(desired)
+	if err != nil {
+		return Result{}, fmt.Errorf("render canonical delivery build graph: %w", err)
 	}
-	desired.Delivery.LegacyCrosswalk.BigBang = desired.Delivery.RenderedBaseline.BigBang
-
+	if err := tree.Set(buildGraphFile, buildGraph); err != nil {
+		return Result{}, err
+	}
 	service.logger.InfoContext(ctx, "resolving public linux/amd64 image digests")
 	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
 		return Result{}, err
@@ -579,8 +455,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, fmt.Errorf("resolve candidate delivery graph: %w", err)
 	}
 	lock.Delivery.GraphSHA256 = graphSHA
-	deliveryCurrent, err := refreshImageInputHashes(&desired, &lock)
-	if err != nil {
+	if err := resolveImageLock(&desired, &lock); err != nil {
 		return Result{}, err
 	}
 
@@ -601,6 +476,19 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		Constraints:       lockConstraints(constraints),
 		Checksums:         selectedKubernetes.Checksums,
 	}
+	finalPackages, err := renderFinalPackages(
+		desired,
+		lock,
+		packages,
+		trackedCharts,
+		bootstrapCharts,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("render final package snapshot: %w", err)
+	}
+	if err := tree.Set(finalPackagesPath, finalPackages); err != nil {
+		return Result{}, err
+	}
 	deliverySHA, err := desired.DeliverySHA256()
 	if err != nil {
 		return Result{}, err
@@ -611,21 +499,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	lock.DesiredSHA256 = desiredSHA
 	lock.Delivery.InventorySHA256 = deliverySHA
-	materialChanged := materialStateChanged(project, &desired, &lock)
-	if !deliveryCurrent {
-		lock.Delivery = config.ImageLock{
-			SchemaVersion:   "atum.dev/image-lock/v3",
-			Profile:         lock.Delivery.Profile,
-			Platform:        desired.Project.Platform,
-			InventorySHA256: deliverySHA,
-			GraphSHA256:     graphSHA,
-			Images:          []config.LockedImage{},
-		}
-	}
-	if materialChanged || !deliveryCurrent || sourceSnapshotChanged {
-		lock.Bundle = nil
-	}
-
 	if len(desired.Platform.Flux.Assets) != 1 {
 		return Result{}, errors.New("resolved Flux source must contain exactly one install asset")
 	}
@@ -635,13 +508,16 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err := tree.Set(fluxSyncPath, candidateFluxSync); err != nil {
 		return Result{}, err
 	}
+	if err := tree.Set(fluxSecretSourcePath, candidateFluxSecretSource); err != nil {
+		return Result{}, err
+	}
 	if err := setCandidateYAML(tree, fluxKustomizationPath, fluxKustomization, candidateFluxKustomization); err != nil {
 		return Result{}, err
 	}
 	if err := setCandidateYAML(tree, fluxProfilePatchPath, currentFluxProfilePatch, candidateFluxProfilePatch); err != nil {
 		return Result{}, err
 	}
-	if err := setCandidateYAML(tree, desired.Platform.Values.Generated, generated, candidateGenerated); err != nil {
+	if err := setCandidateYAML(tree, desired.Platform.Values.Generated, currentGenerated, candidateGenerated); err != nil {
 		return Result{}, err
 	}
 	bigBangSource, err := bigBangSourceValues(
@@ -722,6 +598,18 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	result.Applied = true
 	return result, nil
+}
+
+func trackedChartDiscoveryValues(charts []config.TrackedChart) (map[string]any, error) {
+	values := make(map[string]any)
+	for _, chart := range charts {
+		entry, err := ensureNestedMap(values, chart.ValuesPath+".helmRepo")
+		if err != nil {
+			return nil, fmt.Errorf("prepare chart %s discovery values: %w", chart.ID, err)
+		}
+		entry["tag"] = chart.Version
+	}
+	return values, nil
 }
 
 func (service *Service) lock(ctx context.Context) (func(), error) {
@@ -907,18 +795,17 @@ func (service *Service) resolveKubernetesCandidates(
 }
 
 type platformSelection struct {
-	bigBang              resolvedGit
-	packages             []resolvedPackage
-	charts               []resolvedTrackedChart
-	bootstrap            []resolvedBootstrapChart
-	supportSources       []resolvedSupportSource
-	constraints          []versionConstraint
-	generated            map[string]any
-	artifacts            []chartArtifact
-	kubernetes           kubernetesRelease
-	currentInspections   []chartInspection
-	candidateInspections []chartInspection
-	clusterReleases      []config.ClusterRelease
+	bigBang         resolvedGit
+	packages        []resolvedPackage
+	charts          []resolvedTrackedChart
+	bootstrap       []resolvedBootstrapChart
+	supportSources  []resolvedSupportSource
+	constraints     []versionConstraint
+	generated       map[string]any
+	artifacts       []chartArtifact
+	kubernetes      kubernetesRelease
+	inspections     []chartInspection
+	clusterReleases []config.ClusterRelease
 }
 
 type admittedBigBangSelection struct {
@@ -926,7 +813,6 @@ type admittedBigBangSelection struct {
 	defaults           map[string]any
 	platform           config.Platform
 	packages           []config.Package
-	wrapperConsumers   []config.WrapperConsumer
 	wrapperRequirement config.WrapperSourceRequirement
 }
 
@@ -948,72 +834,29 @@ func latestOnlyBigBangCandidate(latest resolvedGit) resolvedGit {
 func admitBigBangPackageSelection(
 	resolved resolvedGit,
 	defaults map[string]any,
-	operational map[string]any,
 	configured map[string]any,
 	platform config.Platform,
+	kubernetesVersion string,
 ) (admittedBigBangSelection, error) {
 	candidate := latestOnlyBigBangCandidate(resolved)
-	packages, err := config.PackageSelection(operational, defaults)
+	packages, wrapperRequirement, err := discoverBigBangPackages(
+		candidate.Checkout,
+		kubernetesVersion,
+		defaults,
+		configured,
+	)
 	if err != nil {
 		return admittedBigBangSelection{}, fmt.Errorf(
 			"Big Bang %s package inventory: %w", candidate.Source.Version, err,
 		)
 	}
-	effective := mergeValues(defaults, configured)
 	candidatePlatform := platform
 	candidatePlatform.Packages = append([]config.Package(nil), packages...)
-	if err := verifySelectedPackages(
-		operational, defaults, packages, candidatePlatform.Charts,
-	); err != nil {
-		return admittedBigBangSelection{}, fmt.Errorf(
-			"Big Bang %s selection: %w", candidate.Source.Version, err,
-		)
-	}
-	wrapperConsumers, err := config.ActiveWrapperConsumers(candidatePlatform, effective)
-	if err != nil {
-		return admittedBigBangSelection{}, fmt.Errorf(
-			"Big Bang %s wrapper admission: %w", candidate.Source.Version, err,
-		)
-	}
-	wrapperRequirement, err := config.BigBangWrapperSourceRequirement(
-		defaults, effective, wrapperConsumers,
-	)
-	if err != nil {
-		return admittedBigBangSelection{}, fmt.Errorf(
-			"Big Bang %s wrapper source admission: %w", candidate.Source.Version, err,
-		)
-	}
-	obligations := []config.RenderedSourceObligation{
-		{
-			Owner: "Flux deployment source",
-			Reference: config.PackageSourceReference{
-				Name: "flux-system", Namespace: "flux-system",
-			},
-		},
-		{
-			Owner: "Big Bang deployment source",
-			Reference: config.PackageSourceReference{
-				Name: "bigbang", Namespace: "bigbang",
-			},
-		},
-	}
-	if wrapperRequirement.Required {
-		obligations = append(obligations, config.RenderedSourceObligation{
-			Owner: "Big Bang shared wrapper source",
-			Reference: config.BigBangWrapperSourceReference(),
-		})
-	}
-	if err := config.ValidateRenderedSourceReferences(effective, packages, obligations); err != nil {
-		return admittedBigBangSelection{}, fmt.Errorf(
-			"Big Bang %s rendered source admission: %w", candidate.Source.Version, err,
-		)
-	}
 	return admittedBigBangSelection{
 		candidate:          candidate,
 		defaults:           defaults,
 		platform:           candidatePlatform,
 		packages:           packages,
-		wrapperConsumers:   wrapperConsumers,
 		wrapperRequirement: wrapperRequirement,
 	}, nil
 }
@@ -1030,8 +873,6 @@ func (service *Service) selectCompatiblePlatform(
 	profile map[string]any,
 	trackedChartCatalogs []*chartCatalog,
 	bootstrapChartCatalogs []*chartCatalog,
-	currentInputs map[string]artifactInput,
-	applicationRepositories map[string][]string,
 	parallelism int,
 	files map[string][]byte,
 	resetToPinnedBigBang bool,
@@ -1039,11 +880,6 @@ func (service *Service) selectCompatiblePlatform(
 ) (platformSelection, error) {
 	if identityContract == nil {
 		return platformSelection{}, errors.New("canonical local identity contract is unavailable")
-	}
-	openSearchIdentity, found := identityContract.ClientForApplication(identity.OpenSearch)
-	if !found {
-		return platformSelection{}, errors.New(
-			"identity contract has no OpenSearch application projection")
 	}
 	minimumRelease, err := desired.Orchestration.TargetRelease()
 	if err != nil {
@@ -1059,306 +895,220 @@ func (service *Service) selectCompatiblePlatform(
 	candidate := admitted.candidate
 	bigBangValues := admitted.defaults
 	selectedPackages := admitted.packages
-		metadata, err := readChartMetadata(filepath.Join(candidate.Checkout, "chart"))
-		if err != nil {
-			return platformSelection{}, fmt.Errorf("inspect Big Bang chart %s: %w", candidate.Source.Version, err)
-		}
-		if metadata.Version != candidate.Source.Version {
-			return platformSelection{}, fmt.Errorf("Big Bang tag %s contains chart version %s", candidate.Source.Version, metadata.Version)
-		}
-		if metadata.KubeVersion == "" {
-			failures = append(failures, candidate.Source.Version+": Big Bang chart has no Kubernetes compatibility constraint")
+	metadata, err := readChartMetadata(filepath.Join(candidate.Checkout, "chart"))
+	if err != nil {
+		return platformSelection{}, fmt.Errorf("inspect Big Bang chart %s: %w", candidate.Source.Version, err)
+	}
+	if metadata.Version != candidate.Source.Version {
+		return platformSelection{}, fmt.Errorf("Big Bang tag %s contains chart version %s", candidate.Source.Version, metadata.Version)
+	}
+	if metadata.KubeVersion == "" {
+		failures = append(failures, candidate.Source.Version+": Big Bang chart has no Kubernetes compatibility constraint")
+		return platformSelection{}, incompatibleBigBangError(
+			candidate.Source.Version, resetToPinnedBigBang, failures,
+		)
+	}
+	candidate.Source.KubeVersion = metadata.KubeVersion
+	effectiveValues := mergeValues(bigBangValues, configuredValues)
+	if err := verifyTrackedChartBindings(service.root, effectiveValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, files); err != nil {
+		return platformSelection{}, fmt.Errorf("Big Bang %s chart sources: %w", candidate.Source.Version, err)
+	}
+	candidatePlatform := admitted.platform
+	supportSources, err := resolveWrapperSupportSource(
+		ctx,
+		service.cache,
+		candidate,
+		admitted.wrapperRequirement,
+		lock.Resolved,
+	)
+	if err != nil {
+		failures = append(
+			failures,
+			candidate.Source.Version+": wrapper source contract: "+err.Error(),
+		)
+		return platformSelection{}, incompatibleBigBangError(
+			candidate.Source.Version, resetToPinnedBigBang, failures,
+		)
+	}
+	packages, err := resolvePackages(
+		ctx, service.cache, parallelism, selectedPackages,
+		desired.Platform.Packages, resetToPinnedBigBang,
+	)
+	if err != nil {
+		return platformSelection{}, fmt.Errorf(
+			"resolve Big Bang %s packages: %w", candidate.Source.Version, err,
+		)
+	}
+	candidateDesired := desired
+	candidateDesired.Platform = candidatePlatform
+	candidateDesired.Platform.BigBang = candidate.Source
+	candidateDesired.Platform.Packages = make([]config.Package, len(packages))
+	for i := range packages {
+		candidateDesired.Platform.Packages[i] = packages[i].Package
+	}
+	baseConstraints := collectSourceConstraints(&candidateDesired)
+	kubernetesCandidates, err := service.resolveKubernetesCandidates(
+		ctx, kubesprayLatest, baseConstraints, minimumRelease,
+	)
+	if err != nil {
+		if errors.Is(err, errNoCompatibleKubernetes) {
+			failures = append(failures, candidate.Source.Version+": "+err.Error())
 			return platformSelection{}, incompatibleBigBangError(
 				candidate.Source.Version, resetToPinnedBigBang, failures,
 			)
 		}
-		candidate.Source.KubeVersion = metadata.KubeVersion
-		effectiveValues := mergeValues(bigBangValues, configuredValues)
-		if err := verifyTrackedChartBindings(service.root, effectiveValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, files); err != nil {
-			return platformSelection{}, fmt.Errorf("Big Bang %s chart sources: %w", candidate.Source.Version, err)
-		}
-		candidatePlatform := admitted.platform
-		supportSources, err := resolveWrapperSupportSource(
-			ctx,
-			service.cache,
-			candidate,
-			admitted.wrapperRequirement,
-			lock.Resolved,
+		return platformSelection{}, fmt.Errorf(
+			"resolve Kubernetes candidates for Big Bang %s: %w",
+			candidate.Source.Version, err,
 		)
-		if err != nil {
-			failures = append(
-				failures,
-				candidate.Source.Version+": wrapper source contract: "+err.Error(),
+	}
+	failures = make([]string, 0, len(kubernetesCandidates))
+	if resetToPinnedBigBang {
+		slices.Reverse(kubernetesCandidates)
+	}
+	for _, kubernetesCandidate := range kubernetesCandidates {
+		coordinate := candidate.Source.Version + "/Kubernetes " +
+			kubernetesCandidate.kubernetes.Version
+		trackedOffsets := make(map[string]int, len(desired.Platform.Charts))
+		bootstrapOffsets := make(map[string]int, len(desired.Platform.Bootstrap.Charts))
+		for attempt := 1; ; attempt++ {
+			attemptDesired := candidateDesired
+			attemptDesired.Platform.Charts = append([]config.TrackedChart(nil), desired.Platform.Charts...)
+			attemptDesired.Platform.Bootstrap.Charts = append([]config.Chart(nil), desired.Platform.Bootstrap.Charts...)
+			trackedCharts, err := resolveTrackedChartsForKubernetes(
+				ctx, service.charts, parallelism, desired.Platform.Charts, trackedChartCatalogs,
+				kubernetesCandidate.kubernetes.Version, trackedOffsets,
 			)
-			return platformSelection{}, incompatibleBigBangError(
-				candidate.Source.Version, resetToPinnedBigBang, failures,
-			)
-		}
-		packages, err := resolvePackages(
-			ctx, service.cache, parallelism, bigBangValues, selectedPackages,
-			desired.Platform.Packages, resetToPinnedBigBang,
-		)
-		if err != nil {
-			return platformSelection{}, fmt.Errorf(
-				"resolve Big Bang %s packages: %w", candidate.Source.Version, err,
-			)
-		}
-		candidateDesired := desired
-		candidateDesired.Platform = candidatePlatform
-		candidateDesired.Platform.BigBang = candidate.Source
-		candidateDesired.Platform.Packages = make([]config.Package, len(packages))
-		for i := range packages {
-			candidateDesired.Platform.Packages[i] = packages[i].Package
-		}
-		baseConstraints := collectSourceConstraints(&candidateDesired)
-		kubernetesCandidates, err := service.resolveKubernetesCandidates(
-			ctx, kubesprayLatest, baseConstraints, minimumRelease,
-		)
-		if err != nil {
-			if errors.Is(err, errNoCompatibleKubernetes) {
-				failures = append(failures, candidate.Source.Version+": "+err.Error())
-				return platformSelection{}, incompatibleBigBangError(
-					candidate.Source.Version, resetToPinnedBigBang, failures,
+			if err != nil {
+				if errors.Is(err, errNoCompatibleKubernetes) {
+					failures = append(failures, coordinate+": "+err.Error())
+					break
+				}
+				return platformSelection{}, fmt.Errorf(
+					"resolve tracked charts for %s: %w", coordinate, err,
 				)
 			}
-			return platformSelection{}, fmt.Errorf(
-				"resolve Kubernetes candidates for Big Bang %s: %w",
-				candidate.Source.Version, err,
+			bootstrapCharts, err := resolveBootstrapChartsForKubernetes(
+				ctx, service.charts, parallelism, desired.Platform.Bootstrap.Charts, bootstrapChartCatalogs,
+				kubernetesCandidate.kubernetes.Version, bootstrapOffsets,
 			)
-		}
-		failures = make([]string, 0, len(kubernetesCandidates))
-		if resetToPinnedBigBang {
-			slices.Reverse(kubernetesCandidates)
-		}
-		for _, kubernetesCandidate := range kubernetesCandidates {
-			coordinate := candidate.Source.Version + "/Kubernetes " +
-				kubernetesCandidate.kubernetes.Version
-			trackedOffsets := make(map[string]int, len(desired.Platform.Charts))
-			bootstrapOffsets := make(map[string]int, len(desired.Platform.Bootstrap.Charts))
-			for attempt := 1; ; attempt++ {
-				attemptDesired := candidateDesired
-				attemptDesired.Platform.Charts = append([]config.TrackedChart(nil), desired.Platform.Charts...)
-				attemptDesired.Platform.Bootstrap.Charts = append([]config.Chart(nil), desired.Platform.Bootstrap.Charts...)
-				trackedCharts, err := resolveTrackedChartsForKubernetes(
-					ctx, service.charts, parallelism, desired.Platform.Charts, trackedChartCatalogs,
-					kubernetesCandidate.kubernetes.Version, trackedOffsets, applicationRepositories,
-				)
-				if err != nil {
-					if errors.Is(err, errNoCompatibleKubernetes) {
-						failures = append(failures, coordinate+": "+err.Error())
-						break
-					}
-					return platformSelection{}, fmt.Errorf(
-						"resolve tracked charts for %s: %w", coordinate, err,
-					)
-				}
-				bootstrapCharts, err := resolveBootstrapChartsForKubernetes(
-					ctx, service.charts, parallelism, desired.Platform.Bootstrap.Charts, bootstrapChartCatalogs,
-					kubernetesCandidate.kubernetes.Version, bootstrapOffsets,
-				)
-				if err != nil {
-					if errors.Is(err, errNoCompatibleKubernetes) {
-						failures = append(failures, coordinate+": "+err.Error())
-						break
-					}
-					return platformSelection{}, fmt.Errorf(
-						"resolve bootstrap charts for %s: %w", coordinate, err,
-					)
-				}
-				for i := range trackedCharts {
-					attemptDesired.Platform.Charts[i] = trackedCharts[i].Chart
-				}
-				for i := range bootstrapCharts {
-					attemptDesired.Platform.Bootstrap.Charts[i] = bootstrapCharts[i].Chart
-				}
-				constraints := collectConstraints(&attemptDesired)
-				if _, err := compatibleKubernetes([]kubernetesRelease{kubernetesCandidate.kubernetes}, constraints); err != nil {
+			if err != nil {
+				if errors.Is(err, errNoCompatibleKubernetes) {
 					failures = append(failures, coordinate+": "+err.Error())
 					break
 				}
-				candidateGenerated := cloneMap(generated)
-				if err := updateGeneratedVersions(
-					candidateGenerated,
-					attemptDesired.Platform.Sources,
-					packages,
-					supportSources,
-					trackedCharts,
-					attemptDesired.Delivery.Images,
-				); err != nil {
-					return platformSelection{}, fmt.Errorf(
-						"prepare generated values for %s: %w", coordinate, err,
-					)
-				}
-				candidateConfiguredValues, err := config.MergePlatformValues(
-					renderOperational, candidateGenerated, profile,
+				return platformSelection{}, fmt.Errorf(
+					"resolve bootstrap charts for %s: %w", coordinate, err,
 				)
-				if err != nil {
-					return platformSelection{}, fmt.Errorf(
-						"merge platform values for %s: %w", coordinate, err,
-					)
-				}
-				candidateRenderValues, err := sourceVersionValues(
-					candidateConfiguredValues,
-					attemptDesired.Platform.Sources,
-					attemptDesired.Platform.Packages,
-					supportSourceValues(supportSources),
-					attemptDesired.Platform.Charts,
-					attemptDesired.Delivery.Images,
+			}
+			for i := range trackedCharts {
+				attemptDesired.Platform.Charts[i] = trackedCharts[i].Chart
+			}
+			for i := range bootstrapCharts {
+				attemptDesired.Platform.Bootstrap.Charts[i] = bootstrapCharts[i].Chart
+			}
+			constraints := collectConstraints(&attemptDesired)
+			if _, err := compatibleKubernetes([]kubernetesRelease{kubernetesCandidate.kubernetes}, constraints); err != nil {
+				failures = append(failures, coordinate+": "+err.Error())
+				break
+			}
+			candidateGenerated := cloneMap(generated)
+			if err := updateGeneratedVersions(
+				candidateGenerated,
+				attemptDesired.Platform.Sources,
+				packages,
+				supportSources,
+				trackedCharts,
+			); err != nil {
+				return platformSelection{}, fmt.Errorf(
+					"prepare generated values for %s: %w", coordinate, err,
 				)
-				if err != nil {
-					return platformSelection{}, fmt.Errorf(
-						"prepare source values for %s: %w", coordinate, err,
-					)
-				}
-				candidateInputs, err := candidateArtifacts(
-					candidate, attemptDesired.Platform.Sources, attemptDesired.Platform.Bootstrap.Registry,
-					packages, trackedCharts, bootstrapCharts, candidateRenderValues, service.root, files,
+			}
+			candidateConfiguredValues, err := config.MergePlatformValues(
+				renderOperational, candidateGenerated, profile,
+			)
+			if err != nil {
+				return platformSelection{}, fmt.Errorf(
+					"merge platform values for %s: %w", coordinate, err,
 				)
-				if err != nil {
-					return platformSelection{}, fmt.Errorf(
-						"assemble candidate artifacts for %s: %w", coordinate, err,
-					)
-				}
-				artifacts, err := pairArtifacts(currentInputs, candidateInputs)
-				if err != nil {
-					return platformSelection{}, fmt.Errorf(
-						"pair candidate artifacts for %s: %w", coordinate, err,
-					)
-				}
-				service.logger.InfoContext(ctx, "rendering candidate Helm contracts",
-					"bigbang", candidate.Source.Version,
-					"kubernetes", kubernetesCandidate.kubernetes.Version,
-					"attempt", attempt,
-					"candidates", len(artifacts),
+			}
+			candidateRenderValues, err := sourceVersionValues(
+				candidateConfiguredValues,
+				attemptDesired.Platform.Sources,
+				attemptDesired.Platform.Packages,
+				supportSourceValues(supportSources),
+				attemptDesired.Platform.Charts,
+			)
+			if err != nil {
+				return platformSelection{}, fmt.Errorf(
+					"prepare source values for %s: %w", coordinate, err,
 				)
-				currentInspections, candidateInspections, err := inspectArtifactPairs(
-					ctx, min(parallelism, 4), kubernetesCandidate.kubernetes.Version, artifacts,
+			}
+			candidateInputs, err := candidateArtifacts(
+				candidate, attemptDesired.Platform.Sources, attemptDesired.Platform.Bootstrap.Registry,
+				packages, trackedCharts, bootstrapCharts, candidateRenderValues, service.root, files,
+			)
+			if err != nil {
+				return platformSelection{}, fmt.Errorf(
+					"assemble candidate artifacts for %s: %w", coordinate, err,
 				)
-				if err != nil {
-					var renderErr *artifactRenderError
-					if errors.As(err, &renderErr) && renderErr.candidate &&
-						backtrackChart(renderErr.id, trackedOffsets, bootstrapOffsets) {
-						service.logger.WarnContext(ctx, "candidate chart render failed; trying the next compatible release",
-							"artifact", renderErr.id,
-							"error", renderErr.err,
-						)
-						continue
-					}
-					failures = append(failures, coordinate+": "+err.Error())
-					break
-				}
-				retryChart := false
-				incompatible := ""
-				renderedImages := renderedImageIDs(attemptDesired.Delivery.Images, candidateInspections)
-				for i := range artifacts {
-					err := validateImageContract(
-						&attemptDesired,
-						artifacts[i].ID,
-						currentInspections[i],
-						candidateInspections[i],
-						renderedImages,
-						resetToPinnedBigBang,
+			}
+			artifacts, err := selectedArtifacts(candidateInputs)
+			if err != nil {
+				return platformSelection{}, fmt.Errorf(
+					"assemble selected artifacts for %s: %w", coordinate, err,
+				)
+			}
+			service.logger.InfoContext(ctx, "rendering candidate Helm contracts",
+				"bigbang", candidate.Source.Version,
+				"kubernetes", kubernetesCandidate.kubernetes.Version,
+				"attempt", attempt,
+				"candidates", len(artifacts),
+			)
+			inspections, err := inspectArtifacts(
+				ctx, min(parallelism, 4), kubernetesCandidate.kubernetes.Version, artifacts,
+			)
+			if err != nil {
+				var renderErr *artifactRenderError
+				if errors.As(err, &renderErr) && renderErr.candidate &&
+					backtrackChart(renderErr.id, trackedOffsets, bootstrapOffsets) {
+					service.logger.WarnContext(ctx, "candidate chart render failed; trying the next compatible release",
+						"artifact", renderErr.id,
+						"error", renderErr.err,
 					)
-					if err == nil {
-						continue
-					}
-					if backtrackChart(artifacts[i].ID, trackedOffsets, bootstrapOffsets) {
-						service.logger.WarnContext(ctx, "candidate chart contract changed; trying the next compatible release",
-							"artifact", artifacts[i].ID,
-							"error", err,
-						)
-						retryChart = true
-					} else {
-						incompatible = err.Error()
-					}
-					break
-				}
-				if retryChart {
 					continue
 				}
-				if incompatible != "" {
-					service.logger.WarnContext(ctx, "candidate platform contract is incompatible",
-						"bigbang", candidate.Source.Version,
-						"kubernetes", kubernetesCandidate.kubernetes.Version,
-						"error", incompatible,
-					)
-					failures = append(failures, coordinate+": "+incompatible)
-					break
-				}
-				if err := validatePlatformMeshContract(
-					candidate,
-					attemptDesired.Platform,
-					packages,
-					supportSources,
-					admitted.wrapperRequirement,
-					admitted.wrapperConsumers,
-					candidateRenderValues,
-					kubernetesCandidate.kubernetes.Version,
-					openSearchIdentity.Host,
-				); err != nil {
-					contractErr := fmt.Errorf("platform mesh contract: %w", err)
-					failures = append(failures, coordinate+": "+contractErr.Error())
-					service.logger.WarnContext(ctx, "candidate Big Bang mesh contract is incompatible",
-						"bigbang", candidate.Source.Version,
-						"kubernetes", kubernetesCandidate.kubernetes.Version,
-						"error", err,
-					)
-					break
-				}
-				if err := validatePlatformIdentityContract(
-					artifacts,
-					identityContract,
-					attemptDesired,
-					kubernetesCandidate.kubernetes.Version,
-					files,
-					service.root,
-				); err != nil {
-					contractErr := fmt.Errorf("platform identity contract: %w", err)
-					if resetToPinnedBigBang {
-						return platformSelection{}, incompatibleBigBangError(
-							candidate.Source.Version,
-							true,
-							[]string{coordinate + ": " + contractErr.Error()},
-						)
-					}
-					failures = append(failures, coordinate+": "+contractErr.Error())
-					service.logger.WarnContext(
-						ctx, "candidate Big Bang identity contract is incompatible",
-						"bigbang", candidate.Source.Version,
-						"kubernetes", kubernetesCandidate.kubernetes.Version,
-						"error", err,
-					)
-					break
-				}
-				currentReleases := desired.Orchestration.Releases
-				if resetToPinnedBigBang {
-					currentReleases = nil
-				}
-				clusterReleases, err := buildReleaseLadder(
-					currentReleases,
-					kubernetesCandidates,
-					kubernetesCandidate,
-				)
-				if err != nil {
-					failures = append(failures, coordinate+": "+err.Error())
-					break
-				}
-				return platformSelection{
-					bigBang:              candidate,
-					packages:             packages,
-					charts:               trackedCharts,
-					bootstrap:            bootstrapCharts,
-					supportSources:       supportSources,
-					constraints:          constraints,
-					generated:            candidateGenerated,
-					artifacts:            artifacts,
-					kubernetes:           kubernetesCandidate.kubernetes,
-					currentInspections:   currentInspections,
-					candidateInspections: candidateInspections,
-					clusterReleases:      clusterReleases,
-				}, nil
+				failures = append(failures, coordinate+": "+err.Error())
+				break
 			}
+			currentReleases := desired.Orchestration.Releases
+			if resetToPinnedBigBang {
+				currentReleases = nil
+			}
+			clusterReleases, err := buildReleaseLadder(
+				currentReleases,
+				kubernetesCandidates,
+				kubernetesCandidate,
+			)
+			if err != nil {
+				failures = append(failures, coordinate+": "+err.Error())
+				break
+			}
+			return platformSelection{
+				bigBang:         candidate,
+				packages:        packages,
+				charts:          trackedCharts,
+				bootstrap:       bootstrapCharts,
+				supportSources:  supportSources,
+				constraints:     constraints,
+				generated:       candidateGenerated,
+				artifacts:       artifacts,
+				kubernetes:      kubernetesCandidate.kubernetes,
+				inspections:     inspections,
+				clusterReleases: clusterReleases,
+			}, nil
 		}
+	}
 	return platformSelection{}, incompatibleBigBangError(
 		candidate.Source.Version, resetToPinnedBigBang, failures,
 	)
@@ -1430,41 +1180,17 @@ func lockConstraints(constraints []versionConstraint) []config.CompatibilityCons
 	return result
 }
 
-func verifySelectedPackages(
-	operational map[string]any,
-	defaults map[string]any,
-	packages []config.Package,
-	charts []config.TrackedChart,
-) error {
-	return config.ValidatePackageSelectionCoverage(operational, defaults, packages, charts)
-}
-
 func updateGeneratedVersions(
 	generated map[string]any,
 	sources config.SourceRegistry,
 	packages []resolvedPackage,
 	supportSources []resolvedSupportSource,
 	charts []resolvedTrackedChart,
-	images []config.Image,
 ) error {
-	rolloutPaths := make([]string, 0, len(packages)+len(charts))
-	istioVersion := ""
-	keycloakPath := ""
-	kyvernoReporterPath := ""
 	delete(generated, "wrapper")
 	for _, pkg := range packages {
 		if err := pinPackageSource(generated, sources, pkg.Package); err != nil {
 			return fmt.Errorf("update generated package %s source: %w", pkg.Package.ID, err)
-		}
-		switch pkg.Package.ID {
-		case "istiod":
-			istioVersion = pkg.Package.Source.Version
-		case "keycloak":
-			keycloakPath = pkg.Package.ValuesPath
-		case "kyverno-reporter":
-			kyvernoReporterPath = pkg.Package.ValuesPath
-		default:
-			rolloutPaths = append(rolloutPaths, pkg.Package.ValuesPath)
 		}
 	}
 	for _, support := range supportSources {
@@ -1473,22 +1199,11 @@ func updateGeneratedVersions(
 		}
 	}
 	for _, chart := range charts {
-		if err := setScalar(generated, chart.Chart.ValuesPath+".helmRepo.tag", chart.Chart.Version); err != nil {
+		if err := setNestedValue(generated, chart.Chart.ValuesPath+".helmRepo.tag", chart.Chart.Version); err != nil {
 			return fmt.Errorf("update generated chart %s: %w", chart.Chart.ID, err)
 		}
-		rolloutPaths = append(rolloutPaths, chart.Chart.ValuesPath)
 	}
-	proxyImage, err := istioProxyImage(images, istioVersion)
-	if err != nil {
-		return err
-	}
-	if err := pinKeycloakIstioProxy(generated, keycloakPath, proxyImage); err != nil {
-		return err
-	}
-	if err := pinKyvernoReporterIstioProxy(generated, kyvernoReporterPath, proxyImage); err != nil {
-		return err
-	}
-	return pinIstioWorkloadRollouts(generated, istioVersion, proxyImage, rolloutPaths)
+	return nil
 }
 
 func sourceVersionValues(
@@ -1497,26 +1212,11 @@ func sourceVersionValues(
 	packages []config.Package,
 	supportSources []config.SupportSource,
 	charts []config.TrackedChart,
-	images []config.Image,
 ) (map[string]any, error) {
 	values := cloneMap(operational)
-	rolloutPaths := make([]string, 0, len(packages)+len(charts))
-	istioVersion := ""
-	keycloakPath := ""
-	kyvernoReporterPath := ""
 	for _, pkg := range packages {
 		if err := pinPackageSource(values, sources, pkg); err != nil {
 			return nil, fmt.Errorf("pin package source %s: %w", pkg.ID, err)
-		}
-		switch pkg.ID {
-		case "istiod":
-			istioVersion = pkg.Source.Version
-		case "keycloak":
-			keycloakPath = pkg.ValuesPath
-		case "kyverno-reporter":
-			kyvernoReporterPath = pkg.ValuesPath
-		default:
-			rolloutPaths = append(rolloutPaths, pkg.ValuesPath)
 		}
 	}
 	for _, support := range supportSources {
@@ -1528,20 +1228,6 @@ func sourceVersionValues(
 		if err := setNestedValue(values, chart.ValuesPath+".helmRepo.tag", chart.Version); err != nil {
 			return nil, fmt.Errorf("pin chart source %s: %w", chart.ID, err)
 		}
-		rolloutPaths = append(rolloutPaths, chart.ValuesPath)
-	}
-	proxyImage, err := istioProxyImage(images, istioVersion)
-	if err != nil {
-		return nil, err
-	}
-	if err := pinKeycloakIstioProxy(values, keycloakPath, proxyImage); err != nil {
-		return nil, err
-	}
-	if err := pinKyvernoReporterIstioProxy(values, kyvernoReporterPath, proxyImage); err != nil {
-		return nil, err
-	}
-	if err := pinIstioWorkloadRollouts(values, istioVersion, proxyImage, rolloutPaths); err != nil {
-		return nil, err
 	}
 	return values, nil
 }
@@ -1567,6 +1253,9 @@ func pinPackageSource(values map[string]any, sources config.SourceRegistry, pkg 
 }
 
 func pinSupportSource(values map[string]any, sources config.SourceRegistry, support config.SupportSource) error {
+	if err := setNestedValue(values, support.ValuesPath+".sourceType", "git"); err != nil {
+		return fmt.Errorf("set sourceType: %w", err)
+	}
 	fields := [...]struct {
 		name  string
 		value string
@@ -1594,185 +1283,6 @@ func supportSourceValues(sources []resolvedSupportSource) []config.SupportSource
 	return result
 }
 
-func pinIstioWorkloadRollouts(values map[string]any, version, proxyImage string, valuePaths []string) error {
-	version, _, _ = strings.Cut(version, "-bb.")
-	if version == "" {
-		return nil
-	}
-	if proxyImage == "" {
-		return errors.New("Istio proxy image is empty")
-	}
-	renderers := istioWorkloadRolloutRenderers(version, proxyImage)
-	for _, path := range valuePaths {
-		if err := setNestedValue(values, path+".postRenderers", cloneValue(renderers)); err != nil {
-			return fmt.Errorf("pin Istio workload rollout for %s: %w", path, err)
-		}
-	}
-	return nil
-}
-
-func istioProxyImage(images []config.Image, version string) (string, error) {
-	version, _, _ = strings.Cut(version, "-bb.")
-	if version == "" {
-		return "", errors.New("selected packages do not define an Istiod version")
-	}
-	for _, image := range images {
-		if image.ID != "istio-proxy" {
-			continue
-		}
-		tagSeparator := strings.LastIndexByte(image.Target, ':')
-		pathSeparator := strings.LastIndexByte(image.Target, '/')
-		if tagSeparator <= pathSeparator || tagSeparator == len(image.Target)-1 {
-			return "", fmt.Errorf("Istio proxy target %q has no replaceable tag", image.Target)
-		}
-		return image.Target[:tagSeparator+1] + version, nil
-	}
-	return "", errors.New("delivery images do not define istio-proxy")
-}
-
-func pinKeycloakIstioProxy(values map[string]any, path, proxyImage string) error {
-	if path == "" {
-		return errors.New("selected packages do not define Keycloak")
-	}
-	annotations, err := ensureNestedMap(values, path+".values.upstream.podAnnotations")
-	if err != nil {
-		return fmt.Errorf("pin Keycloak Istio proxy image: %w", err)
-	}
-	annotations["sidecar.istio.io/proxyImage"] = proxyImage
-	annotations["atum.dev/istio-version"] = strings.TrimPrefix(proxyImage[strings.LastIndexByte(proxyImage, ':')+1:], "v")
-	return nil
-}
-
-func pinKyvernoReporterIstioProxy(values map[string]any, path, proxyImage string) error {
-	if path == "" {
-		return errors.New("selected packages do not define Kyverno Reporter")
-	}
-	for _, suffix := range [...]string{
-		"values.upstream.podAnnotations",
-		"values.upstream.ui.podAnnotations",
-		"values.upstream.plugin.kyverno.podAnnotations",
-	} {
-		annotations, err := ensureNestedMap(values, path+"."+suffix)
-		if err != nil {
-			return fmt.Errorf("pin Kyverno Reporter Istio proxy image: %w", err)
-		}
-		annotations["sidecar.istio.io/proxyImage"] = proxyImage
-		annotations["atum.dev/istio-version"] = strings.TrimPrefix(proxyImage[strings.LastIndexByte(proxyImage, ':')+1:], "v")
-	}
-	return nil
-}
-
-func pinIstioHelmReleaseGates(
-	helmRelease map[string]any,
-	packages []resolvedPackage,
-	dependencies []releaseDependencyPosition,
-) error {
-	istioVersion := ""
-	for _, pkg := range packages {
-		if pkg.Package.ID == "istiod" {
-			istioVersion = pkg.Package.Source.Version
-		}
-	}
-	istioVersion, _, _ = strings.Cut(istioVersion, "-bb.")
-	if istioVersion == "" {
-		return errors.New("selected packages do not define an Istiod version")
-	}
-	if len(dependencies) == 0 {
-		return errors.New("selected packages do not define an Istio-dependent Helm release")
-	}
-	readyExpr := fmt.Sprintf(`dep.status.history.exists(e,
-  e.status == 'deployed' &&
-  (e.chartVersion == %q || e.chartVersion.startsWith(%q))) &&
-  dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')`,
-		istioVersion, istioVersion+"-",
-	)
-	patches := make([]any, 0, len(dependencies))
-	for start := 0; start < len(dependencies); {
-		end := start + 1
-		for end < len(dependencies) &&
-			dependencies[end].namespace == dependencies[start].namespace &&
-			dependencies[end].index == dependencies[start].index {
-			end++
-		}
-		quotedNames := make([]string, end-start)
-		for i := start; i < end; i++ {
-			quotedNames[i-start] = regexp.QuoteMeta(dependencies[i].name)
-		}
-		patch, err := yaml.Marshal([]any{
-			map[string]any{
-				"op":    "add",
-				"path":  "/metadata/annotations/atum.dev~1istio-version",
-				"value": istioVersion,
-			},
-			map[string]any{
-				"op":    "add",
-				"path":  fmt.Sprintf("/spec/dependsOn/%d/readyExpr", dependencies[start].index),
-				"value": readyExpr,
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("encode Istio HelmRelease dependency gate: %w", err)
-		}
-		patches = append(patches, map[string]any{
-			"patch": string(patch),
-			"target": map[string]any{
-				"group":     "helm.toolkit.fluxcd.io",
-				"version":   "v2",
-				"kind":      "HelmRelease",
-				"name":      "^(" + strings.Join(quotedNames, "|") + ")$",
-				"namespace": dependencies[start].namespace,
-			},
-		})
-		start = end
-	}
-	renderers := []any{map[string]any{
-		"kustomize": map[string]any{
-			"patches": patches,
-		},
-	}}
-	if err := setNestedValue(helmRelease, "spec.postRenderers", renderers); err != nil {
-		return fmt.Errorf("pin Istio HelmRelease dependency gates: %w", err)
-	}
-	return nil
-}
-
-func bigBangIstioDependencies(
-	artifacts []chartArtifact,
-	inspections []chartInspection,
-) []releaseDependencyPosition {
-	for i := range artifacts {
-		if artifacts[i].ID == "bigbang" {
-			return inspections[i].IstioDependencies
-		}
-	}
-	return nil
-}
-
-func istioWorkloadRolloutRenderers(version, proxyImage string) []any {
-	patches := make([]any, 0, 3)
-	for _, kind := range [...]string{"Deployment", "StatefulSet", "DaemonSet"} {
-		patches = append(patches, map[string]any{
-			"patch": fmt.Sprintf(`apiVersion: apps/v1
-kind: %s
-metadata:
-  name: atum-istio-rollout
-spec:
-  template:
-    metadata:
-      annotations:
-        atum.dev/istio-version: %q
-        sidecar.istio.io/proxyImage: %q
-`, kind, version, proxyImage),
-			"target": map[string]any{
-				"group": "apps", "version": "v1", "kind": kind,
-			},
-		})
-	}
-	return []any{map[string]any{
-		"kustomize": map[string]any{"patches": patches},
-	}}
-}
-
 func setNestedValue(root map[string]any, path string, value any) error {
 	components := strings.Split(path, ".")
 	current, err := ensureNestedComponents(root, path, components[:len(components)-1])
@@ -1785,22 +1295,6 @@ func setNestedValue(root map[string]any, path string, value any) error {
 	}
 	current[leaf] = value
 	return nil
-}
-
-func nestedMap(root map[string]any, path string) (map[string]any, error) {
-	current := root
-	for _, component := range strings.Split(path, ".") {
-		next, exists := current[component]
-		if !exists {
-			return nil, fmt.Errorf("path %s is missing at %s", path, component)
-		}
-		nested, ok := next.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("path %s is not a map at %s", path, component)
-		}
-		current = nested
-	}
-	return current, nil
 }
 
 func ensureNestedMap(root map[string]any, path string) (map[string]any, error) {
@@ -1845,13 +1339,6 @@ func setScalar(root map[string]any, path string, value string) error {
 	}
 	current[leaf] = value
 	return nil
-}
-
-func materialStateChanged(project *config.Project, desired *config.Document, lock *config.Lock) bool {
-	return !reflect.DeepEqual(project.Desired, *desired) ||
-		!reflect.DeepEqual(project.Lock.Resolved, lock.Resolved) ||
-		!reflect.DeepEqual(project.Lock.Compatibility, lock.Compatibility) ||
-		!reflect.DeepEqual(project.Lock.Delivery, lock.Delivery)
 }
 
 func compactReplacements(replacements []imageReplacement) ([]imageReplacement, error) {

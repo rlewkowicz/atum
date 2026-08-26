@@ -46,7 +46,7 @@ Minimize loops, memory churn, blocking, and unnecessary allocation. Maximize
 parallelism. Prefer pinned application memory where appropriate. Allocate
 long-lived buffers once, size them tightly, and reuse them aggressively. Use
 compact, well-defined data types and buffers sized only for the task when
-supported by the language.
+supported by the language. All algorithms should be O(1) where possible.
 
 ## actionplan.md
 
@@ -352,10 +352,46 @@ explicitly overrides this rule. Do not add or commit `actionplan.md` or
 Do not add regression tests. This does not mean you cannot add tests. It means
 you do not have to add a test for every bug you fix.
 
+## README
+
+Preserve the author's voice in `README.md`. Do not rewrite or remove the
+author-written overview, breakdown, quickstart, disclaimer, humor, or tone for
+style or completeness. Make targeted additions, or replace text only when it
+is explicitly wrong or the user asks for a rewrite. Keep the README concise
+and task-oriented: installation, quickstarts, and common commands belong
+there; detailed architecture and implementation contracts belong in dedicated
+documents linked from the README.
+
 ## Atum CLI
 
 Atum is a thin pass-through Cobra CLI around system-installed Terraform,
 Ansible/Kubespray, and Flux binaries.
+
+There are exactly three deployment control planes: Terraform owns
+infrastructure, Ansible/Kubespray owns Kubernetes, and Flux owns all platform
+state deployed into Kubernetes. This includes SOPS decryption, Big Bang and its
+child releases, certificate resources, and the Atum operator. Atum may invoke
+the upstream tools and observe their native conditions, but invocation and
+observation do not transfer reconciliation ownership to Atum.
+
+Do not implement identity, package, workload, release, or other in-cluster
+reconciliation in Atum or an imperative post-Flux handoff. If selected charts
+cannot express required Keycloak or Vault configuration through values, express
+that intent through the narrowly typed Flux-deployed Atum operator. The
+operator owns only its declared provider state; Flux remains the owner of its
+Kubernetes resources and desired custom resource. Do not use reconciliation
+Jobs, in-cluster Atum receipt objects, or generic execution fields. The only
+direct Kubernetes object Atum may apply is Flux's SOPS age-key Secret, which
+must exist before Flux can decrypt the remaining desired state.
+
+Use the exact platform sequence: `flux bootstrap git` installs and binds only
+Flux to the seed Forgejo repository's `main` branch; Atum applies only Flux's
+SOPS age-key Secret; normal Flux reconciliation deploys Big Bang; Big Bang
+creates its Harbor-backed generic cert-manager `HelmRelease`; Flux gates the
+issuer and Certificate resources on that `HelmRelease`; and the Flux-deployed
+Atum operator performs final typed Keycloak and Vault configuration after
+certificate readiness. Do not call `flux reconcile` or manually apply any
+other platform object.
 
 Atum is a pure-Go binary. Run every Atum build and Go test with
 `CGO_ENABLED=0`; do not introduce a C compiler, libc, or CGO dependency and do
@@ -371,11 +407,52 @@ implementation for their respective planes. Do not reproduce their behavior in
 Atum, bypass the wrapper with ad hoc deployment commands, or mutate their live
 resources by hand to make validation pass.
 
+Keep Atum a thin wrapper over official upstream toolchains. Delegate platform
+composition and resource lifecycles to their authoritative upstream engines;
+manage only local host systems, credentials, and engine connections where Atum
+must bridge those engines or preserve deployment continuity. Platform identity
+and service configuration are not local host connections: their Kubernetes
+intent remains Flux state and their declared Keycloak and Vault provider state
+belongs only to the Atum operator.
+
+Atum is greenfield: no Atum platform has been deployed. Do not implement or
+retain data, topology, image, package-path, or secret-schema migrations,
+compatibility transitions, or upgrade shims for a prior Atum platform. Reject
+unsupported old input and generate the current desired state directly. A
+narrow deletion of a proven Atum-owned local file is ordinary cleanup, not a
+platform migration. Future upstream updates and the Kubespray
+minor-version ladder remain normal atomic selection and application work.
+
+Only the local libvirt target is supported end to end. Keep `infra/vultr` as an
+independent Terraform module, but do not advertise or implement it as a
+complete Atum platform target until source, registry, domain, network, trust,
+and host-continuity handoffs are explicitly designed.
+
 Use `atum pull updates` as the sole writer for upstream-derived desired and
 resolved state, including image digests, `atum.json`, `atum.lock.json`,
 generated platform values, and Flux manifests. Do not hand-edit coupled
 identities or generated artifacts. If updater output is wrong, fix the updater
 and rerun it.
+
+Do not use Iron Bank images. Big Bang-maintained package repositories remain
+authoritative chart inputs, but any `registry1.dso.mil/ironbank` image reference
+they expose is only a runtime compatibility contract. Do not mirror it, use it
+as a build base, or deliver it to the cluster. Satisfy the rendered command,
+arguments, filesystem, and lifecycle contract with an immutable official
+upstream vendor image when compatible; otherwise build reproducibly from the
+official upstream project source.
+
+Derive deployment values from the exact selected Big Bang release's
+`chart/values.yaml`, schema, templates, values guide, architecture decisions,
+and selected package documentation. Big Bang tests and `tests/test-values.yaml`
+are non-production verification fixtures, not deployment APIs or production
+topology templates.
+
+Prefer a supported official chart with minimal values over a wrapper,
+post-renderer, or Atum-authored workload manifest. Before deciding whether an
+official image can be mirrored or needs a compatibility build, inspect the
+selected release's rendered command, arguments, filesystem paths, user and
+group requirements, and controller-owned lifecycle.
 
 Do not modify `./bigbang` or `./kubespray` as part of Atum CLI work. Do not
 vendor full upstream Big Bang, Kubespray, or chart sources into this
@@ -388,6 +465,18 @@ Keep `./platform` as the standalone Flux platform layer. If chart vendoring is
 unavoidable, place the minimal vendored chart under `./platform/charts`, not
 root `./charts`.
 
+Publish the exact repository state to the seed Forgejo `main` branch and use it
+as Flux's only platform source. Do not create deployment branches, secondary
+desired-state repositories, or alternate source activation paths.
+
+Harbor is the delivery authority for every image used by Kubernetes,
+Kubespray, Flux, or a platform workload and every Helm chart used by the
+cluster. The only payload outside Harbor is the minimal bastion-only seed
+payload needed to start Forgejo and Harbor before Harbor exists; never copy it
+to cluster nodes. For a selected Big Bang release without native APIs for
+them, cert-manager and OpenSearch are Big Bang generic packages backed by
+Harbor, not standalone bootstrap or independently reconciled releases.
+
 Terraform owns infrastructure resources, including the libvirt network and its
 dnsmasq configuration. Atum owns workstation integration such as
 systemd-resolved drop-ins and local CA trust. Do not mutate workstation DNS or
@@ -397,3 +486,7 @@ manual host-file edits; use the Atum wrapper.
 Preserve system-binary passthrough behavior: phase commands should forward raw
 tool arguments after the phase or action boundary instead of reinterpreting
 upstream tool flags.
+
+## Architecture Contract
+
+@CONTRACT.md

@@ -4,9 +4,9 @@
 package secrets
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -22,45 +22,262 @@ import (
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	"atum/cli/progress"
+	"atum/cli/secretvalue"
 
-	goYAML "go.yaml.in/yaml/v3"
+	"golang.org/x/crypto/hkdf"
 )
 
 const (
-	SchemaVersion    = "atum.dev/secrets/v2"
-	schemaVersionV1  = "atum.dev/secrets/v1"
+	SchemaVersion    = "atum.dev/secrets/v3"
 	fileLimit        = 1 << 20
 	localSecretsLock = ".atum/state/secrets.lock"
 )
 
 var (
 	ErrNotFound            = errors.New("secrets do not exist")
-	ErrMigrationRequired   = errors.New("secrets migration to atum.dev/secrets/v2 is required")
 	forgejoUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38}[A-Za-z0-9])?$`)
 	harborSecretKeyPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 )
 
 // Document is the canonical credential set required to bootstrap the internal
-// Forgejo and Harbor control plane and derive the platform identity projection.
+// Forgejo and Harbor control plane and derive bounded platform projections.
 type Document struct {
 	SchemaVersion string          `json:"schemaVersion" yaml:"schemaVersion"`
 	Forgejo       ForgejoSecrets  `json:"forgejo" yaml:"forgejo"`
 	Harbor        HarborSecrets   `json:"harbor" yaml:"harbor"`
 	Identity      IdentitySecrets `json:"identity" yaml:"identity"`
+	Stateful      StatefulSecrets `json:"stateful" yaml:"stateful"`
 }
 
 type ForgejoSecrets struct {
-	Username      string `json:"username" yaml:"username"`
-	AdminPassword string `json:"adminPassword" yaml:"adminPassword"`
+	Username      string            `json:"username"`
+	AdminPassword secretvalue.Value `json:"adminPassword"`
 }
 
 type HarborSecrets struct {
-	AdminPassword string `json:"adminPassword" yaml:"adminPassword"`
-	SecretKey     string `json:"secretKey" yaml:"secretKey"`
+	AdminPassword secretvalue.Value `json:"adminPassword"`
+	SecretKey     secretvalue.Value `json:"secretKey"`
 }
 
 type IdentitySecrets struct {
-	Seed string `json:"seed" yaml:"seed"`
+	Seed secretvalue.Value `json:"seed"`
+}
+
+type StatefulSecrets struct {
+	Seed secretvalue.Value `json:"seed"`
+}
+
+// Clear overwrites every owned secret byte before releasing the document.
+func (document *Document) Clear() {
+	if document == nil {
+		return
+	}
+	document.SchemaVersion = ""
+	document.Forgejo.Username = ""
+	document.Forgejo.AdminPassword.Clear()
+	document.Harbor.AdminPassword.Clear()
+	document.Harbor.SecretKey.Clear()
+	document.Identity.Seed.Clear()
+	document.Stateful.Seed.Clear()
+}
+
+const (
+	statefulRedisPasswordKey                   = "ATUM_STATEFUL_REDIS_PASSWORD"
+	statefulPostgreSQLPasswordKey              = "ATUM_STATEFUL_POSTGRESQL_PASSWORD"
+	statefulGarageAdminTokenKey                = "ATUM_STATEFUL_GARAGE_ADMIN_TOKEN"
+	statefulGarageAccessKeyIDKey               = "ATUM_STATEFUL_GARAGE_ACCESS_KEY_ID"
+	statefulGarageSecretKeyKey                 = "ATUM_STATEFUL_GARAGE_SECRET_ACCESS_KEY"
+	statefulGitLabSecretKeyBaseKey             = "ATUM_STATEFUL_GITLAB_SECRET_KEY_BASE"
+	statefulGitLabOTPKeyBaseKey                = "ATUM_STATEFUL_GITLAB_OTP_KEY_BASE"
+	statefulGitLabDBKeyBaseKey                 = "ATUM_STATEFUL_GITLAB_DB_KEY_BASE"
+	statefulGitLabEncryptedSettingsKeyBaseKey  = "ATUM_STATEFUL_GITLAB_ENCRYPTED_SETTINGS_KEY_BASE"
+	statefulGitLabActiveRecordPrimaryKey       = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_PRIMARY_KEY"
+	statefulGitLabActiveRecordDeterministicKey = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_DETERMINISTIC_KEY"
+	statefulGitLabActiveRecordSaltKey          = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_SALT"
+	statefulDigestKey                          = "ATUM_STATEFUL_DIGEST"
+	statefulProjectionSchema                   = "atum.dev/platform-stateful/v1"
+	statefulProjectionSchemaKey                = "ATUM_STATEFUL_SCHEMA_VERSION"
+)
+
+// StatefulProjection is the one clearable in-memory handoff for required
+// stateful-service and GitLab inputs. The SOPS document remains their durable
+// authority.
+type StatefulProjection struct {
+	values secretvalue.Values
+	digest []byte
+}
+
+func (projection *StatefulProjection) MarshalAnsibleJSON() ([]byte, error) {
+	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
+		return nil, errors.New("stateful projection is unavailable")
+	}
+	return secretvalue.MarshalProjection(
+		"atum_platform_stateful",
+		projection.values,
+		"atum_platform_stateful_digest",
+		projection.digest,
+		fileLimit,
+	)
+}
+
+func (projection *StatefulProjection) MarshalKubernetesSecret() ([]byte, error) {
+	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
+		return nil, errors.New("stateful projection is unavailable")
+	}
+	return secretvalue.MarshalKubernetesSecret(
+		"atum-platform-stateful",
+		"flux-system",
+		"atum.dev/stateful-digest",
+		projection.digest,
+		projection.values,
+		fileLimit,
+	)
+}
+
+func (projection *StatefulProjection) Digest() string {
+	if projection == nil {
+		return ""
+	}
+	return string(projection.digest)
+}
+
+func (projection *StatefulProjection) Clear() {
+	if projection == nil {
+		return
+	}
+	projection.values.Clear()
+	clear(projection.digest)
+	projection.digest = nil
+}
+
+func (document Document) DeriveStatefulProjection() (*StatefulProjection, error) {
+	encodedSeed := document.Stateful.Seed.Bytes()
+	seed := make([]byte, base64.RawStdEncoding.DecodedLen(len(encodedSeed)))
+	size, err := base64.RawStdEncoding.Decode(seed, encodedSeed)
+	if err != nil || size != 32 {
+		clear(seed)
+		return nil, errors.New("derive stateful projection: stateful seed is invalid")
+	}
+	seed = seed[:size]
+	defer clear(seed)
+	derive := func(label string, size int) ([]byte, error) {
+		output := make([]byte, size)
+		reader := hkdf.New(sha256.New, seed, nil, []byte("atum.dev/stateful/v1/"+label))
+		if _, err := io.ReadFull(reader, output); err != nil {
+			clear(output)
+			return nil, err
+		}
+		return output, nil
+	}
+	redis, err := derive("redis-password", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(redis)
+	postgresql, err := derive("postgresql-password", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(postgresql)
+	admin, err := derive("garage-admin-token", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(admin)
+	access, err := derive("garage-access-key-id", 12)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(access)
+	secret, err := derive("garage-secret-access-key", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(secret)
+	gitlabSecret, err := derive("gitlab-secret-key-base", 64)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabSecret)
+	gitlabOTP, err := derive("gitlab-otp-key-base", 64)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabOTP)
+	gitlabDB, err := derive("gitlab-db-key-base", 64)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabDB)
+	gitlabSettings, err := derive("gitlab-encrypted-settings-key-base", 64)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabSettings)
+	gitlabPrimary, err := derive("gitlab-active-record-primary-key", 24)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabPrimary)
+	gitlabDeterministic, err := derive("gitlab-active-record-deterministic-key", 24)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabDeterministic)
+	gitlabSalt, err := derive("gitlab-active-record-salt", 24)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(gitlabSalt)
+	values := secretvalue.Values{
+		statefulProjectionSchemaKey:                []byte(statefulProjectionSchema),
+		statefulRedisPasswordKey:                   encodeRawURL(redis),
+		statefulPostgreSQLPasswordKey:              encodeRawURL(postgresql),
+		statefulGarageAdminTokenKey:                encodeHex(admin, ""),
+		statefulGarageAccessKeyIDKey:               encodeHex(access, "GK"),
+		statefulGarageSecretKeyKey:                 encodeHex(secret, ""),
+		statefulGitLabSecretKeyBaseKey:             encodeHex(gitlabSecret, ""),
+		statefulGitLabOTPKeyBaseKey:                encodeHex(gitlabOTP, ""),
+		statefulGitLabDBKeyBaseKey:                 encodeHex(gitlabDB, ""),
+		statefulGitLabEncryptedSettingsKeyBaseKey:  encodeHex(gitlabSettings, ""),
+		statefulGitLabActiveRecordPrimaryKey:       encodeRawURL(gitlabPrimary),
+		statefulGitLabActiveRecordDeterministicKey: encodeRawURL(gitlabDeterministic),
+		statefulGitLabActiveRecordSaltKey:          encodeRawURL(gitlabSalt),
+	}
+	hash := sha256.New()
+	for _, key := range []string{
+		statefulProjectionSchemaKey, statefulRedisPasswordKey,
+		statefulPostgreSQLPasswordKey,
+		statefulGarageAdminTokenKey, statefulGarageAccessKeyIDKey,
+		statefulGarageSecretKeyKey,
+		statefulGitLabSecretKeyBaseKey, statefulGitLabOTPKeyBaseKey,
+		statefulGitLabDBKeyBaseKey, statefulGitLabEncryptedSettingsKeyBaseKey,
+		statefulGitLabActiveRecordPrimaryKey,
+		statefulGitLabActiveRecordDeterministicKey,
+		statefulGitLabActiveRecordSaltKey,
+	} {
+		_, _ = io.WriteString(hash, key)
+		_, _ = hash.Write(values[key])
+	}
+	digestSum := hash.Sum(nil)
+	digest := make([]byte, hex.EncodedLen(len(digestSum)))
+	hex.Encode(digest, digestSum)
+	clear(digestSum)
+	values[statefulDigestKey] = append([]byte(nil), digest...)
+	return &StatefulProjection{values: values, digest: digest}, nil
+}
+
+func encodeRawURL(value []byte) []byte {
+	encoded := make([]byte, base64.RawURLEncoding.EncodedLen(len(value)))
+	base64.RawURLEncoding.Encode(encoded, value)
+	return encoded
+}
+
+func encodeHex(value []byte, prefix string) []byte {
+	encoded := make([]byte, len(prefix)+hex.EncodedLen(len(value)))
+	copy(encoded, prefix)
+	hex.Encode(encoded[len(prefix):], value)
+	return encoded
 }
 
 // InitOptions controls creation of exactly one secrets representation.
@@ -80,9 +297,21 @@ func (options InitOptions) Validate() error {
 }
 
 // Init generates a fresh credential set and writes either the committed SOPS
-// document or the local mode-0600 override. It never writes plaintext through
-// a temporary file or subprocess.
-func Init(project *config.Project, options InitOptions) (string, error) {
+// document or the local mode-0600 override. SOPS receives plaintext only over
+// bounded stdin; Atum never uses a shell, plaintext argument, or temporary
+// plaintext file.
+func Init(
+	ctx context.Context,
+	project *config.Project,
+	sops SOPSAdapter,
+	options InitOptions,
+) (string, error) {
+	if ctx == nil {
+		return "", errors.New("secrets context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if project == nil {
 		return "", errors.New("project is required")
 	}
@@ -93,17 +322,24 @@ func Init(project *config.Project, options InitOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer document.Clear()
 	if options.Local {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		if err := writeLocal(project, document); err != nil {
 			return "", fmt.Errorf("write local secrets override: %w", err)
 		}
 		return project.Desired.Secrets.LocalFile, nil
 	}
-	data, err := encryptDocument(document, options.AgeRecipients)
+	data, err := encryptDocument(ctx, sops, document, options.AgeRecipients)
 	if err != nil {
 		return "", err
 	}
 	defer clear(data)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := write(project.Root, project.Desired.Secrets.SOPSFile, data, 0o600); err != nil {
 		return "", fmt.Errorf("write SOPS secrets: %w", err)
 	}
@@ -113,38 +349,56 @@ func Init(project *config.Project, options InitOptions) (string, error) {
 // LoadOrCreateLocal loads the configured credentials or atomically creates an
 // ignored local credential document when neither representation exists. It
 // never replaces an existing, invalid, or undecryptable document.
-func LoadOrCreateLocal(project *config.Project) (Document, bool, error) {
+func LoadOrCreateLocal(
+	ctx context.Context,
+	project *config.Project,
+	sops SOPSAdapter,
+) (Document, bool, error) {
+	if ctx == nil {
+		return Document{}, false, errors.New("secrets context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return Document{}, false, err
+	}
 	if project == nil {
 		return Document{}, false, errors.New("project is required")
 	}
 	unlock, err := fssecure.LockContext(
-		context.Background(), project.Root, localSecretsLock, 25*time.Millisecond,
+		ctx, project.Root, localSecretsLock, 25*time.Millisecond,
 	)
 	if err != nil {
 		return Document{}, false, fmt.Errorf("lock local secrets: %w", err)
 	}
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return Document{}, false, err
+	}
 
-	document, err := Load(project)
+	document, err := Load(ctx, project, sops)
 	if err == nil {
 		return document, false, nil
 	}
-	if errors.Is(err, ErrMigrationRequired) {
-		document, err = migrateLocal(project)
-		return document, false, err
-	}
 	if !errors.Is(err, ErrNotFound) {
+		return Document{}, false, err
+	}
+	if err := ctx.Err(); err != nil {
 		return Document{}, false, err
 	}
 	document, err = generate()
 	if err != nil {
 		return Document{}, false, err
 	}
+	if err := ctx.Err(); err != nil {
+		document.Clear()
+		return Document{}, false, err
+	}
 	if err := writeLocal(project, document); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			document, err = Load(project)
+			document.Clear()
+			document, err = Load(ctx, project, sops)
 			return document, false, err
 		}
+		document.Clear()
 		return Document{}, false, fmt.Errorf("write local secrets override: %w", err)
 	}
 	return document, true, nil
@@ -153,13 +407,24 @@ func LoadOrCreateLocal(project *config.Project) (Document, bool, error) {
 // Ensure is the credential entry point for consumers. It loads existing
 // credentials or creates the ignored local representation and reports that
 // lifecycle without exposing credential values.
-func Ensure(ctx context.Context, project *config.Project, logger *slog.Logger) (Document, error) {
+func Ensure(
+	ctx context.Context,
+	project *config.Project,
+	sops SOPSAdapter,
+	logger *slog.Logger,
+) (Document, error) {
+	if ctx == nil {
+		return Document{}, errors.New("secrets context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return Document{}, err
+	}
 	const (
 		id    = "secrets"
 		label = "Platform secrets"
 	)
 	progress.Start(ctx, progress.Credentials, id, label, "loading configured credentials")
-	document, created, err := LoadOrCreateLocal(project)
+	document, created, err := LoadOrCreateLocal(ctx, project, sops)
 	if err != nil {
 		progress.Fail(ctx, progress.Credentials, id, label, err)
 		return Document{}, err
@@ -180,80 +445,88 @@ func Ensure(ctx context.Context, project *config.Project, logger *slog.Logger) (
 // Load decrypts the committed file, overlays an optional local document, and
 // validates the resulting typed credentials. A local document may be complete
 // or may replace only selected non-empty fields.
-func Load(project *config.Project) (Document, error) {
-	document, migration, _, _, err := load(project)
-	if err != nil {
+func Load(
+	ctx context.Context,
+	project *config.Project,
+	sops SOPSAdapter,
+) (Document, error) {
+	if ctx == nil {
+		return Document{}, errors.New("secrets context is required")
+	}
+	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
-	if migration {
-		return Document{}, fmt.Errorf("%w; run a mutating Atum apply or prepare command", ErrMigrationRequired)
-	}
-	return document, nil
-}
-
-func load(project *config.Project) (Document, bool, partialDocument, bool, error) {
 	if project == nil {
-		return Document{}, false, partialDocument{}, false, errors.New("project is required")
+		return Document{}, errors.New("project is required")
 	}
 	var override partialDocument
+	defer override.Clear()
 	localLoaded := false
-	localV1 := false
-	sopsV1 := false
 	if data, exists, err := readOptional(project.Root, project.Desired.Secrets.LocalFile, true); err != nil {
-		return Document{}, false, override, false, fmt.Errorf("read local secrets override: %w", err)
+		return Document{}, fmt.Errorf("read local secrets override: %w", err)
 	} else if exists {
 		if err := config.DecodeJSON(data, &override); err != nil {
 			clear(data)
-			return Document{}, false, override, false, fmt.Errorf("decode local secrets override: %w", err)
+			return Document{}, fmt.Errorf("decode local secrets override: %w", err)
 		}
 		clear(data)
+		if override.SchemaVersion != SchemaVersion {
+			return Document{}, fmt.Errorf(
+				"local secrets schemaVersion %q is unsupported; require %s",
+				override.SchemaVersion, SchemaVersion,
+			)
+		}
 		localLoaded = true
-		localV1 = override.SchemaVersion == schemaVersionV1
 		var local Document
 		applyOverride(&local, override)
 		if err := local.Validate(); err == nil {
-			return local, false, override, true, nil
+			if err := ctx.Err(); err != nil {
+				local.Clear()
+				return Document{}, err
+			}
+			return local, nil
 		}
+		local.Clear()
+	}
+	if err := ctx.Err(); err != nil {
+		return Document{}, err
 	}
 	var document Document
 	loaded := false
 	if data, exists, err := readOptional(project.Root, project.Desired.Secrets.SOPSFile, false); err != nil {
-		return Document{}, false, override, localLoaded, fmt.Errorf("read SOPS secrets: %w", err)
+		return Document{}, fmt.Errorf("read SOPS secrets: %w", err)
 	} else if exists {
-		decrypted, err := decryptDocument(data)
+		decrypted, err := decryptDocument(ctx, sops, data)
 		clear(data)
 		if err != nil {
-			return Document{}, false, override, localLoaded, fmt.Errorf("decrypt SOPS secrets: %w", err)
+			return Document{}, fmt.Errorf("decrypt SOPS secrets: %w", err)
 		}
 		document = decrypted
 		loaded = true
-		sopsV1 = document.SchemaVersion == schemaVersionV1
 	}
 	if localLoaded {
 		applyOverride(&document, override)
-		loaded = true
+	}
+	if err := ctx.Err(); err != nil {
+		document.Clear()
+		return Document{}, err
 	}
 	if !loaded {
-		return Document{}, false, override, localLoaded, fmt.Errorf("%w at %s or %s; run `atum secrets init`",
+		if localLoaded {
+			document.Clear()
+			return Document{}, errors.New(
+				"local secrets override is incomplete and no committed SOPS document exists",
+			)
+		}
+		return Document{}, fmt.Errorf("%w at %s or %s; run `atum secrets init`",
 			ErrNotFound,
 			project.Desired.Secrets.SOPSFile, project.Desired.Secrets.LocalFile)
 	}
-	migration := localV1 || (sopsV1 &&
-		!(localLoaded && override.SchemaVersion == SchemaVersion && override.Identity.Seed != nil))
-	if migration {
-		document.SchemaVersion = SchemaVersion
-		if document.Identity.Seed == "" {
-			seed, err := randomSeed()
-			if err != nil {
-				return Document{}, false, override, localLoaded, err
-			}
-			document.Identity.Seed = seed
-		}
-	}
 	if err := document.Validate(); err != nil {
-		return Document{}, false, override, localLoaded, err
+		document.Clear()
+		return Document{}, err
 	}
-	return document, migration, override, localLoaded, nil
+	return document, nil
 }
 
 func (document Document) Validate() error {
@@ -264,18 +537,25 @@ func (document Document) Validate() error {
 	if !forgejoUsernamePattern.MatchString(document.Forgejo.Username) {
 		problems = append(problems, "forgejo.username must be 1 through 40 characters using letters, digits, dot, underscore, or hyphen, and start and end with a letter or digit")
 	}
-	if !safeCredential(document.Forgejo.AdminPassword, 24, 512) {
+	if !safeCredential(document.Forgejo.AdminPassword.Bytes(), 24, 512) {
 		problems = append(problems, "forgejo.adminPassword must contain 24 through 512 printable characters")
 	}
-	if !safeCredential(document.Harbor.AdminPassword, 24, 512) {
+	if !safeCredential(document.Harbor.AdminPassword.Bytes(), 24, 512) {
 		problems = append(problems, "harbor.adminPassword must contain 24 through 512 printable characters")
 	}
-	if !harborSecretKeyPattern.MatchString(document.Harbor.SecretKey) {
+	if !harborSecretKeyPattern.Match(document.Harbor.SecretKey.Bytes()) {
 		problems = append(problems, "harbor.secretKey must be exactly 16 lowercase hexadecimal characters")
 	}
-	seed, err := base64.RawStdEncoding.DecodeString(document.Identity.Seed)
-	if err != nil || len(seed) != 32 {
+	seed := make([]byte, base64.RawStdEncoding.DecodedLen(len(document.Identity.Seed)))
+	size, err := base64.RawStdEncoding.Decode(seed, document.Identity.Seed.Bytes())
+	if err != nil || size != 32 {
 		problems = append(problems, "identity.seed must encode exactly 32 bytes using raw base64")
+	}
+	clear(seed)
+	seed = make([]byte, base64.RawStdEncoding.DecodedLen(len(document.Stateful.Seed)))
+	size, err = base64.RawStdEncoding.Decode(seed, document.Stateful.Seed.Bytes())
+	if err != nil || size != 32 {
+		problems = append(problems, "stateful.seed must encode exactly 32 bytes using raw base64")
 	}
 	clear(seed)
 	if len(problems) != 0 {
@@ -289,20 +569,46 @@ type partialDocument struct {
 	Forgejo       partialForgejoSecrets  `json:"forgejo"`
 	Harbor        partialHarborSecrets   `json:"harbor"`
 	Identity      partialIdentitySecrets `json:"identity"`
+	Stateful      partialStatefulSecrets `json:"stateful"`
 }
 
 type partialIdentitySecrets struct {
-	Seed *string `json:"seed,omitempty"`
+	Seed *secretvalue.Value `json:"seed,omitempty"`
+}
+
+type partialStatefulSecrets struct {
+	Seed *secretvalue.Value `json:"seed,omitempty"`
 }
 
 type partialForgejoSecrets struct {
-	Username      *string `json:"username,omitempty"`
-	AdminPassword *string `json:"adminPassword,omitempty"`
+	Username      *string            `json:"username,omitempty"`
+	AdminPassword *secretvalue.Value `json:"adminPassword,omitempty"`
 }
 
 type partialHarborSecrets struct {
-	AdminPassword *string `json:"adminPassword,omitempty"`
-	SecretKey     *string `json:"secretKey,omitempty"`
+	AdminPassword *secretvalue.Value `json:"adminPassword,omitempty"`
+	SecretKey     *secretvalue.Value `json:"secretKey,omitempty"`
+}
+
+func (document *partialDocument) Clear() {
+	if document == nil {
+		return
+	}
+	document.Forgejo.Username = nil
+	clearSecretPointer(&document.Forgejo.AdminPassword)
+	clearSecretPointer(&document.Harbor.AdminPassword)
+	clearSecretPointer(&document.Harbor.SecretKey)
+	clearSecretPointer(&document.Identity.Seed)
+	clearSecretPointer(&document.Stateful.Seed)
+	document.SchemaVersion = ""
+}
+
+func clearSecretPointer(value **secretvalue.Value) {
+	if value == nil || *value == nil {
+		return
+	}
+	(*value).Clear()
+	*value = nil
 }
 
 func applyOverride(document *Document, override partialDocument) {
@@ -313,16 +619,24 @@ func applyOverride(document *Document, override partialDocument) {
 		document.Forgejo.Username = *override.Forgejo.Username
 	}
 	if override.Forgejo.AdminPassword != nil {
-		document.Forgejo.AdminPassword = *override.Forgejo.AdminPassword
+		document.Forgejo.AdminPassword.Clear()
+		document.Forgejo.AdminPassword = override.Forgejo.AdminPassword.Clone()
 	}
 	if override.Harbor.AdminPassword != nil {
-		document.Harbor.AdminPassword = *override.Harbor.AdminPassword
+		document.Harbor.AdminPassword.Clear()
+		document.Harbor.AdminPassword = override.Harbor.AdminPassword.Clone()
 	}
 	if override.Harbor.SecretKey != nil {
-		document.Harbor.SecretKey = *override.Harbor.SecretKey
+		document.Harbor.SecretKey.Clear()
+		document.Harbor.SecretKey = override.Harbor.SecretKey.Clone()
 	}
 	if override.Identity.Seed != nil {
-		document.Identity.Seed = *override.Identity.Seed
+		document.Identity.Seed.Clear()
+		document.Identity.Seed = override.Identity.Seed.Clone()
+	}
+	if override.Stateful.Seed != nil {
+		document.Stateful.Seed.Clear()
+		document.Stateful.Seed = override.Stateful.Seed.Clone()
 	}
 }
 
@@ -331,91 +645,68 @@ func generate() (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("generate Forgejo password: %w", err)
 	}
+	defer clear(forgejo)
 	harbor, err := randomPassword(36)
 	if err != nil {
 		return Document{}, fmt.Errorf("generate Harbor password: %w", err)
 	}
+	defer clear(harbor)
 	key := make([]byte, 8)
 	defer clear(key)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return Document{}, fmt.Errorf("generate Harbor secret key: %w", err)
 	}
+	harborKey := encodeHex(key, "")
+	defer clear(harborKey)
+	identitySeed, err := randomSeed("identity")
+	if err != nil {
+		return Document{}, err
+	}
+	defer clear(identitySeed)
+	statefulSeed, err := randomSeed("stateful")
+	if err != nil {
+		return Document{}, err
+	}
+	defer clear(statefulSeed)
+
 	document := Document{
 		SchemaVersion: SchemaVersion,
 		Forgejo: ForgejoSecrets{
 			Username:      "atum_admin",
-			AdminPassword: forgejo,
+			AdminPassword: secretvalue.New(forgejo),
 		},
 		Harbor: HarborSecrets{
-			AdminPassword: harbor,
-			SecretKey:     hex.EncodeToString(key),
+			AdminPassword: secretvalue.New(harbor),
+			SecretKey:     secretvalue.New(harborKey),
 		},
+		Identity: IdentitySecrets{Seed: secretvalue.New(identitySeed)},
+		Stateful: StatefulSecrets{Seed: secretvalue.New(statefulSeed)},
 	}
-	seed, err := randomSeed()
-	if err != nil {
+	if err := document.Validate(); err != nil {
+		document.Clear()
 		return Document{}, err
-	}
-	document.Identity.Seed = seed
-	return document, document.Validate()
-}
-
-func randomSeed() (string, error) {
-	seed := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
-		return "", fmt.Errorf("generate identity seed: %w", err)
-	}
-	encoded := base64.RawStdEncoding.EncodeToString(seed)
-	clear(seed)
-	return encoded, nil
-}
-
-func migrateLocal(project *config.Project) (Document, error) {
-	document, migration, override, localLoaded, err := load(project)
-	if err != nil {
-		return Document{}, err
-	}
-	if !migration {
-		return document, nil
-	}
-	var data []byte
-	if localLoaded {
-		override.SchemaVersion = SchemaVersion
-		override.Identity.Seed = &document.Identity.Seed
-		var local Document
-		applyOverride(&local, override)
-		if local.Validate() == nil {
-			data, err = json.MarshalIndent(document, "", "  ")
-		} else {
-			data, err = json.MarshalIndent(override, "", "  ")
-		}
-	} else {
-		seed := document.Identity.Seed
-		override = partialDocument{SchemaVersion: SchemaVersion, Identity: partialIdentitySecrets{Seed: &seed}}
-		data, err = json.MarshalIndent(override, "", "  ")
-	}
-	if err != nil {
-		return Document{}, fmt.Errorf("encode migrated local secrets: %w", err)
-	}
-	data = append(data, '\n')
-	defer clear(data)
-	if localLoaded {
-		err = fssecure.ReplaceRegular(project.Root, project.Desired.Secrets.LocalFile, data, 0o600)
-	} else {
-		err = fssecure.WriteRegular(project.Root, project.Desired.Secrets.LocalFile, data, 0o600)
-	}
-	if err != nil {
-		return Document{}, fmt.Errorf("atomically migrate local secrets: %w", err)
 	}
 	return document, nil
 }
 
-func randomPassword(bytesCount int) (string, error) {
-	buffer := make([]byte, bytesCount)
-	if _, err := io.ReadFull(rand.Reader, buffer); err != nil {
-		return "", err
+func randomSeed(owner string) ([]byte, error) {
+	seed := make([]byte, 32)
+	defer clear(seed)
+	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
+		return nil, fmt.Errorf("generate %s seed: %w", owner, err)
 	}
-	value := base64.RawURLEncoding.EncodeToString(buffer)
-	clear(buffer)
+	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(seed)))
+	base64.RawStdEncoding.Encode(encoded, seed)
+	return encoded, nil
+}
+
+func randomPassword(bytesCount int) ([]byte, error) {
+	buffer := make([]byte, bytesCount)
+	defer clear(buffer)
+	if _, err := io.ReadFull(rand.Reader, buffer); err != nil {
+		return nil, err
+	}
+	value := encodeRawURL(buffer)
 	return value, nil
 }
 
@@ -477,22 +768,7 @@ func write(root, relative string, data []byte, mode os.FileMode) error {
 	return err
 }
 
-func decodeYAML(data []byte, destination any) error {
-	decoder := goYAML.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("multiple YAML documents are not allowed")
-		}
-		return err
-	}
-	return nil
-}
-
-func safeCredential(value string, minimum, maximum int) bool {
+func safeCredential(value []byte, minimum, maximum int) bool {
 	if len(value) < minimum || len(value) > maximum {
 		return false
 	}

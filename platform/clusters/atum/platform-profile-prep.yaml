@@ -15,9 +15,12 @@ spec:
       ATUM_PLATFORM_DOMAIN: ${ATUM_PLATFORM_DOMAIN}
     substituteFrom:
       - kind: Secret
+        name: atum-platform-stateful
+      - kind: Secret
         name: atum-platform-identity
         optional: true
   dependsOn:
+    - name: platform-secrets
     - name: prep
   sourceRef:
     kind: GitRepository

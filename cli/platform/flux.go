@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -9,18 +10,18 @@ import (
 
 	"atum/cli/delivery"
 	"atum/cli/identity"
-	"atum/cli/kube"
 	"atum/cli/process"
 	"atum/cli/progress"
-
-	"k8s.io/apimachinery/pkg/util/wait"
+	atumsecrets "atum/cli/secrets"
 )
 
 const fluxComponents = "source-controller,kustomize-controller,helm-controller,notification-controller"
 
+// bootstrapFlux is deliberately linear. Flux bootstrap owns controller
+// installation and the root source; Atum owns only the publication, credential,
+// and source-activation handoffs that must precede it.
 func (service Service) bootstrapFlux(
 	ctx context.Context,
-	client *kube.Observer,
 	bundle *delivery.DeploymentBundle,
 	handoff *Handoff,
 	timeout time.Duration,
@@ -29,7 +30,7 @@ func (service Service) bootstrapFlux(
 		return fmt.Errorf("verified platform handoff is unavailable")
 	}
 	forgejo := handoff.forgejo
-	if forgejo == nil || forgejo.fluxToken == "" {
+	if forgejo == nil || len(forgejo.fluxToken) == 0 {
 		return fmt.Errorf("Forgejo read credentials are unavailable")
 	}
 	sources := service.Project.Desired.Platform.Sources
@@ -44,129 +45,157 @@ func (service Service) bootstrapFlux(
 		"clusters",
 		service.Project.Desired.Project.Cluster,
 	))
-	progress.Start(ctx, progress.Platform, "flux", "Flux", "installing exact controllers before source admission")
-	err := admitFluxRoot(fluxAdmissionSteps{
-		installControllers: func() error {
-			if err := service.runFlux(ctx, []string{
-				"install",
-				"--namespace=flux-system",
-				"--version=" + version,
-				"--components=" + fluxComponents,
-				"--timeout=" + timeout.String(),
-			}, []string{"KUBECONFIG=" + service.kubeconfig()}); err != nil {
-				return fmt.Errorf("install Flux controllers before source admission: %w", err)
-			}
-			return nil
-		},
-		verifyCandidate: func() error {
-			if err := forgejo.waitExactBranch(
-				ctx, sources.Organization, sources.Repository, "main", bundle.SourceCommit,
-			); err != nil {
-				return fmt.Errorf("verify candidate platform source before identity projection: %w", err)
-			}
-			return nil
-		},
-		projectIdentity: func() error {
-			if handoff.identityContract == nil {
-				return nil
-			}
-			projection, err := service.deriveIdentityProjection(
-				handoff.identityContract, handoff.credentials,
-			)
-			if err != nil {
-				return err
-			}
-			err = consumeIdentityProjection(
-				&projection,
-				func(projection *identity.BootstrapProjection) error {
-					return service.Orchestration.ProjectPlatformIdentity(ctx, projection)
-				},
-			)
-			if err != nil {
-				return fmt.Errorf("project platform identity before Flux source admission: %w", err)
-			}
-			return nil
-		},
-		activateSource: func() error {
-			return activateSourceOnce(&handoff.activated, func() error {
-				progress.Start(ctx, progress.Platform, "forgejo", "Forgejo sources",
-					"advancing the planner-approved platform source after identity admission")
-				if err := forgejo.activateAtumSource(
-					ctx, bundle, sources.Organization, sources.Repository,
-				); err != nil {
-					progress.Fail(ctx, progress.Platform, "forgejo", "Forgejo sources", err)
-					return fmt.Errorf("activate exact platform source: %w", err)
-				}
-				progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
-					"deployed branch advanced with lease", 1, len(bundle.Repositories)+1)
-				if err := forgejo.activateUpstreams(
-					ctx,
-					bundle.Repositories,
-					sources.UpstreamOrganization,
-					service.Project.Desired.Updates.Parallelism,
-				); err != nil {
-					progress.Fail(ctx, progress.Platform, "forgejo", "Forgejo sources", err)
-					return fmt.Errorf("activate exact upstream sources: %w", err)
-				}
-				progress.Done(ctx, progress.Platform, "forgejo", "Forgejo sources",
-					"platform and upstream branches advanced with leases")
-				return nil
-			})
-		},
-		verifyDeployed: func() error {
-			if err := forgejo.waitExactBranch(
-				ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
-			); err != nil {
-				return fmt.Errorf("verify deployed platform source before Flux bootstrap: %w", err)
-			}
-			return nil
-		},
-		bootstrapRoot: func() error {
-			if err := service.runFlux(ctx, []string{
-				"bootstrap", "git",
-				"--url=" + repositoryURL,
-				"--username=" + forgejo.username,
-				"--branch=" + deployedBranch,
-				"--path=" + clusterPath,
-				"--version=" + version,
-				"--components=" + fluxComponents,
-				"--allow-insecure-http",
-				"--token-auth",
-				"--silent",
-				"--author-name=Atum",
-				"--author-email=atum@localhost",
-				"--timeout=" + timeout.String(),
-			}, []string{
-				"GIT_PASSWORD=" + forgejo.fluxToken,
-				"KUBECONFIG=" + service.kubeconfig(),
-			}); err != nil {
-				return fmt.Errorf("bootstrap Flux from exact Forgejo source: %w", err)
-			}
-			if err := forgejo.waitExactBranch(
-				ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
-			); err != nil {
-				return fmt.Errorf("Flux bootstrap changed the declarative source branch: %w", err)
-			}
-			return nil
-		},
-	})
+	environment := []string{"KUBECONFIG=" + service.kubeconfig()}
+
+	progress.Start(ctx, progress.Platform, "flux", "Flux", "checking bootstrap prerequisites")
+	if err := service.runFlux(ctx, []string{"check", "--pre"}, environment); err != nil {
+		return fmt.Errorf("check Flux bootstrap prerequisites: %w", err)
+	}
+	if err := forgejo.waitExactBranch(
+		ctx, sources.Organization, sources.Repository, "main", bundle.SourceCommit,
+	); err != nil {
+		return fmt.Errorf("verify candidate platform source: %w", err)
+	}
+
+	credentials, err := atumsecrets.Load(ctx, service.Project, service.SOPS)
+	if err != nil {
+		return fmt.Errorf("load required platform secrets: %w", err)
+	}
+	defer credentials.Clear()
+	statefulProjection, err := credentials.DeriveStatefulProjection()
+	if err != nil {
+		return fmt.Errorf("derive required platform secrets: %w", err)
+	}
+	defer statefulProjection.Clear()
+	if handoff.identityContract == nil {
+		return errors.New("local platform identity contract is unavailable")
+	}
+	identityProjection, err := service.deriveIdentityProjection(
+		handoff.identityContract, credentials,
+	)
 	if err != nil {
 		return err
 	}
-	progress.Update(ctx, progress.Platform, "flux", "Flux", "controllers installed; reconciling source", 0, 0)
+	defer identityProjection.Clear()
+	ageIdentity, err := atumsecrets.EnsureFluxAgeIdentity(ctx, service.Project)
+	if err != nil {
+		return err
+	}
+	defer ageIdentity.Clear()
+	if err := atumsecrets.ValidateFluxSource(
+		service.Project,
+		statefulProjection.Digest(),
+		identityProjection.Digest(),
+		ageIdentity.Recipient(),
+	); err != nil {
+		return fmt.Errorf("validate declarative Flux secret source: %w", err)
+	}
+	statefulProjection.Clear()
+	identityProjection.Clear()
+	credentials.Clear()
+
+	progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
+		"activating exact platform and upstream source snapshots", 0, len(bundle.Repositories)+1)
+	if err := forgejo.activateAtumSource(
+		ctx, bundle, sources.Organization, sources.Repository,
+	); err != nil {
+		return fmt.Errorf("activate exact platform source: %w", err)
+	}
+	if err := forgejo.activateUpstreams(
+		ctx,
+		bundle.Repositories,
+		sources.UpstreamOrganization,
+		service.Project.Desired.Updates.Parallelism,
+	); err != nil {
+		return fmt.Errorf("activate exact upstream sources: %w", err)
+	}
+	if err := forgejo.waitExactBranch(
+		ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
+	); err != nil {
+		return fmt.Errorf("verify deployed platform source: %w", err)
+	}
+	fluxEnvironment := []string{
+		"GIT_PASSWORD=" + string(forgejo.fluxToken.Bytes()),
+		"KUBECONFIG=" + service.kubeconfig(),
+	}
+	fluxErr := service.runFlux(ctx, []string{
+		"bootstrap", "git",
+		"--url=" + repositoryURL,
+		"--username=" + forgejo.username,
+		"--branch=" + deployedBranch,
+		"--path=" + clusterPath,
+		"--version=" + version,
+		"--components=" + fluxComponents,
+		"--allow-insecure-http",
+		"--token-auth",
+		"--silent",
+		"--author-name=Atum",
+		"--author-email=atum@localhost",
+		"--timeout=" + timeout.String(),
+	}, fluxEnvironment)
+	forgejo.fluxToken.Clear()
+	if fluxErr != nil {
+		return fmt.Errorf("bootstrap Flux from exact Forgejo source: %w", fluxErr)
+	}
+	if err := forgejo.waitExactBranch(
+		ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
+	); err != nil {
+		return fmt.Errorf("Flux bootstrap changed the declarative source branch: %w", err)
+	}
+	if err := service.Orchestration.ProjectFluxSOPSIdentity(ctx, ageIdentity); err != nil {
+		return err
+	}
+	ageIdentity.Clear()
+	if err := service.reconcileFluxKustomization(
+		ctx, "platform-secrets", timeout,
+	); err != nil {
+		return err
+	}
+	if err := service.reconcileFluxKustomization(ctx, "flux-system", timeout); err != nil {
+		return err
+	}
+	progress.Done(ctx, progress.Platform, "flux", "Flux", "bootstrap source reconciled")
+	return nil
+}
+
+func (service Service) reconcileFluxKustomization(
+	ctx context.Context,
+	name string,
+	timeout time.Duration,
+) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("Flux Kustomization name is required")
+	}
+	progress.Start(ctx, progress.Platform, "flux-"+name, "Flux "+name, "reconciling native dependency graph")
 	if err := service.runFlux(ctx, []string{
-		"reconcile", "kustomization", "flux-system",
+		"reconcile", "kustomization", name,
 		"--namespace=flux-system",
 		"--with-source",
 		"--timeout=" + timeout.String(),
 	}, []string{"KUBECONFIG=" + service.kubeconfig()}); err != nil {
-		return fmt.Errorf("reconcile Flux root Kustomization: %w", err)
+		progress.Fail(ctx, progress.Platform, "flux-"+name, "Flux "+name, err)
+		return fmt.Errorf("reconcile Flux Kustomization %s: %w", name, err)
 	}
-	if !deploymentsReady(ctx, client, "flux-system", strings.Split(fluxComponents, ",")) {
-		return fmt.Errorf("Flux bootstrap returned before every controller was available")
-	}
-	progress.Done(ctx, progress.Platform, "flux", "Flux", "controllers and exact source ready")
+	progress.Done(ctx, progress.Platform, "flux-"+name, "Flux "+name, "native Ready condition reached")
 	return nil
+}
+
+func consumeStatefulProjection(
+	projection **atumsecrets.StatefulProjection,
+	project func(*atumsecrets.StatefulProjection) error,
+) error {
+	if projection == nil || *projection == nil {
+		return fmt.Errorf("required stateful projection is unavailable")
+	}
+	current := *projection
+	defer func() {
+		current.Clear()
+		*projection = nil
+	}()
+	if project == nil {
+		return fmt.Errorf("stateful projection writer is unavailable")
+	}
+	return project(current)
 }
 
 func consumeIdentityProjection(
@@ -187,70 +216,6 @@ func consumeIdentityProjection(
 	return project(current)
 }
 
-type fluxAdmissionSteps struct {
-	installControllers func() error
-	verifyCandidate    func() error
-	projectIdentity    func() error
-	activateSource     func() error
-	verifyDeployed     func() error
-	bootstrapRoot      func() error
-}
-
-func admitFluxRoot(steps fluxAdmissionSteps) error {
-	for _, step := range [...]func() error{
-		steps.installControllers,
-		steps.verifyCandidate,
-		steps.projectIdentity,
-		steps.activateSource,
-		steps.verifyDeployed,
-		steps.bootstrapRoot,
-	} {
-		if step == nil {
-			return fmt.Errorf("Flux admission step is unavailable")
-		}
-		if err := step(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func activateSourceOnce(activated *bool, activate func() error) error {
-	if activated == nil {
-		return fmt.Errorf("source activation state is unavailable")
-	}
-	if *activated {
-		return nil
-	}
-	if activate == nil {
-		return fmt.Errorf("source activation writer is unavailable")
-	}
-	if err := activate(); err != nil {
-		return err
-	}
-	*activated = true
-	return nil
-}
-
-func (service Service) waitPrep(ctx context.Context, client *kube.Observer, timeout time.Duration) error {
-	progress.Start(ctx, progress.Platform, "prep", "Platform prerequisites", "waiting for Flux reconciliation")
-	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		ready := client.ResourceReady(ctx, kube.Kustomization, "flux-system", "prep") &&
-			client.ResourceReady(ctx, kube.Kustomization, "flux-system", "platform-profile-prep")
-		if ready {
-			progress.Done(ctx, progress.Platform, "prep", "Platform prerequisites", "common and target prerequisites ready")
-		} else {
-			progress.Update(ctx, progress.Platform, "prep", "Platform prerequisites", "Flux reconciliation in progress", 0, 0)
-		}
-		return ready, nil
-	})
-	if err != nil {
-		progress.Fail(ctx, progress.Platform, "prep", "Platform prerequisites", err)
-		return fmt.Errorf("wait for Flux preparation Kustomization: %w", err)
-	}
-	return nil
-}
-
 func (service Service) runFlux(ctx context.Context, arguments, environment []string) error {
 	binary := service.FluxBin
 	if binary == "" {
@@ -259,11 +224,22 @@ func (service Service) runFlux(ctx context.Context, arguments, environment []str
 	if service.Runner == nil {
 		return fmt.Errorf("Flux runner is unavailable")
 	}
+	commandEnvironment := append([]string(nil), environment...)
+	defer func() {
+		for index := range commandEnvironment {
+			commandEnvironment[index] = ""
+		}
+		clear(commandEnvironment)
+		for index := range environment {
+			environment[index] = ""
+		}
+		clear(environment)
+	}()
 	return service.Runner.Run(ctx, process.Command{
 		Name:   binary,
 		Args:   append([]string(nil), arguments...),
 		Dir:    service.Project.Root,
-		Env:    append([]string(nil), environment...),
+		Env:    commandEnvironment,
 		Stdout: service.Out,
 		Stderr: service.Out,
 	})

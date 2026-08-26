@@ -1,0 +1,81 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atum-vault-reconcile
+  namespace: vault
+  labels:
+    atum.dev/identity-job: vault
+  annotations:
+    atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: atum-vault-reconcile
+        atum.dev/identity-job: vault
+      annotations:
+        atum.dev/identity-digest: ${ATUM_IDENTITY_DIGEST}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconcile
+          image: {{ .VaultImage }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+{{ indent 14 .Script }}
+          env:
+            - name: VAULT_ADDR
+              value: http://vault-vault.vault.svc:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: key
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: atum-vault-reconcile
+                  key: client-id
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: atum-vault-reconcile
+                  key: client-secret
+            - name: ADMIN_GROUP
+              valueFrom:
+                secretKeyRef:
+                  name: atum-vault-reconcile
+                  key: group
+          volumeMounts:
+            - name: ca
+              mountPath: /var/run/atum-ca
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: ca
+          secret:
+            secretName: atum-sso-ca
+            items:
+              - key: ca.crt
+                path: ca.crt

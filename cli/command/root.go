@@ -18,6 +18,7 @@ import (
 	"atum/cli/preflight"
 	"atum/cli/process"
 	"atum/cli/progress"
+	atumsecrets "atum/cli/secrets"
 	"atum/cli/tui"
 	"atum/cli/update"
 
@@ -50,6 +51,12 @@ type app struct {
 	raw           bool
 	projectUnlock func()
 	preflight     preflight.Report
+	sops          atumsecrets.SOPSAdapter
+	secretLoader  func(
+		context.Context,
+		*config.Project,
+		atumsecrets.SOPSAdapter,
+	) (atumsecrets.Document, error)
 }
 
 func New(options Options) *cobra.Command {
@@ -82,6 +89,7 @@ func New(options Options) *cobra.Command {
 		err:          options.Err,
 		env:          options.Env,
 		logFormat:    "text",
+		secretLoader: atumsecrets.Load,
 	}
 
 	rootCmd := &cobra.Command{
@@ -110,7 +118,14 @@ func New(options Options) *cobra.Command {
 				a.root = root
 				return nil
 			}
-			return a.loadProject(cmd.Context(), commandAnnotation(cmd, "atum.dev/allow-stale") == "true")
+			if err := a.loadProject(
+				cmd.Context(),
+				commandAnnotation(cmd, "atum.dev/allow-stale") == "true",
+				commandAnnotation(cmd, "atum.dev/allow-missing-flux-secrets") == "true",
+			); err != nil {
+				return err
+			}
+			return a.ensureCommandAllowed(cmd)
 		},
 		PersistentPostRun: func(_ *cobra.Command, _ []string) {
 			a.unlockProject()
@@ -150,6 +165,20 @@ func commandAnnotation(command *cobra.Command, key string) string {
 	return ""
 }
 
+func (a *app) ensureCommandAllowed(command *cobra.Command) error {
+	if commandAnnotation(command, "atum.dev/read-only") == "true" {
+		return nil
+	}
+	if commandAnnotation(command, "atum.dev/allow-missing-flux-secrets") == "true" {
+		return nil
+	}
+	if err := a.ensureMutationAllowed(); err != nil {
+		a.unlockProject()
+		return err
+	}
+	return nil
+}
+
 func (a *app) imagesCommand() *cobra.Command {
 	images := &cobra.Command{
 		Use:   "images",
@@ -179,7 +208,6 @@ func (a *app) imagesCommand() *cobra.Command {
 					"profile", result.Lock.Profile,
 					"published", result.Published,
 					"reused", result.Reused,
-					"lockChanged", result.LockChanged,
 				)
 				return nil
 			})
@@ -257,7 +285,11 @@ func (a *app) configureLogger() error {
 	return nil
 }
 
-func (a *app) loadProject(ctx context.Context, allowStale bool) error {
+func (a *app) loadProject(
+	ctx context.Context,
+	allowStale bool,
+	allowMissingFluxSecrets bool,
+) error {
 	root, err := config.Discover(a.rootHint)
 	if err != nil {
 		return err
@@ -270,7 +302,10 @@ func (a *app) loadProject(ctx context.Context, allowStale bool) error {
 		unlock()
 		return fmt.Errorf("recover interrupted upstream update: %w", err)
 	}
-	project, err := config.LoadWithOptions(root, config.LoadOptions{AllowStale: allowStale})
+	project, err := config.LoadWithOptions(root, config.LoadOptions{
+		AllowStale:              allowStale,
+		AllowMissingFluxSecrets: allowMissingFluxSecrets,
+	})
 	if err != nil {
 		unlock()
 		return err
@@ -278,6 +313,7 @@ func (a *app) loadProject(ctx context.Context, allowStale bool) error {
 	a.projectUnlock = unlock
 	a.project = project
 	a.preflight = preflight.Report{}
+	a.sops = atumsecrets.SOPSAdapter{}
 	a.root = project.Root
 	return nil
 }
@@ -302,7 +338,6 @@ func (a *app) pullCommand() *cobra.Command {
 		Short: "Resolve declarative upstream updates",
 	}
 	var check bool
-	var auxiliaryImages []string
 	updates := &cobra.Command{
 		Use:         "updates [bigbang-commit]",
 		Short:       "Resolve stable compatible upstream releases into Atum state",
@@ -316,7 +351,6 @@ func (a *app) pullCommand() *cobra.Command {
 			service := update.NewService(a.root, a.logger)
 			result, err := service.Pull(cmd.Context(), update.Options{
 				Check: check || a.dryRun, BigBangCommit: bigBangCommit,
-				ApproveAuxiliaryImages: auxiliaryImages,
 			})
 			if err != nil {
 				return err
@@ -340,21 +374,16 @@ func (a *app) pullCommand() *cobra.Command {
 		}),
 	}
 	updates.Flags().BoolVar(&check, "check", false, "report available updates without changing tracked files")
-	updates.Flags().StringArrayVar(
-		&auxiliaryImages,
-		"approve-auxiliary-image",
-		nil,
-		"approve chart artifact=image ID,license,official reference for canonical mirror inventory",
-	)
 	pull.AddCommand(updates)
 	return pull
 }
 
 func (a *app) validateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate",
-		Short: "Validate desired and resolved Atum state",
-		Args:  cobra.NoArgs,
+		Use:         "validate",
+		Short:       "Validate desired and resolved Atum state",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"atum.dev/read-only": "true"},
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			target, err := a.project.Desired.Orchestration.TargetRelease()
 			if err != nil {
@@ -456,7 +485,7 @@ func (a *app) libvirtActionCommand(
 	command := &cobra.Command{Use: name, Short: short}
 	for _, action := range []string{"install", "status", "uninstall"} {
 		action := action
-		command.AddCommand(&cobra.Command{
+		subcommand := &cobra.Command{
 			Use:   action,
 			Short: strings.ToUpper(action[:1]) + action[1:] + " " + name,
 			Args:  cobra.NoArgs,
@@ -466,7 +495,11 @@ func (a *app) libvirtActionCommand(
 					return run(ctx, action)
 				})
 			}),
-		})
+		}
+		if action == "status" {
+			subcommand.Annotations = map[string]string{"atum.dev/read-only": "true"}
+		}
+		command.AddCommand(subcommand)
 	}
 	return command
 }
@@ -505,9 +538,10 @@ func (a *app) orchestrationCommand() *cobra.Command {
 			}),
 		},
 		&cobra.Command{
-			Use:   "plan",
-			Short: "Discover live state and print the exact install or upgrade ladder",
-			Args:  cobra.NoArgs,
+			Use:         "plan",
+			Short:       "Discover live state and print the exact install or upgrade ladder",
+			Args:        cobra.NoArgs,
+			Annotations: map[string]string{"atum.dev/read-only": "true"},
 			RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 				_, err := a.runOrchestrationPlan(cmd.Context())
 				return err
@@ -580,10 +614,12 @@ func (a *app) applyCommand() *cobra.Command {
 						if err != nil {
 							return tui.Completion{}, err
 						}
+						defer seed.Clear()
 					}
 					if err := a.runTerraformActionWithEnvironment(ctx, "apply", seed.environment); err != nil {
 						return tui.Completion{}, err
 					}
+					seed.ClearEnvironment()
 					if a.dryRun {
 						return tui.Completion{}, a.printOrchestrationPlan(preflight)
 					}
@@ -605,9 +641,11 @@ func (a *app) applyCommand() *cobra.Command {
 						seed.credentials,
 						platform.PrepareOptions{},
 					)
+					seed.Clear()
 					if err != nil {
 						return tui.Completion{}, err
 					}
+					defer handoff.Clear()
 					if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
 						return tui.Completion{}, err
 					}
@@ -620,7 +658,7 @@ func (a *app) applyCommand() *cobra.Command {
 					if err != nil {
 						return tui.Completion{}, err
 					}
-					return a.platformCompletion(status)
+					return a.platformCompletion(ctx, status)
 				})
 		}),
 	}
@@ -649,7 +687,8 @@ func (a *app) verifyLocalAccessStatus(
 	if err := a.observePlatformHostAccessWithDNS(ctx, &result, dns); err != nil {
 		return err
 	}
-	if !result.Ready() {
+	if !result.Reconciliation.Complete() || !result.Delivery.Compliant() ||
+		!result.Local.Exact() {
 		return errors.New("local access is not exact")
 	}
 	*status = result
@@ -707,7 +746,7 @@ func (a *app) ensureDeploymentBundle(ctx context.Context, scope preflight.Scope)
 		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
 		return err
 	}
-	if err := a.loadProject(ctx, false); err != nil {
+	if err := a.loadProject(ctx, false, false); err != nil {
 		err = fmt.Errorf("reload declarative state after local bundle resolution: %w", err)
 		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
 		return err

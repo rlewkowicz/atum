@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -23,7 +22,6 @@ import (
 	"atum/cli/treehash"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/huandu/xstrings"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -37,20 +35,22 @@ const (
 )
 
 type Project struct {
-	Root           string
-	DesiredPath    string
-	LockPath       string
-	DesiredSHA256  string
-	DeliverySHA256 string
-	DesiredData    []byte
-	LockData       []byte
-	Desired        Document
-	Lock           Lock
+	Root            string
+	DesiredPath     string
+	LockPath        string
+	DesiredSHA256   string
+	DeliverySHA256  string
+	DesiredData     []byte
+	LockData        []byte
+	Desired         Document
+	Lock            Lock
+	ExecutionBundle *Bundle
 }
 
 type LoadOptions struct {
 	AllowStale                    bool
 	AllowMissingGeneratedIdentity bool
+	AllowMissingFluxSecrets       bool
 }
 
 type CandidateFile struct {
@@ -153,16 +153,15 @@ type Asset struct {
 }
 
 type Platform struct {
-	Directory        string          `json:"directory"`
-	Sources          SourceRegistry  `json:"sources"`
-	PackageSelection string          `json:"packageSelection"`
-	BigBang          GitSource       `json:"bigBang"`
-	Flux             GitSource       `json:"flux"`
-	Packages         []Package       `json:"packages"`
-	Charts           []TrackedChart  `json:"charts"`
-	Vendors          []Vendor        `json:"vendors"`
-	Values           PlatformValues  `json:"values"`
-	Bootstrap        BootstrapCharts `json:"bootstrap"`
+	Directory string          `json:"directory"`
+	Sources   SourceRegistry  `json:"sources"`
+	BigBang   GitSource       `json:"bigBang"`
+	Flux      GitSource       `json:"flux"`
+	Packages  []Package       `json:"packages"`
+	Charts    []TrackedChart  `json:"charts"`
+	Vendors   []Vendor        `json:"vendors"`
+	Values    PlatformValues  `json:"values"`
+	Bootstrap BootstrapCharts `json:"bootstrap"`
 }
 
 type SourceRegistry struct {
@@ -179,7 +178,6 @@ type Package struct {
 	License     string    `json:"license"`
 	Integration string    `json:"integration,omitempty"`
 	ChartPath   string    `json:"chartPath,omitempty"`
-	FluxName    string    `json:"fluxName,omitempty"`
 	Source      GitSource `json:"source"`
 }
 
@@ -188,520 +186,6 @@ func (pkg Package) RepositoryChartPath() string {
 		return "chart"
 	}
 	return pkg.ChartPath
-}
-
-func (pkg Package) RenderedFluxName() string {
-	if pkg.FluxName != "" {
-		return pkg.FluxName
-	}
-	parts := strings.Split(pkg.ValuesPath, ".")
-	if len(parts) != 0 {
-		if rendered, err := bigBangPackageIdentity(parts[len(parts)-1]); err == nil {
-			return rendered
-		}
-	}
-	return pkg.ID
-}
-
-type PackageSourceReference struct {
-	Name      string
-	Namespace string
-}
-
-func (reference PackageSourceReference) Key() string {
-	return namespacedResourceKey(reference.Namespace, reference.Name)
-}
-
-func BigBangWrapperSourceReference() PackageSourceReference {
-	return PackageSourceReference{Name: "bigbang-wrapper", Namespace: "bigbang"}
-}
-
-type RenderedSourceObligation struct {
-	Owner     string
-	Reference PackageSourceReference
-}
-
-// RenderedPackageSourceReference is the sole projection of a selected package
-// into the GitRepository identity rendered by Big Bang. Integrated sources
-// live with Big Bang; generic sources follow the generic template's exact
-// helmRelease.namespace, namespace.name, rendered-name precedence.
-func RenderedPackageSourceReference(
-	pkg Package,
-	values map[string]any,
-) (PackageSourceReference, error) {
-	name := pkg.RenderedFluxName()
-	if !validDNSLabel(name) {
-		return PackageSourceReference{}, fmt.Errorf("package %s has invalid rendered Flux name %q", pkg.ID, name)
-	}
-	if pkg.Integration != "generic" {
-		return PackageSourceReference{Name: name, Namespace: "bigbang"}, nil
-	}
-	parts := strings.Split(pkg.ValuesPath, ".")
-	reference, err := RenderedPackageReleaseReference(parts[len(parts)-1], values)
-	if err != nil {
-		return PackageSourceReference{}, err
-	}
-	if reference.Name != name {
-		return PackageSourceReference{}, fmt.Errorf(
-			"generic package %s rendered source name %q differs from HelmRelease name %q",
-			pkg.ID, name, reference.Name,
-		)
-	}
-	return reference, nil
-}
-
-// RenderedPackageReleaseReference mirrors the Big Bang package and wrapper
-// templates' resourceName and namespace precedence for packages.* entries.
-func RenderedPackageReleaseReference(
-	packageKey string,
-	values map[string]any,
-) (PackageSourceReference, error) {
-	name, err := bigBangPackageIdentity(packageKey)
-	if err != nil {
-		return PackageSourceReference{}, err
-	}
-	namespace := ""
-	if release, _ := values["helmRelease"].(map[string]any); release != nil {
-		if raw, exists := release["namespace"]; exists && helmValueTruthy(raw) {
-			var ok bool
-			namespace, ok = raw.(string)
-			if !ok || strings.TrimSpace(namespace) == "" {
-				return PackageSourceReference{}, fmt.Errorf(
-					"package %s has invalid HelmRelease namespace", packageKey,
-				)
-			}
-			namespace = strings.TrimSpace(namespace)
-		}
-	}
-	if namespace == "" {
-		if namespaceValues, _ := values["namespace"].(map[string]any); namespaceValues != nil {
-			if raw, exists := namespaceValues["name"]; exists && helmValueTruthy(raw) {
-				var ok bool
-				namespace, ok = raw.(string)
-				if !ok || strings.TrimSpace(namespace) == "" {
-					return PackageSourceReference{}, fmt.Errorf(
-						"package %s has invalid target namespace", packageKey,
-					)
-				}
-				namespace = strings.TrimSpace(namespace)
-			}
-		}
-		if namespace == "" {
-			namespace = name
-		}
-	}
-	if !validDNSLabel(namespace) {
-		return PackageSourceReference{}, fmt.Errorf(
-			"package %s has invalid rendered namespace %q", packageKey, namespace,
-		)
-	}
-	return PackageSourceReference{Name: name, Namespace: namespace}, nil
-}
-
-const packageSelectionMetadataKey = "atum"
-
-// PackageSelection derives the complete Git package inventory from the
-// Atum-only metadata authored beside each enabled operational package. Big
-// Bang remains authoritative for integrated coordinates; generic packages
-// must author their otherwise unavailable coordinates explicitly.
-func PackageSelection(operational, bigBangDefaults map[string]any) ([]Package, error) {
-	var selected []Package
-	ids := make(map[string]string)
-	paths := make(map[string]string)
-	repositories := make(map[string]string)
-	err := visitSourceDeclarations(
-		operational, bigBangDefaults,
-		func(declaration sourceDeclaration) error {
-			if !declaration.Enabled || declaration.SourceType != "git" {
-				return nil
-			}
-			pkg, err := packageSelectionAt(
-				declaration.Path, declaration.Values, declaration.Defaults,
-			)
-			if err != nil {
-				return err
-			}
-			if previous, duplicate := ids[pkg.ID]; duplicate {
-				return fmt.Errorf("Atum package id %q is declared by both %s and %s", pkg.ID, previous, declaration.Path)
-			}
-			if previous, duplicate := paths[pkg.ValuesPath]; duplicate {
-				return fmt.Errorf("Atum package values path %q is declared by both %s and %s", pkg.ValuesPath, previous, declaration.Path)
-			}
-			repository, err := CanonicalPackageRepositoryURL(pkg.Source.URL)
-			if err != nil {
-				return err
-			}
-			if previous, duplicate := repositories[repository]; duplicate {
-				return fmt.Errorf("Atum package repository %s is declared by both %s and %s", pkg.Source.URL, previous, declaration.Path)
-			}
-			ids[pkg.ID], paths[pkg.ValuesPath], repositories[repository] =
-				declaration.Path, declaration.Path, declaration.Path
-			selected = append(selected, pkg)
-			return nil
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(selected, func(i, j int) bool { return selected[i].ID < selected[j].ID })
-	return selected, nil
-}
-
-// ValidatePackageSelectionCoverage proves that the materialized package and
-// chart inventories exactly cover every enabled terminal source declaration.
-func ValidatePackageSelectionCoverage(
-	values map[string]any,
-	defaults map[string]any,
-	packages []Package,
-	charts []TrackedChart,
-) error {
-	type expectedSource struct {
-		id         string
-		sourceType string
-	}
-	expected := make(map[string]expectedSource, len(packages)+len(charts))
-	addExpected := func(path, id, sourceType string) error {
-		if previous, duplicate := expected[path]; duplicate {
-			return fmt.Errorf(
-				"source path %s is materialized by both %s (%s) and %s (%s)",
-				path, previous.id, previous.sourceType, id, sourceType,
-			)
-		}
-		expected[path] = expectedSource{id: id, sourceType: sourceType}
-		return nil
-	}
-	for index := range packages {
-		if err := addExpected(packages[index].ValuesPath, packages[index].ID, "git"); err != nil {
-			return err
-		}
-	}
-	for index := range charts {
-		if err := addExpected(charts[index].ValuesPath, charts[index].ID, "helmRepo"); err != nil {
-			return err
-		}
-	}
-	err := visitSourceDeclarations(
-		values, defaults,
-		func(declaration sourceDeclaration) error {
-			if !declaration.Enabled {
-				return nil
-			}
-			selection, exists := expected[declaration.Path]
-			if !exists {
-				return fmt.Errorf(
-					"enabled Big Bang %s source %s is absent from the materialized inventory",
-					declaration.SourceType, declaration.Path,
-				)
-			}
-			if selection.sourceType != declaration.SourceType {
-				return fmt.Errorf(
-					"enabled Big Bang %s source %s is materialized as %s by %s",
-					declaration.SourceType, declaration.Path, selection.sourceType, selection.id,
-				)
-			}
-			delete(expected, declaration.Path)
-			return nil
-		},
-	)
-	if err != nil {
-		return err
-	}
-	if len(expected) != 0 {
-		paths := make([]string, 0, len(expected))
-		for path := range expected {
-			paths = append(paths, path)
-		}
-		sort.Strings(paths)
-		source := expected[paths[0]]
-		return fmt.Errorf(
-			"selected %s %s is not an enabled %s declaration",
-			source.sourceType, source.id, source.sourceType,
-		)
-	}
-	return nil
-}
-
-// ValidateRenderedSourceReferences admits the complete rendered
-// GitRepository namespace/name key space for selected packages and fixed
-// non-package obligations.
-func ValidateRenderedSourceReferences(
-	values map[string]any,
-	packages []Package,
-	obligations []RenderedSourceObligation,
-) error {
-	owners := make(map[string]string, len(packages)+len(obligations))
-	admit := func(owner string, reference PackageSourceReference) error {
-		if !validDNSLabel(reference.Name) || !validDNSLabel(reference.Namespace) {
-			return fmt.Errorf(
-				"rendered GitRepository obligation %s has invalid reference %s",
-				owner, reference.Key(),
-			)
-		}
-		key := reference.Key()
-		if previous, duplicate := owners[key]; duplicate {
-			return fmt.Errorf(
-				"rendered GitRepository %s is ambiguously owned by %s and %s",
-				key, previous, owner,
-			)
-		}
-		owners[key] = owner
-		return nil
-	}
-	for index := range packages {
-		packageValues, err := packageValuesAt(values, packages[index].ValuesPath)
-		if err != nil {
-			return err
-		}
-		reference, err := RenderedPackageSourceReference(packages[index], packageValues)
-		if err != nil {
-			return err
-		}
-		if err := admit("package "+packages[index].ID, reference); err != nil {
-			return err
-		}
-	}
-	for _, obligation := range obligations {
-		if strings.TrimSpace(obligation.Owner) == "" {
-			return errors.New("rendered GitRepository obligation has no owner")
-		}
-		if err := admit(obligation.Owner, obligation.Reference); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func packageValuesAt(values map[string]any, path string) (map[string]any, error) {
-	current := values
-	for _, component := range strings.Split(path, ".") {
-		next, exists := current[component]
-		if !exists {
-			return nil, fmt.Errorf("selected package path %s is absent at %s", path, component)
-		}
-		nested, ok := next.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("selected package path %s is not a map at %s", path, component)
-		}
-		current = nested
-	}
-	return current, nil
-}
-
-type sourceDeclaration struct {
-	Path         string
-	Values       map[string]any
-	Defaults     map[string]any
-	Enabled      bool
-	SourceType   string
-	RenderedMode string
-}
-
-type sourceDeclarationVisitor func(sourceDeclaration) error
-
-// visitSourceDeclarations is the sole structural definition of an Atum source
-// declaration. Once any source declaration is reached, traversal stops at
-// that node so chart values nested beneath it can never be mistaken for
-// updater control metadata.
-func visitSourceDeclarations(
-	values, defaults map[string]any,
-	visit sourceDeclarationVisitor,
-) error {
-	var walk func(map[string]any, map[string]any, string) error
-	walk = func(current, currentDefaults map[string]any, prefix string) error {
-		keys := make([]string, 0, len(current)+len(currentDefaults))
-		seen := make(map[string]struct{}, len(current)+len(currentDefaults))
-		for key := range current {
-			keys = append(keys, key)
-			seen[key] = struct{}{}
-		}
-		for key := range currentDefaults {
-			if _, exists := seen[key]; !exists {
-				keys = append(keys, key)
-			}
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			nested, configuredMap := current[key].(map[string]any)
-			defaultNested, defaultMap := currentDefaults[key].(map[string]any)
-			if !configuredMap && !defaultMap {
-				continue
-			}
-			if nested == nil {
-				nested = map[string]any{}
-			}
-			if defaultNested == nil {
-				defaultNested = map[string]any{}
-			}
-			path := key
-			if prefix != "" {
-				path = prefix + "." + key
-			}
-			_, configuredEnabled := nested["enabled"]
-			_, defaultEnabled := defaultNested["enabled"]
-			_, configuredSourceType := nested["sourceType"]
-			_, defaultSourceType := defaultNested["sourceType"]
-			directPackage := prefix == "packages"
-			terminal := directPackage ||
-				((configuredEnabled || defaultEnabled) &&
-					(configuredSourceType || defaultSourceType))
-			if terminal {
-				rawEnabled, hasEnabled := nested["enabled"]
-				if !hasEnabled {
-					rawEnabled, hasEnabled = defaultNested["enabled"]
-				}
-				if !hasEnabled && directPackage {
-					rawEnabled, hasEnabled = true, true
-				}
-				rawSourceType, hasSourceType := nested["sourceType"]
-				if !hasSourceType {
-					rawSourceType, hasSourceType = defaultNested["sourceType"]
-				}
-				if !hasSourceType && directPackage {
-					rawSourceType, hasSourceType = "git", true
-				}
-				if !hasEnabled || !hasSourceType {
-					return fmt.Errorf("Big Bang source %s has incomplete effective controls", path)
-				}
-				enabled, ok := rawEnabled.(bool)
-				if !ok {
-					return fmt.Errorf("Big Bang source %s enabled is not a boolean", path)
-				}
-				sourceType, ok := rawSourceType.(string)
-				if !ok {
-					return fmt.Errorf("Big Bang source %s sourceType is not a string", path)
-				}
-				if sourceType != "git" && sourceType != "helmRepo" {
-					return fmt.Errorf("Big Bang source %s uses unsupported sourceType %q", path, sourceType)
-				}
-				renderedMode := "helmRelease"
-				kustomize := nested["kustomize"]
-				if kustomize == nil {
-					kustomize = defaultNested["kustomize"]
-				}
-				if directPackage && sourceType == "git" && helmValueTruthy(kustomize) {
-					renderedMode = "kustomization"
-					if enabled {
-						return fmt.Errorf(
-							"enabled Big Bang source %s renders unsupported Kustomization mode",
-							path,
-						)
-					}
-				}
-				if err := visit(sourceDeclaration{
-					Path: path, Values: nested, Defaults: defaultNested,
-					Enabled: enabled, SourceType: sourceType, RenderedMode: renderedMode,
-				}); err != nil {
-					return err
-				}
-				continue
-			}
-			if err := walk(nested, defaultNested, path); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(values, defaults, "")
-}
-
-func packageSelectionAt(path string, values, defaults map[string]any) (Package, error) {
-	metadata, ok := values[packageSelectionMetadataKey].(map[string]any)
-	if !ok {
-		return Package{}, fmt.Errorf("enabled Git package %s has no Atum selection metadata", path)
-	}
-	if len(metadata) < 4 || len(metadata) > 5 {
-		return Package{}, fmt.Errorf("Atum package %s selection metadata has unsupported fields", path)
-	}
-	for key := range metadata {
-		if key != "id" && key != "license" && key != "integration" &&
-			key != "fluxName" && key != "source" {
-			return Package{}, fmt.Errorf("Atum package %s selection metadata field %q is unsupported", path, key)
-		}
-	}
-	id, _ := metadata["id"].(string)
-	license, _ := metadata["license"].(string)
-	integration, _ := metadata["integration"].(string)
-	fluxName, _ := metadata["fluxName"].(string)
-	if !validResourceID(id) || strings.TrimSpace(license) == "" ||
-		!validResourceID(fluxName) ||
-		(integration != "integrated" && integration != "generic") {
-		return Package{}, fmt.Errorf("Atum package %s selection identity is invalid", path)
-	}
-	pathParts := strings.Split(path, ".")
-	packageKey := pathParts[len(pathParts)-1]
-	renderedID, err := bigBangPackageIdentity(packageKey)
-	if err != nil {
-		return Package{}, fmt.Errorf("Atum package %s has no valid rendered identity", path)
-	}
-	if integration == "generic" && fluxName != renderedID {
-		return Package{}, fmt.Errorf("generic Atum package %s Flux identity %q does not match rendered identity %q", path, fluxName, renderedID)
-	}
-	var gitValues map[string]any
-	switch integration {
-	case "integrated":
-		if _, exists := metadata["source"]; exists {
-			return Package{}, fmt.Errorf("integrated Atum package %s cannot override Big Bang source coordinates", path)
-		}
-		gitValues, _ = defaults["git"].(map[string]any)
-	case "generic":
-		gitValues, _ = metadata["source"].(map[string]any)
-		for key := range gitValues {
-			if key != "repo" && key != "tag" && key != "path" {
-				return Package{}, fmt.Errorf("generic Atum package %s source field %q is unsupported", path, key)
-			}
-		}
-	}
-	if gitValues == nil {
-		return Package{}, fmt.Errorf("Atum package %s has no authoritative Git source declaration", path)
-	}
-	repository, version, chartPath, _, err := decodePackageSourceCoordinates(path, gitValues)
-	if err != nil {
-		return Package{}, err
-	}
-	return Package{
-		ID: id, ValuesPath: path, License: strings.TrimSpace(license),
-		Integration: integration, ChartPath: chartPath, FluxName: fluxName,
-		Source: GitSource{URL: repository, Version: version},
-	}, nil
-}
-
-func decodePackageSourceCoordinates(
-	path string,
-	values map[string]any,
-) (string, string, string, string, error) {
-	rawRepository, repositoryExists := values["repo"]
-	rawVersion, versionExists := values["tag"]
-	repository, repositoryIsString := rawRepository.(string)
-	version, versionIsString := rawVersion.(string)
-	if !repositoryExists || !repositoryIsString || !versionExists || !versionIsString {
-		return "", "", "", "", fmt.Errorf("Atum package %s has malformed Git source coordinates", path)
-	}
-	repository, version = strings.TrimSpace(repository), strings.TrimSpace(version)
-	canonicalRepository, err := CanonicalPackageRepositoryURL(repository)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("Atum package %s has invalid Git repository: %w", path, err)
-	}
-	if version == "" || strings.ContainsAny(version, " \t\r\n") {
-		return "", "", "", "", fmt.Errorf("Atum package %s has invalid Git tag", path)
-	}
-	if _, err := semver.NewVersion(version); err != nil {
-		return "", "", "", "", fmt.Errorf("Atum package %s tag %q is not a semantic version", path, version)
-	}
-	chartPath := "chart"
-	if rawPath, exists := values["path"]; exists {
-		provided, ok := rawPath.(string)
-		if !ok {
-			return "", "", "", "", fmt.Errorf("Atum package %s chart path is not a string", path)
-		}
-		chartPath = strings.TrimSpace(provided)
-		if chartPath == "" {
-			return "", "", "", "", fmt.Errorf("Atum package %s chart path is empty", path)
-		}
-	}
-	if !SafeRepositoryChartPath(chartPath) {
-		return "", "", "", "", fmt.Errorf("Atum package %s chart path %q is invalid", path, chartPath)
-	}
-	return repository, version, chartPath, canonicalRepository, nil
 }
 
 func CanonicalPackageRepositoryURL(raw string) (string, error) {
@@ -720,90 +204,6 @@ func CanonicalPackageRepositoryURL(raw string) (string, error) {
 	}
 	parsed.RawPath = ""
 	return parsed.String(), nil
-}
-
-// StripPackageSelectionMetadata returns an independent values tree containing
-// no Atum-only package inventory fields. Every Helm render and generated
-// values projection must cross this boundary.
-func StripPackageSelectionMetadata(
-	values, defaults map[string]any,
-) (map[string]any, error) {
-	return projectPackageSelectionValues(values, defaults, nil)
-}
-
-// CurrentPackageSelectionValues removes Atum metadata and disables generic
-// packages which have no materialized historical package. Their declared
-// source becomes the candidate introduction baseline instead of being
-// accidentally rendered as part of the old Big Bang contract.
-func CurrentPackageSelectionValues(
-	values map[string]any,
-	defaults map[string]any,
-	current []Package,
-) (map[string]any, error) {
-	materialized := make(map[string]struct{}, len(current))
-	for index := range current {
-		materialized[current[index].ID] = struct{}{}
-	}
-	return projectPackageSelectionValues(
-		values, defaults,
-		func(declaration sourceDeclaration) error {
-			if metadata, ok := declaration.Values[packageSelectionMetadataKey].(map[string]any); declaration.Enabled && ok {
-				id, _ := metadata["id"].(string)
-				integration, _ := metadata["integration"].(string)
-				if integration == "generic" {
-					if _, exists := materialized[id]; !exists {
-						declaration.Values["enabled"] = false
-					}
-				}
-			}
-			return nil
-		},
-	)
-}
-
-type packageDeclarationProjection func(sourceDeclaration) error
-
-func projectPackageSelectionValues(
-	values map[string]any,
-	defaults map[string]any,
-	project packageDeclarationProjection,
-) (map[string]any, error) {
-	result := cloneSelectionValue(values).(map[string]any)
-	err := visitSourceDeclarations(
-		result, defaults,
-		func(declaration sourceDeclaration) error {
-			if project != nil {
-				if err := project(declaration); err != nil {
-					return err
-				}
-			}
-			delete(declaration.Values, packageSelectionMetadataKey)
-			return nil
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func cloneSelectionValue(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		result := make(map[string]any, len(typed))
-		for key, nested := range typed {
-			result[key] = cloneSelectionValue(nested)
-		}
-		return result
-	case []any:
-		result := make([]any, len(typed))
-		for index := range typed {
-			result[index] = cloneSelectionValue(typed[index])
-		}
-		return result
-	default:
-		return value
-	}
 }
 
 type TrackedChart struct {
@@ -954,13 +354,11 @@ type Secrets struct {
 }
 
 type Delivery struct {
-	Registry         Registry           `json:"registry"`
-	Seed             SeedPlane          `json:"seed"`
-	Profiles         map[string]Profile `json:"profiles"`
-	Policy           DeliveryPolicy     `json:"policy"`
-	Images           []Image            `json:"images"`
-	RenderedBaseline RenderedBaseline   `json:"renderedBaseline"`
-	LegacyCrosswalk  LegacyCrosswalk    `json:"legacyCrosswalk"`
+	Registry Registry           `json:"registry"`
+	Seed     SeedPlane          `json:"seed"`
+	Profiles map[string]Profile `json:"profiles"`
+	Policy   DeliveryPolicy     `json:"policy"`
+	Images   []Image            `json:"images"`
 }
 
 type SeedPlane struct {
@@ -1000,8 +398,7 @@ type Registry struct {
 }
 
 type Profile struct {
-	Description       string `json:"description"`
-	PreferSourceBuild bool   `json:"preferSourceBuild"`
+	Description string `json:"description"`
 }
 
 type DeliveryPolicy struct {
@@ -1023,34 +420,69 @@ type Image struct {
 	Scopes         []string             `json:"scopes"`
 	Runtime        bool                 `json:"runtime"`
 	License        string               `json:"license"`
+	Provenance     string               `json:"provenance,omitempty"`
 	Consumers      []string             `json:"consumers"`
 	BigBangRefs    []string             `json:"bigBangRefs"`
+	Discovery      string               `json:"discovery"`
 	VersionMapping *ImageVersionMapping `json:"versionMapping,omitempty"`
+	Compatibility  *ImageCompatibility  `json:"compatibility,omitempty"`
 	Delivery       ImageDelivery        `json:"delivery"`
 }
 
-type ImageVersionMapping struct {
-	Artifact          string                    `json:"artifact"`
-	Source            string                    `json:"source"`
-	UpstreamTagPrefix string                    `json:"upstreamTagPrefix,omitempty"`
-	TagPrefix         string                    `json:"tagPrefix,omitempty"`
-	TagSuffix         string                    `json:"tagSuffix,omitempty"`
-	Build             *ImageBuildVersionMapping `json:"build,omitempty"`
+type ImageCompatibility struct {
+	Observations     []ImageRuntimeEvidence `json:"observations"`
+	Incompatibility  string                 `json:"incompatibility"`
+	OfficialMaterial string                 `json:"officialMaterial"`
+	OfficialConfig   ImageOfficialConfig    `json:"officialConfig"`
 }
 
-type ImageBuildVersionMapping struct {
-	ImageRepository string `json:"imageRepository,omitempty"`
-	ImageTagPrefix  string `json:"imageTagPrefix,omitempty"`
-	BakeContext     string `json:"bakeContext,omitempty"`
-	GitURL          string `json:"gitUrl"`
-	GitTagPrefix    string `json:"gitTagPrefix,omitempty"`
-	GitContext      string `json:"gitContext"`
-	FullTagSuffix   string `json:"fullTagSuffix"`
+type ImageOfficialConfig struct {
+	SHA256          string                    `json:"sha256"`
+	Entrypoint      []string                  `json:"entrypoint"`
+	Command         []string                  `json:"command"`
+	User            string                    `json:"user"`
+	Filesystem      []ImageFilesystemEvidence `json:"filesystem"`
+	EntrypointFiles []ImageEntrypointEvidence `json:"entrypointFiles"`
+}
+
+type ImageFilesystemEvidence struct {
+	Path    string `json:"path"`
+	Present bool   `json:"present"`
+	Type    string `json:"type,omitempty"`
+	Link    string `json:"link,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+	UID     int    `json:"uid,omitempty"`
+	GID     int    `json:"gid,omitempty"`
+}
+
+type ImageEntrypointEvidence struct {
+	Path        string   `json:"path"`
+	SHA256      string   `json:"sha256"`
+	Environment []string `json:"environment"`
+}
+
+type ImageRuntimeEvidence struct {
+	Artifact              string   `json:"artifact"`
+	RenderedLocation      string   `json:"renderedLocation"`
+	RuntimeContractSHA256 string   `json:"runtimeContractSha256"`
+	Command               []string `json:"command"`
+	Arguments             []string `json:"arguments"`
+	RunAsUser             string   `json:"runAsUser"`
+	RunAsGroup            string   `json:"runAsGroup"`
+	RequiredPaths         []string `json:"requiredPaths"`
+	RequiredEnvironment   []string `json:"requiredEnvironment"`
+}
+
+type ImageVersionMapping struct {
+	Artifact          string `json:"artifact"`
+	Source            string `json:"source"`
+	UpstreamTagPrefix string `json:"upstreamTagPrefix,omitempty"`
+	TagPrefix         string `json:"tagPrefix,omitempty"`
+	TagSuffix         string `json:"tagSuffix,omitempty"`
 }
 
 type ImageDelivery struct {
-	Default         DeliveryChoice `json:"default"`
-	FullBuildTarget string         `json:"fullBuildTarget,omitempty"`
+	Default DeliveryChoice `json:"default"`
 }
 
 type DeliveryChoice struct {
@@ -1061,69 +493,6 @@ type DeliveryChoice struct {
 	Materials  []string `json:"materials,omitempty"`
 }
 
-type VersionedCommit struct {
-	Version string `json:"version"`
-	Commit  string `json:"commit"`
-}
-
-type ScopeCounts struct {
-	Prep    int `json:"prep"`
-	BigBang int `json:"bigbang"`
-	Unique  int `json:"unique"`
-}
-
-type DeliveryCounts struct {
-	Total    int `json:"total"`
-	Mirrored int `json:"mirrored"`
-	Built    int `json:"built"`
-}
-
-type RenderedBaseline struct {
-	SchemaVersion string                  `json:"schemaVersion"`
-	BigBang       VersionedCommit         `json:"bigBang"`
-	Counts        ScopeCounts             `json:"counts"`
-	Normalization string                  `json:"normalization"`
-	Entries       []RenderedBaselineEntry `json:"entries"`
-}
-
-type RenderedBaselineEntry struct {
-	ImageID  string   `json:"imageId"`
-	Target   string   `json:"target"`
-	Scopes   []string `json:"scopes"`
-	Evidence string   `json:"evidence"`
-}
-
-type LegacyCrosswalk struct {
-	SchemaVersion       string                 `json:"schemaVersion"`
-	BigBang             VersionedCommit        `json:"bigBang"`
-	Strategy            string                 `json:"strategy"`
-	DefaultCounts       DeliveryCounts         `json:"defaultCounts"`
-	CompatibilityBuilds []string               `json:"compatibilityBuilds"`
-	Entries             []LegacyCrosswalkEntry `json:"entries"`
-}
-
-type LegacyCrosswalkEntry struct {
-	ImageID            string              `json:"imageId"`
-	Family             string              `json:"family"`
-	Scopes             []string            `json:"scopes"`
-	Consumers          []string            `json:"consumers"`
-	BigBangRefs        []string            `json:"bigBangRefs"`
-	Replacement        string              `json:"replacement"`
-	DefaultDelivery    string              `json:"defaultDelivery"`
-	OfficialSource     *OfficialSource     `json:"officialSource,omitempty"`
-	CompatibilityBuild *CompatibilityBuild `json:"compatibilityBuild,omitempty"`
-}
-
-type OfficialSource struct {
-	Reference string `json:"reference"`
-	Digest    string `json:"digest"`
-}
-
-type CompatibilityBuild struct {
-	BakeTarget string   `json:"bakeTarget"`
-	Materials  []string `json:"materials"`
-}
-
 type Lock struct {
 	Schema        string        `json:"$schema"`
 	SchemaVersion string        `json:"schemaVersion"`
@@ -1131,7 +500,6 @@ type Lock struct {
 	Resolved      Resolved      `json:"resolved"`
 	Compatibility Compatibility `json:"compatibility"`
 	Delivery      ImageLock     `json:"delivery"`
-	Bundle        *Bundle       `json:"bundle"`
 }
 
 type Resolved struct {
@@ -1154,68 +522,64 @@ type SupportSource struct {
 	Source     GitSource `json:"source"`
 }
 
-// WrapperConsumer is the canonical projection of one declared dependency that
-// asks Big Bang to protect its namespace with the shared wrapper chart.
-type WrapperConsumer struct {
-	OwnerID     string
-	ValuesPath  string
-	PackageKey  string
-	ReleaseName string
-	Namespace   string
-}
-
-func (consumer WrapperConsumer) ReleaseKey() string {
-	return namespacedResourceKey(consumer.Namespace, consumer.ReleaseName)
-}
-
 type WrapperSourceDeclaration struct {
 	URL       string
 	Tag       string
 	ChartPath string
 }
 
-// WrapperSourceRequirement is the immutable admission result for the
-// Big-Bang-owned wrapper GitRepository. Required follows the upstream
-// GitRepository template independently of wrapper HelmRelease membership;
-// Declaration is selected exclusively from the admitted Big Bang defaults.
+// WrapperSourceRequirement is the immutable input required to publish the
+// selected Big Bang wrapper chart when an explicitly configured generic
+// package requests it. The selected Big Bang defaults own the source.
 type WrapperSourceRequirement struct {
 	Required    bool
 	Declaration WrapperSourceDeclaration
 }
 
-// WrapperSourceRequired is the canonical projection of the Big Bang wrapper
-// GitRepository render predicate.
-func WrapperSourceRequired(
-	values map[string]any,
-	consumers []WrapperConsumer,
-) (bool, error) {
-	wrapper, wrapperPresent := values["wrapper"].(map[string]any)
-	wrapperPresent = wrapperPresent && len(wrapper) != 0
-	sourceType, _ := wrapper["sourceType"].(string)
+// GenericWrapperRequested reads only Atum's explicit public generic-package
+// inputs. Resource names, namespaces, and release membership remain owned by
+// the selected Big Bang render.
+func GenericWrapperRequested(values map[string]any) (bool, error) {
 	packages, _ := values["packages"].(map[string]any)
-	hasPackage := false
-	for key := range packages {
-		if key != "sample" {
-			hasPackage = true
-			break
+	for key, raw := range packages {
+		if key == "sample" {
+			continue
+		}
+		pkg, ok := raw.(map[string]any)
+		if !ok {
+			return false, fmt.Errorf("generic package %s values are not a map", key)
+		}
+		enabled, exists := pkg["enabled"]
+		if exists {
+			flag, ok := enabled.(bool)
+			if !ok {
+				return false, fmt.Errorf("generic package %s enabled must be boolean", key)
+			}
+			if !flag {
+				continue
+			}
+		}
+		wrapper, _ := pkg["wrapper"].(map[string]any)
+		requested, exists := wrapper["enabled"]
+		if !exists {
+			continue
+		}
+		flag, ok := requested.(bool)
+		if !ok {
+			return false, fmt.Errorf("generic package %s wrapper.enabled must be boolean", key)
+		}
+		if flag {
+			return true, nil
 		}
 	}
-	required := !helmValueTruthy(values["offline"]) && wrapperPresent &&
-		sourceType == "git" && hasPackage
-	if len(consumers) != 0 && !required {
-		return false, errors.New(
-			"active wrapper consumers require the rendered Big Bang wrapper Git source",
-		)
-	}
-	return required, nil
+	return false, nil
 }
 
 func BigBangWrapperSourceRequirement(
 	defaults map[string]any,
 	effective map[string]any,
-	consumers []WrapperConsumer,
 ) (WrapperSourceRequirement, error) {
-	required, err := WrapperSourceRequired(effective, consumers)
+	required, err := GenericWrapperRequested(effective)
 	if err != nil || !required {
 		return WrapperSourceRequirement{Required: required}, err
 	}
@@ -1245,10 +609,6 @@ func BigBangWrapperSourceRequirement(
 			ChartPath: filepath.ToSlash(filepath.Clean(chartPath)),
 		},
 	}, nil
-}
-
-func namespacedResourceKey(namespace, name string) string {
-	return namespace + "/" + name
 }
 
 // RepositorySource is the canonical inventory of repositories published to
@@ -1307,13 +667,12 @@ type KubernetesChecksums struct {
 }
 
 type ImageLock struct {
-	SchemaVersion   string         `json:"schemaVersion"`
-	Profile         string         `json:"profile"`
-	Platform        string         `json:"platform"`
-	InventorySHA256 string         `json:"inventorySha256"`
-	GraphSHA256     string         `json:"graphSha256"`
-	Counts          DeliveryCounts `json:"counts"`
-	Images          []LockedImage  `json:"images"`
+	SchemaVersion   string        `json:"schemaVersion"`
+	Profile         string        `json:"profile"`
+	Platform        string        `json:"platform"`
+	InventorySHA256 string        `json:"inventorySha256"`
+	GraphSHA256     string        `json:"graphSha256"`
+	Images          []LockedImage `json:"images"`
 }
 
 // Pending reports whether upstream resolution has intentionally invalidated
@@ -1349,42 +708,8 @@ type Bundle struct {
 	OCIDigest        string `json:"ociDigest,omitempty"`
 }
 
-type LegacyBaseline struct {
-	BigBangVersion string `json:"bigBangVersion"`
-	BigBangCommit  string `json:"bigBangCommit"`
-	FluxVersion    string `json:"fluxVersion"`
-	Platform       string `json:"platform"`
-}
-
-type LegacyImagesDocument struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	Baseline      LegacyBaseline     `json:"baseline"`
-	Registry      Registry           `json:"registry"`
-	Seed          SeedPlane          `json:"seed"`
-	Profiles      map[string]Profile `json:"profiles"`
-	Policy        DeliveryPolicy     `json:"policy"`
-	Images        []Image            `json:"images"`
-}
-
-func (d Document) LegacyImages() LegacyImagesDocument {
-	return LegacyImagesDocument{
-		SchemaVersion: "atum.dev/images/v3",
-		Baseline: LegacyBaseline{
-			BigBangVersion: d.Platform.BigBang.Version,
-			BigBangCommit:  d.Platform.BigBang.Commit,
-			FluxVersion:    d.Platform.Flux.Version,
-			Platform:       d.Project.Platform,
-		},
-		Registry: d.Delivery.Registry,
-		Seed:     d.Delivery.Seed,
-		Profiles: d.Delivery.Profiles,
-		Policy:   d.Delivery.Policy,
-		Images:   d.Delivery.Images,
-	}
-}
-
 func (d Document) DeliverySHA256() (string, error) {
-	data, err := canonicalJSON(d.LegacyImages())
+	data, err := canonicalJSON(d.Delivery)
 	if err != nil {
 		return "", err
 	}
@@ -1489,8 +814,10 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read resolved state: %w", err)
 	}
-	if err := validateSchemas(root, desiredData, lockData); err != nil {
-		return nil, err
+	if !options.AllowStale {
+		if err := validateSchemas(root, desiredData, lockData, nil); err != nil {
+			return nil, err
+		}
 	}
 	var desired Document
 	if err := DecodeJSON(desiredData, &desired); err != nil {
@@ -1522,7 +849,11 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 		Lock:           lock,
 	}
 	if err := project.validate(
-		options.AllowStale, options.AllowMissingGeneratedIdentity, nil); err != nil {
+		options.AllowStale,
+		options.AllowMissingGeneratedIdentity,
+		options.AllowMissingFluxSecrets,
+		nil,
+	); err != nil {
 		return nil, err
 	}
 	return project, nil
@@ -1537,7 +868,15 @@ func ValidateCandidate(root string, desired Document, lock Lock, candidate Candi
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("encode resolved state: %w", err)
 	}
-	if err := validateSchemas(root, desiredData, lockData); err != nil {
+	schemaFiles := make(map[string][]byte, len(candidate.Files))
+	for relative, file := range candidate.Files {
+		if file.Exists {
+			schemaFiles[relative] = append([]byte{}, file.Data...)
+		} else {
+			schemaFiles[relative] = nil
+		}
+	}
+	if err := validateSchemas(root, desiredData, lockData, schemaFiles); err != nil {
 		return nil, nil, nil, err
 	}
 	identity, err := desired.DesiredSHA256()
@@ -1559,15 +898,7 @@ func ValidateCandidate(root string, desired Document, lock Lock, candidate Candi
 		Desired:        desired,
 		Lock:           lock,
 	}
-	files := make(map[string][]byte, len(candidate.Files))
-	for relative, file := range candidate.Files {
-		if file.Exists {
-			files[relative] = append([]byte{}, file.Data...)
-		} else {
-			files[relative] = nil
-		}
-	}
-	if err := project.validate(false, false, files); err != nil {
+	if err := project.validate(false, false, false, schemaFiles); err != nil {
 		return nil, nil, nil, err
 	}
 	if err := validateCandidateVendorTrees(desired.Platform.Vendors, candidate); err != nil {
@@ -1662,7 +993,7 @@ func Discover(rootHint string) (string, error) {
 }
 
 func (p *Project) Validate() error {
-	return p.validate(false, false, nil)
+	return p.validate(false, false, false, nil)
 }
 
 func generatedIdentityRequiredFiles(desired Document, profiles []string) []string {
@@ -1685,7 +1016,7 @@ func generatedIdentityRequiredFiles(desired Document, profiles []string) []strin
 			filepath.Join(profileRoot, "access", "certificates", "vault-sso-ca.yaml"),
 			filepath.Join(profileRoot, "identity", "credentials.yaml"),
 			filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
-			filepath.Join(profileRoot, "identity", "openbao-reconcile.yaml"),
+			filepath.Join(profileRoot, "identity", "vault-reconcile.yaml"),
 			filepath.Join(profileRoot, "identity", "receipt.yaml"),
 		)
 	}
@@ -1693,7 +1024,7 @@ func generatedIdentityRequiredFiles(desired Document, profiles []string) []strin
 }
 
 func (p *Project) validate(
-	allowStale, allowMissingGeneratedIdentity bool,
+	allowStale, allowMissingGeneratedIdentity, allowMissingFluxSecrets bool,
 	files map[string][]byte,
 ) error {
 	var problems []string
@@ -1730,9 +1061,15 @@ func (p *Project) validate(
 	} else if activeTarget.Driver != "terraform" {
 		add("infrastructure target %q uses unsupported driver %q", p.Desired.Infrastructure.Active, activeTarget.Driver)
 	}
+	if p.Desired.Infrastructure.Active != "local" ||
+		len(p.Desired.Infrastructure.Targets) != 1 ||
+		activeTarget.PlatformProfile != "local" ||
+		filepath.ToSlash(activeTarget.Directory) != "infra/libvirt" {
+		add("Atum supports exactly one local libvirt end-to-end target")
+	}
 	profileNames := p.Desired.Platform.Values.SortedProfileNames()
-	if len(profileNames) == 0 {
-		add("platform values must define at least one profile")
+	if !reflect.DeepEqual(profileNames, []string{"local"}) {
+		add("platform values must define only the local profile")
 	}
 	valuesPathOwners := make(map[string]string, len(profileNames)+2)
 	if operationalPath, err := fssecure.Relative(p.Desired.Platform.Values.Operational); err == nil {
@@ -1801,7 +1138,6 @@ func (p *Project) validate(
 	}
 	validateRelative(&problems, "platform directory", p.Desired.Platform.Directory)
 	validateSourceRegistry(&problems, p.Desired.Platform.Sources)
-	validateRelative(&problems, "package selection", p.Desired.Platform.PackageSelection)
 	validateRelative(&problems, "operational values", p.Desired.Platform.Values.Operational)
 	validateRelative(&problems, "generated values", p.Desired.Platform.Values.Generated)
 	validateRelative(&problems, "SOPS file", p.Desired.Secrets.SOPSFile)
@@ -1860,11 +1196,8 @@ func (p *Project) validate(
 	if _, ok := p.Desired.Delivery.Profiles[p.Desired.Delivery.Policy.DefaultProfile]; !ok {
 		add("delivery default profile %q is not defined", p.Desired.Delivery.Policy.DefaultProfile)
 	}
-	platformProfile, hasPlatform := p.Desired.Delivery.Profiles["platform"]
-	fullBuildProfile, hasFullBuild := p.Desired.Delivery.Profiles["full-build"]
-	if len(p.Desired.Delivery.Profiles) != 2 || !hasPlatform || !hasFullBuild ||
-		platformProfile.PreferSourceBuild || !fullBuildProfile.PreferSourceBuild {
-		add("delivery profiles must define platform mirrors and the full-build source option")
+	if _, hasPlatform := p.Desired.Delivery.Profiles["platform"]; len(p.Desired.Delivery.Profiles) != 1 || !hasPlatform {
+		add("delivery profiles must define only the platform delivery policy")
 	}
 	if !p.Desired.Delivery.Policy.MutableTagsForbidden || !p.Desired.Delivery.Policy.MirrorDigestRequired {
 		add("delivery policy must forbid mutable tags and require mirror digests")
@@ -1901,6 +1234,13 @@ func (p *Project) validate(
 		}
 		imageIDs[image.ID] = image
 		imageTargets[image.Target] = image.ID
+		if image.Discovery != "rendered" && image.Discovery != "configuration" &&
+			image.Discovery != "controller-generated" {
+			add("delivery image %s has invalid discovery evidence", image.ID)
+		}
+		if !allowStale && strings.TrimSpace(image.Provenance) == "" {
+			add("delivery image %s has no official provenance evidence", image.ID)
+		}
 		if !strings.HasPrefix(image.Target, p.Desired.Delivery.Policy.RuntimeRegistryPrefix) {
 			add("delivery image %s target is outside runtimeRegistryPrefix", image.ID)
 		}
@@ -1920,26 +1260,12 @@ func (p *Project) validate(
 		if mapping := image.VersionMapping; mapping != nil {
 			_, artifactExists := versionArtifacts[mapping.Artifact]
 			validAffixes := !strings.ContainsAny(mapping.UpstreamTagPrefix+mapping.TagPrefix+mapping.TagSuffix, ":@/")
-			validMapping := artifactExists && validAffixes
+			validMapping := artifactExists && validAffixes &&
+				image.Delivery.Default.Type == "mirror"
 			switch mapping.Source {
 			case "chartAppVersion":
-				validMapping = validMapping && mapping.TagSuffix == "" && image.Delivery.Default.Type == "mirror"
-				if build := mapping.Build; build == nil {
-					validMapping = validMapping && image.Delivery.FullBuildTarget == ""
-				} else {
-					validMapping = validMapping && image.Delivery.FullBuildTarget != "" &&
-						build.ImageRepository != "" && build.BakeContext == "" &&
-						build.GitURL != "" && build.GitContext != "" && build.FullTagSuffix != "" &&
-						!strings.ContainsAny(build.ImageTagPrefix+build.GitTagPrefix+build.FullTagSuffix, ":@/")
-				}
+				validMapping = validMapping && mapping.TagSuffix == ""
 			case "upstreamImageTag":
-				build := mapping.Build
-				validMapping = validMapping && build != nil && image.Delivery.FullBuildTarget != "" &&
-					build.GitURL != "" && build.GitContext != "" && build.FullTagSuffix != "" &&
-					!strings.ContainsAny(build.ImageTagPrefix+build.GitTagPrefix+build.FullTagSuffix, ":@/")
-				if image.Delivery.Default.Type == "build" {
-					validMapping = validMapping && build.ImageRepository != "" && build.BakeContext != ""
-				}
 			default:
 				validMapping = false
 			}
@@ -1949,6 +1275,9 @@ func (p *Project) validate(
 		}
 		switch image.Delivery.Default.Type {
 		case "mirror":
+			if image.Compatibility != nil {
+				add("delivery mirror %s must not carry compatibility-build evidence", image.ID)
+			}
 			if image.Delivery.Default.Source == "" || !validDigest(image.Delivery.Default.Digest) {
 				add("delivery mirror %s requires source and sha256 digest", image.ID)
 			}
@@ -1964,6 +1293,59 @@ func (p *Project) validate(
 			if image.Delivery.Default.BakeTarget == "" || len(image.Delivery.Default.Materials) == 0 {
 				add("delivery build %s requires bakeTarget and materials", image.ID)
 			}
+			evidence := image.Compatibility
+			if evidence == nil || len(evidence.Observations) == 0 ||
+				evidence.Incompatibility == "" ||
+				!strings.Contains(evidence.OfficialMaterial, "@sha256:") ||
+				!validDigest(evidence.OfficialConfig.SHA256) {
+				if !allowStale {
+					add("delivery build %s requires complete current compatibility evidence", image.ID)
+				}
+			} else {
+				if !slices.Contains(
+					image.Delivery.Default.Materials,
+					evidence.OfficialMaterial,
+				) {
+					add(
+						"delivery build %s official compatibility material is not a declared build input",
+						image.ID,
+					)
+				}
+				for _, observation := range evidence.Observations {
+					if observation.Artifact == "" || observation.RenderedLocation == "" ||
+						!validHexSHA256(observation.RuntimeContractSHA256) {
+						add("delivery build %s has invalid runtime compatibility observation", image.ID)
+					}
+					for _, required := range observation.RequiredPaths {
+						if !strings.HasPrefix(required, "/") {
+							add("delivery build %s has invalid required runtime path", image.ID)
+						}
+					}
+					for _, required := range observation.RequiredEnvironment {
+						if required == "" || strings.ContainsAny(required, "=\x00") {
+							add("delivery build %s has invalid required runtime environment", image.ID)
+						}
+					}
+				}
+				for _, filesystem := range evidence.OfficialConfig.Filesystem {
+					if !strings.HasPrefix(filesystem.Path, "/") {
+						add("delivery build %s has invalid official filesystem evidence", image.ID)
+					}
+					if !allowStale && filesystem.Present && filesystem.Mode == "" {
+						add("delivery build %s has incomplete official filesystem metadata", image.ID)
+					}
+					if !allowStale && !filesystem.Present &&
+						(filesystem.Mode != "" || filesystem.UID != 0 || filesystem.GID != 0) {
+						add("delivery build %s has metadata for an absent official filesystem path", image.ID)
+					}
+				}
+				for _, entrypoint := range evidence.OfficialConfig.EntrypointFiles {
+					if !strings.HasPrefix(entrypoint.Path, "/") ||
+						!validHexSHA256(entrypoint.SHA256) {
+						add("delivery build %s has invalid official entrypoint evidence", image.ID)
+					}
+				}
+			}
 			for _, material := range image.Delivery.Default.Materials {
 				validatePinnedBuildMaterial(&problems, p.Desired.Delivery.Policy, "delivery build "+image.ID, material)
 			}
@@ -1971,18 +1353,6 @@ func (p *Project) validate(
 			add("delivery image %s has unsupported type %q", image.ID, image.Delivery.Default.Type)
 		}
 	}
-	baselineIdentity := VersionedCommit{Version: p.Desired.Platform.BigBang.Version, Commit: p.Desired.Platform.BigBang.Commit}
-	if !reflect.DeepEqual(p.Desired.Delivery.RenderedBaseline.BigBang, baselineIdentity) ||
-		!reflect.DeepEqual(p.Desired.Delivery.LegacyCrosswalk.BigBang, baselineIdentity) {
-		add("rendered image evidence does not identify the selected Big Bang release")
-	}
-	validateImageEvidence(
-		&problems,
-		imageIDs,
-		p.Desired.Delivery.RenderedBaseline,
-		p.Desired.Delivery.LegacyCrosswalk,
-		allowStale,
-	)
 	validateBootstrapImageBindings(&problems, p.Desired.Platform.Bootstrap.Charts, imageIDs, allowStale)
 	validateBuildGraph(&problems, p, files, allowStale)
 	validateCharts(&problems, p.Desired.Platform.Bootstrap.Charts, p.Desired.Platform.Values.Profiles)
@@ -1993,52 +1363,36 @@ func (p *Project) validate(
 		p.Desired.Platform.Charts,
 	)
 	validateLock(&problems, p, allowStale, files)
-	requiredFiles := []string{
-		"atum.schema.json",
-		"atum.lock.schema.json",
-		filepath.Join(p.Desired.Orchestration.Directory, "ansible.cfg"),
-		filepath.Join(p.Desired.Orchestration.Directory, "requirements.txt"),
-		filepath.Join(p.Desired.Orchestration.Inventory, "group_vars", "all", "all.yml"),
-		filepath.Join(p.Desired.Orchestration.Inventory, "group_vars", "all", "containerd.yml"),
-		filepath.Join(p.Desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "addons.yml"),
-		filepath.Join(p.Desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "k8s-cluster.yml"),
-		p.Desired.Platform.PackageSelection,
-		p.Desired.Platform.Values.Operational,
-		p.Desired.Platform.Values.Generated,
-		filepath.Join(p.Desired.Platform.Directory, "apps", "prep", "namespace.yaml"),
-		filepath.Join(p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "bigbang.yaml"),
-		filepath.Join(p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "kustomization.yaml"),
-		filepath.Join(p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "platform-profile-access.yaml"),
-		filepath.Join(p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "platform-profile-prep.yaml"),
-		filepath.Join(
-			p.Desired.Platform.Directory, "clusters", p.Desired.Project.Cluster, "flux-system", "platform-profile.yaml",
-		),
-	}
-	if !allowMissingGeneratedIdentity {
-		requiredFiles = append(requiredFiles,
-			generatedIdentityRequiredFiles(p.Desired, profileNames)...)
-	}
-	for _, profile := range profileNames {
-		profileRoot := filepath.Join(p.Desired.Platform.Directory, "profiles", profile)
-		requiredFiles = append(
-			requiredFiles,
-			p.Desired.Platform.Values.Profiles[profile],
-			filepath.Join(profileRoot, "prep", "kustomization.yaml"),
-			filepath.Join(profileRoot, "access", "kustomization.yaml"),
-		)
-		if profile == "local" {
-			requiredFiles = append(requiredFiles, filepath.Join(profileRoot, "identity", "contract.yaml"))
+	generatedIdentity := make(map[string]struct{})
+	if allowMissingGeneratedIdentity {
+		for _, relative := range generatedIdentityRequiredFiles(p.Desired, profileNames) {
+			generatedIdentity[filepath.ToSlash(relative)] = struct{}{}
 		}
 	}
-	for _, relative := range requiredFiles {
+	if allowMissingFluxSecrets {
+		for _, relative := range fluxSecretRequiredFiles(p.Desired) {
+			generatedIdentity[filepath.ToSlash(relative)] = struct{}{}
+		}
+	}
+	for _, relative := range RequiredSourceSnapshotMembers(p.Desired) {
+		if _, optional := generatedIdentity[relative]; optional {
+			continue
+		}
+		if strings.HasSuffix(relative, "/") {
+			path, err := fssecure.Resolve(p.Root, strings.TrimSuffix(relative, "/"), false)
+			if info, statErr := os.Stat(path); err != nil || statErr != nil || !info.IsDir() {
+				add("required source directory %s is missing", relative)
+			}
+			continue
+		}
 		if candidate, exists := files[relative]; exists {
 			if candidate == nil {
-				add("required tracked file %s is missing", relative)
+				add("required source file %s is missing", relative)
 			}
 			continue
 		}
 		if info, err := statProjectPath(p.Root, relative); err != nil || !info.Mode().IsRegular() {
-			add("required tracked file %s is missing", relative)
+			add("required source file %s is missing", relative)
 		}
 	}
 	if _, err := p.Desired.ResolvePlatformValues(repositoryPlatformValueLoader(p.Root, files)); err != nil {
@@ -2169,16 +1523,12 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 	if !allowStale && !pendingDelivery && len(lock.Delivery.Images) != len(desired.Delivery.Images) {
 		add("delivery lock has %d images, desired state has %d", len(lock.Delivery.Images), len(desired.Delivery.Images))
 	}
-	if pendingDelivery && lock.Bundle != nil {
-		add("pending image delivery cannot reference a deployment bundle")
-	}
 	desiredImages := make(map[string]*Image, len(desired.Delivery.Images))
 	for i := range desired.Delivery.Images {
 		image := &desired.Delivery.Images[i]
 		desiredImages[image.ID] = image
 	}
 	seen := make(map[string]struct{}, len(lock.Delivery.Images))
-	counts := DeliveryCounts{Total: len(lock.Delivery.Images)}
 	for i := range lock.Delivery.Images {
 		image := &lock.Delivery.Images[i]
 		want, exists := desiredImages[image.ID]
@@ -2189,22 +1539,23 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 			add("locked image id %q is duplicated", image.ID)
 		}
 		seen[image.ID] = struct{}{}
-		if !validDigest(image.Digest) || !validHexSHA256(image.InputSHA256) {
-			add("locked image %s has an invalid digest or input hash", image.ID)
+		if !validHexSHA256(image.InputSHA256) {
+			add("locked image %s has an invalid input hash", image.ID)
 		}
 		switch image.Delivery.Type {
 		case "mirror":
-			counts.Mirrored++
-			if image.Delivery.Source == "" || !validDigest(image.Delivery.Digest) ||
+			if !validDigest(image.Digest) || image.Delivery.Source == "" ||
+				!validDigest(image.Delivery.Digest) ||
 				image.Delivery.BakeTarget != "" || len(image.Delivery.Materials) != 0 || image.Delivery.SourceProfile != "platform" {
 				add("locked mirror %s has invalid delivery material", image.ID)
 			}
 		case "build":
-			counts.Built++
 			if image.Delivery.Source != "" || image.Delivery.Digest != "" || image.Delivery.BakeTarget == "" ||
-				len(image.Delivery.Materials) == 0 ||
-				(image.Delivery.SourceProfile != "platform" && image.Delivery.SourceProfile != "full-build") {
+				len(image.Delivery.Materials) == 0 || image.Delivery.SourceProfile != "platform" {
 				add("locked build %s has invalid delivery material", image.ID)
+			}
+			if image.Digest != "" && !validDigest(image.Digest) {
+				add("locked build %s has an invalid published digest", image.ID)
 			}
 			if !allowStale {
 				for _, material := range image.Delivery.Materials {
@@ -2232,41 +1583,8 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 			add("locked mirror %s result digest differs from its source digest", image.ID)
 		}
 	}
-	if !reflect.DeepEqual(lock.Delivery.Counts, counts) {
-		add("delivery lock counts do not match its image entries")
-	}
 	if !validHexSHA256(lock.Delivery.InventorySHA256) || !validHexSHA256(lock.Delivery.GraphSHA256) {
 		add("delivery lock inventory or graph hash is invalid")
-	}
-	if lock.Bundle != nil {
-		clean, err := fssecure.Relative(lock.Bundle.File)
-		if err != nil || filepath.ToSlash(clean) != lock.Bundle.File || lock.Bundle.Size < 1 ||
-			!validHexSHA256(lock.Bundle.SHA256) || !validHexSHA256(lock.Bundle.AtumSourceSHA256) {
-			add("deployment bundle identity is invalid")
-		} else {
-			snapshot := *lock
-			snapshot.Bundle = nil
-			snapshotData, marshalErr := MarshalJSON(snapshot)
-			if marshalErr != nil {
-				add("deployment bundle parent lock cannot be encoded: %v", marshalErr)
-			}
-			parts := strings.Split(lock.Bundle.File, "/")
-			filename := "atum-bundle-" + lock.Bundle.SHA256 + ".tar"
-			if len(parts) != 4 || parts[0] != ".atum" || parts[1] != "artifacts" ||
-				marshalErr != nil || parts[2] != SHA256(snapshotData) || parts[3] != filename {
-				add("deployment bundle path does not match its content identity")
-			}
-		}
-		hasReference := lock.Bundle.OCIReference != ""
-		hasDigest := lock.Bundle.OCIDigest != ""
-		if hasReference != hasDigest {
-			add("deployment bundle OCI identity is incomplete")
-		} else if hasReference {
-			expectedReference := desired.Delivery.Registry.Host + "/seed-artifacts/atum-bundle:sha256-" + lock.Bundle.SHA256
-			if lock.Bundle.OCIReference != expectedReference || !validDigest(lock.Bundle.OCIDigest) {
-				add("deployment bundle OCI identity does not match its content identity")
-			}
-		}
 	}
 }
 
@@ -2279,12 +1597,7 @@ func validateSupportSources(problems *[]string, p *Project, allowStale bool, fil
 	if err != nil {
 		return
 	}
-	consumers, err := ActiveWrapperConsumers(p.Desired.Platform, values.Merged)
-	if err != nil {
-		*problems = append(*problems, "active wrapper consumers are invalid: "+err.Error())
-		return
-	}
-	required, err := WrapperSourceRequired(values.Merged, consumers)
+	required, err := GenericWrapperRequested(values.Merged)
 	if err != nil {
 		*problems = append(*problems, "wrapper source requirement is invalid: "+err.Error())
 		return
@@ -2325,186 +1638,6 @@ func validateSupportSources(problems *[]string, p *Project, allowStale bool, fil
 func stringValue(values map[string]any, key string) string {
 	value, _ := values[key].(string)
 	return value
-}
-
-func ActiveWrapperConsumers(platform Platform, values map[string]any) ([]WrapperConsumer, error) {
-	type dependency struct {
-		id string
-	}
-	declared := make(map[string]dependency, len(platform.Packages)+len(platform.Charts))
-	addDependency := func(id, path string) error {
-		prefix, packageKey, found := strings.Cut(path, ".")
-		if !found || prefix != "packages" || packageKey == "" || strings.ContainsRune(packageKey, '.') {
-			return nil
-		}
-		if previous, exists := declared[packageKey]; exists && previous.id != id {
-			return fmt.Errorf("wrapper package %s is declared by both %s and %s", packageKey, previous.id, id)
-		}
-		declared[packageKey] = dependency{id: id}
-		return nil
-	}
-	for _, pkg := range platform.Packages {
-		if err := addDependency(pkg.ID, pkg.ValuesPath); err != nil {
-			return nil, err
-		}
-	}
-	for _, chart := range platform.Charts {
-		if err := addDependency(chart.ID, chart.ValuesPath); err != nil {
-			return nil, err
-		}
-	}
-	packageValues, _ := values["packages"].(map[string]any)
-	keys := make([]string, 0, len(packageValues))
-	for key := range packageValues {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	consumers := make([]WrapperConsumer, 0, len(keys))
-	releaseOwners := make(map[string]WrapperConsumer, len(keys))
-	ordinaryReleaseOwners := make(map[string]string, len(declared))
-	for _, rawPackageKey := range keys {
-		dependency, declaredDependency := declared[rawPackageKey]
-		if !declaredDependency {
-			continue
-		}
-		dependencyValues, ok := packageValues[rawPackageKey].(map[string]any)
-		if !ok {
-			continue
-		}
-		dependencyEnabled := true
-		if configured, exists := dependencyValues["enabled"]; exists {
-			dependencyEnabled = helmValueTruthy(configured)
-		}
-		if !dependencyEnabled || helmValueTruthy(dependencyValues["kustomize"]) {
-			continue
-		}
-		reference, err := RenderedPackageReleaseReference(rawPackageKey, dependencyValues)
-		if err != nil {
-			return nil, fmt.Errorf("package HelmRelease packages.%s: %w", rawPackageKey, err)
-		}
-		key := namespacedResourceKey(reference.Namespace, reference.Name)
-		if previous, duplicate := ordinaryReleaseOwners[key]; duplicate {
-			return nil, fmt.Errorf(
-				"package HelmRelease %s is ambiguously owned by %s and %s",
-				key, previous, dependency.id,
-			)
-		}
-		ordinaryReleaseOwners[key] = dependency.id
-	}
-	for _, rawPackageKey := range keys {
-		dependencyValues, ok := packageValues[rawPackageKey].(map[string]any)
-		if !ok {
-			continue
-		}
-		wrapper, _ := dependencyValues["wrapper"].(map[string]any)
-		wrapperEnabled := helmValueTruthy(wrapper["enabled"])
-		dependencyEnabled := true
-		if configured, exists := dependencyValues["enabled"]; exists {
-			dependencyEnabled = helmValueTruthy(configured)
-		}
-		if !wrapperEnabled || !dependencyEnabled {
-			continue
-		}
-		dependency, exists := declared[rawPackageKey]
-		if !exists {
-			return nil, fmt.Errorf(
-				"enabled wrapper package packages.%s is not a declared platform dependency",
-				rawPackageKey,
-			)
-		}
-		reference, err := RenderedPackageReleaseReference(rawPackageKey, dependencyValues)
-		if err != nil {
-			return nil, fmt.Errorf("wrapper package packages.%s: %w", rawPackageKey, err)
-		}
-		releaseName := reference.Name + "-wrapper"
-		if !validDNSLabel(releaseName) {
-			return nil, fmt.Errorf("wrapper release name %q for packages.%s is invalid", releaseName, rawPackageKey)
-		}
-		consumer := WrapperConsumer{
-			OwnerID: dependency.id, ValuesPath: "packages." + rawPackageKey, PackageKey: reference.Name,
-			ReleaseName: releaseName, Namespace: reference.Namespace,
-		}
-		releaseKey := consumer.ReleaseKey()
-		if ordinaryOwner, collision := ordinaryReleaseOwners[releaseKey]; collision {
-			return nil, fmt.Errorf(
-				"wrapper release %s owned by %s collides with package HelmRelease owned by %s",
-				releaseKey, consumer.OwnerID, ordinaryOwner,
-			)
-		}
-		if previous, duplicate := releaseOwners[releaseKey]; duplicate {
-			return nil, fmt.Errorf("wrapper release %s is ambiguously owned by %s and %s",
-				releaseKey, previous.OwnerID, consumer.OwnerID)
-		}
-		releaseOwners[releaseKey] = consumer
-		consumers = append(consumers, consumer)
-	}
-	sort.Slice(consumers, func(i, j int) bool {
-		if consumers[i].ReleaseKey() != consumers[j].ReleaseKey() {
-			return consumers[i].ReleaseKey() < consumers[j].ReleaseKey()
-		}
-		return consumers[i].OwnerID < consumers[j].OwnerID
-	})
-	return consumers, nil
-}
-
-var bigBangNonWord = regexp.MustCompile(`\W+`)
-
-// bigBangPackageIdentity mirrors the selected Big Bang resourceName helper:
-// regexReplaceAll "\\W+" "-", trimPrefix "-", trunc 63, trimSuffix "-",
-// then Sprig's kebabcase (xstrings.ToKebabCase).
-func bigBangPackageIdentity(value string) (string, error) {
-	rendered := bigBangNonWord.ReplaceAllString(value, "-")
-	rendered = strings.TrimPrefix(rendered, "-")
-	if len(rendered) > 63 {
-		rendered = rendered[:63]
-	}
-	rendered = strings.TrimSuffix(rendered, "-")
-	rendered = xstrings.ToKebabCase(rendered)
-	if !validDNSLabel(rendered) {
-		return "", fmt.Errorf("Big Bang resourceName renders invalid identity %q", rendered)
-	}
-	return rendered, nil
-}
-
-func helmValueTruthy(value any) bool {
-	switch typed := value.(type) {
-	case nil:
-		return false
-	case bool:
-		return typed
-	case string:
-		return typed != ""
-	case int:
-		return typed != 0
-	case int8:
-		return typed != 0
-	case int16:
-		return typed != 0
-	case int32:
-		return typed != 0
-	case int64:
-		return typed != 0
-	case uint:
-		return typed != 0
-	case uint8:
-		return typed != 0
-	case uint16:
-		return typed != 0
-	case uint32:
-		return typed != 0
-	case uint64:
-		return typed != 0
-	case float32:
-		return typed != 0
-	case float64:
-		return typed != 0
-	case []any:
-		return len(typed) != 0
-	case map[string]any:
-		return len(typed) != 0
-	default:
-		return true
-	}
 }
 
 func ValidateWrapperSupportDeclaration(sourceURL, version, chartPath string) error {
@@ -2573,29 +1706,13 @@ type profiledDelivery struct {
 	sourceProfile string
 }
 
-func desiredDeliveryForProfile(image *Image, profile, graphSHA256 string) profiledDelivery {
-	if profile == "full-build" && image.Delivery.FullBuildTarget != "" {
-		return profiledDelivery{
-			choice: DeliveryChoice{
-				Type:       "build",
-				BakeTarget: image.Delivery.FullBuildTarget,
-				Materials: []string{
-					"bake:" + image.Delivery.FullBuildTarget,
-					"graph:sha256:" + graphSHA256,
-				},
-			},
-			sourceProfile: "full-build",
-		}
-	}
+func desiredDeliveryForProfile(image *Image, profile, _ string) profiledDelivery {
 	return profiledDelivery{choice: image.Delivery.Default, sourceProfile: "platform"}
 }
 
-// ResolveDelivery returns the exact delivery contract used to publish an
-// image for a named profile. Build graph identity is part of full-build
-// material so callers cannot publish a source-built result against an
-// unrelated graph.
+// ResolveDelivery returns the exact canonical platform delivery contract.
 func ResolveDelivery(image Image, profile, graphSHA256 string) (LockedDelivery, error) {
-	if profile != "platform" && profile != "full-build" {
+	if profile != "platform" {
 		return LockedDelivery{}, fmt.Errorf("unsupported delivery profile %q", profile)
 	}
 	resolved := desiredDeliveryForProfile(&image, profile, graphSHA256)
@@ -2622,95 +1739,6 @@ func lockedDeliveryMatches(locked LockedDelivery, expected profiledDelivery) boo
 		return locked.Source == "" && locked.Digest == "" && locked.BakeTarget == desired.BakeTarget && reflect.DeepEqual(locked.Materials, desired.Materials)
 	default:
 		return false
-	}
-}
-
-func validateImageEvidence(
-	problems *[]string,
-	images map[string]*Image,
-	baseline RenderedBaseline,
-	crosswalk LegacyCrosswalk,
-	allowStale bool,
-) {
-	if baseline.SchemaVersion != "atum.dev/rendered-image-baseline/v2" ||
-		(!allowStale && len(baseline.Entries) != len(images)) {
-		*problems = append(*problems, "rendered image baseline does not cover the delivery inventory")
-	}
-	if crosswalk.SchemaVersion != "atum.dev/bigbang-public-crosswalk/v2" ||
-		(!allowStale && len(crosswalk.Entries) != len(images)) {
-		*problems = append(*problems, "legacy crosswalk does not cover the delivery inventory")
-	}
-	seenBaseline := make(map[string]struct{}, len(baseline.Entries))
-	counts := ScopeCounts{Unique: len(images)}
-	for _, image := range images {
-		for _, scope := range image.Scopes {
-			switch scope {
-			case "prep":
-				counts.Prep++
-			case "bigbang":
-				counts.BigBang++
-			}
-		}
-	}
-	if !allowStale && !reflect.DeepEqual(baseline.Counts, counts) {
-		*problems = append(*problems, "rendered image baseline counts do not match delivery inventory")
-	}
-	for _, entry := range baseline.Entries {
-		evidenceKnown := entry.Evidence == "rendered" || entry.Evidence == "controller-generated" || entry.Evidence == "configuration"
-		image, ok := images[entry.ImageID]
-		if (!ok && !allowStale) ||
-			(ok && (image.Target != entry.Target || !reflect.DeepEqual(image.Scopes, entry.Scopes))) ||
-			!evidenceKnown {
-			*problems = append(*problems, fmt.Sprintf("baseline entry %s does not match delivery inventory", entry.ImageID))
-		}
-		if _, exists := seenBaseline[entry.ImageID]; exists {
-			*problems = append(*problems, fmt.Sprintf("baseline entry %s is duplicated", entry.ImageID))
-		}
-		seenBaseline[entry.ImageID] = struct{}{}
-	}
-	seenCrosswalk := make(map[string]struct{}, len(crosswalk.Entries))
-	deliveryCounts := DeliveryCounts{Total: len(images)}
-	compatibilityBuilds := make([]string, 0, len(images))
-	for _, image := range images {
-		if image.Delivery.Default.Type == "mirror" {
-			deliveryCounts.Mirrored++
-		} else if image.Delivery.Default.Type == "build" {
-			deliveryCounts.Built++
-			compatibilityBuilds = append(compatibilityBuilds, image.ID)
-		}
-	}
-	if !allowStale && !reflect.DeepEqual(crosswalk.DefaultCounts, deliveryCounts) {
-		*problems = append(*problems, "legacy crosswalk counts do not match delivery inventory")
-	}
-	sort.Strings(compatibilityBuilds)
-	declaredBuilds := append([]string(nil), crosswalk.CompatibilityBuilds...)
-	sort.Strings(declaredBuilds)
-	if !allowStale && !reflect.DeepEqual(declaredBuilds, compatibilityBuilds) {
-		*problems = append(*problems, "legacy crosswalk compatibility builds do not match delivery inventory")
-	}
-	for _, entry := range crosswalk.Entries {
-		image, ok := images[entry.ImageID]
-		if (!ok && !allowStale) ||
-			(ok && (image.Target != entry.Replacement || image.Family != entry.Family ||
-				!reflect.DeepEqual(image.Scopes, entry.Scopes) || !reflect.DeepEqual(image.Consumers, entry.Consumers) ||
-				!reflect.DeepEqual(image.BigBangRefs, entry.BigBangRefs) ||
-				image.Delivery.Default.Type != entry.DefaultDelivery)) {
-			*problems = append(*problems, fmt.Sprintf("crosswalk entry %s does not match delivery inventory", entry.ImageID))
-		}
-		if (entry.OfficialSource == nil) == (entry.CompatibilityBuild == nil) {
-			*problems = append(*problems, fmt.Sprintf("crosswalk entry %s must define exactly one delivery source", entry.ImageID))
-		} else if ok && entry.OfficialSource != nil &&
-			(entry.OfficialSource.Reference != image.Delivery.Default.Source || entry.OfficialSource.Digest != image.Delivery.Default.Digest) {
-			*problems = append(*problems, fmt.Sprintf("crosswalk mirror %s does not match delivery source", entry.ImageID))
-		} else if ok && entry.CompatibilityBuild != nil &&
-			(entry.CompatibilityBuild.BakeTarget != image.Delivery.Default.BakeTarget ||
-				!reflect.DeepEqual(entry.CompatibilityBuild.Materials, image.Delivery.Default.Materials)) {
-			*problems = append(*problems, fmt.Sprintf("crosswalk build %s does not match delivery source", entry.ImageID))
-		}
-		if _, exists := seenCrosswalk[entry.ImageID]; exists {
-			*problems = append(*problems, fmt.Sprintf("crosswalk entry %s is duplicated", entry.ImageID))
-		}
-		seenCrosswalk[entry.ImageID] = struct{}{}
 	}
 }
 
@@ -2826,7 +1854,7 @@ func validateBootstrapImageBindings(problems *[]string, charts []Chart, images m
 				*problems = append(*problems, fmt.Sprintf("bootstrap chart %s references missing image %s", chart.ID, imageID))
 				continue
 			}
-			if image.Delivery.Default.Type != "mirror" || image.Delivery.FullBuildTarget != "" {
+			if image.Delivery.Default.Type != "mirror" {
 				*problems = append(*problems, fmt.Sprintf("bootstrap image %s must use only its official mirror", imageID))
 			}
 			if !slices.Contains(image.Scopes, "prep") {
@@ -2854,17 +1882,8 @@ func validatePackages(problems *[]string, packages []Package) {
 		if pkg.Integration != "" && pkg.Integration != "integrated" && pkg.Integration != "generic" {
 			*problems = append(*problems, fmt.Sprintf("platform package %s has invalid integration authority", pkg.ID))
 		}
-		materializedFields := 0
-		for _, value := range []string{pkg.Integration, pkg.ChartPath, pkg.FluxName} {
-			if value != "" {
-				materializedFields++
-			}
-		}
-		if materializedFields != 0 && materializedFields != 3 {
+		if (pkg.Integration == "") != (pkg.ChartPath == "") {
 			*problems = append(*problems, fmt.Sprintf("platform package %s has an incomplete materialized integration contract", pkg.ID))
-		}
-		if pkg.FluxName != "" && !validResourceID(pkg.FluxName) {
-			*problems = append(*problems, fmt.Sprintf("platform package %s has an invalid rendered Flux identity", pkg.ID))
 		}
 		if !SafeRepositoryChartPath(pkg.RepositoryChartPath()) {
 			*problems = append(*problems, fmt.Sprintf("platform package %s has invalid chart path", pkg.ID))
@@ -3413,7 +2432,11 @@ func validHexSHA256(value string) bool {
 	return true
 }
 
-func validateSchemas(root string, desiredData, lockData []byte) error {
+func validateSchemas(
+	root string,
+	desiredData, lockData []byte,
+	files map[string][]byte,
+) error {
 	type resource struct {
 		filename     string
 		id           string
@@ -3428,13 +2451,20 @@ func validateSchemas(root string, desiredData, lockData []byte) error {
 	compiler.AssertFormat()
 	documents := make([]any, len(resources))
 	for i := range resources {
-		path, pathErr := fssecure.Resolve(root, resources[i].filename, false)
-		if pathErr != nil {
-			return fmt.Errorf("resolve %s: %w", resources[i].filename, pathErr)
+		data, candidate := files[resources[i].filename]
+		if candidate && data == nil {
+			return fmt.Errorf("candidate %s is deleted", resources[i].filename)
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", resources[i].filename, err)
+		if !candidate {
+			path, pathErr := fssecure.Resolve(root, resources[i].filename, false)
+			if pathErr != nil {
+				return fmt.Errorf("resolve %s: %w", resources[i].filename, pathErr)
+			}
+			var err error
+			data, err = os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read %s: %w", resources[i].filename, err)
+			}
 		}
 		if err := json.Unmarshal(data, &documents[i]); err != nil {
 			return fmt.Errorf("decode %s: %w", resources[i].filename, err)

@@ -313,7 +313,6 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		config.LockFilename,
 		"atum.schema.json",
 		"atum.lock.schema.json",
-		desired.Platform.PackageSelection,
 		desired.Platform.Values.Operational,
 		desired.Platform.Values.Generated,
 		"platform/apps/bigbang/helmrelease.yaml",
@@ -326,6 +325,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		filepath.Join(clusterRoot, "platform-profile-access.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-identity.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-prep.yaml"),
+		filepath.Join(clusterRoot, "platform-secrets.yaml"),
 		filepath.Join(clusterRoot, "prep.yaml"),
 		filepath.Join(clusterRoot, "flux-system", "platform-profile.yaml"),
 		filepath.Join(clusterRoot, "flux-system", "gotk-sync.yaml"),
@@ -338,6 +338,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		paths = append(paths,
 			valuesPath,
 			filepath.Join(filepath.Dir(valuesPath), "kustomization.yaml"),
+			filepath.Join(filepath.Dir(valuesPath), "stateful-values.yaml"),
 			filepath.Join(profileRoot, "access", "kustomization.yaml"),
 			filepath.Join(profileRoot, "identity", "kustomization.yaml"),
 		)
@@ -346,7 +347,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 				filepath.Join(profileRoot, "identity", "contract.yaml"),
 				filepath.Join(profileRoot, "identity", "credentials.yaml"),
 				filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
-				filepath.Join(profileRoot, "identity", "openbao-reconcile.yaml"),
+				filepath.Join(profileRoot, "identity", "vault-reconcile.yaml"),
 				filepath.Join(profileRoot, "identity", "receipt.yaml"),
 				filepath.Join(profileRoot, "prep", "identity-values.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
@@ -366,6 +367,17 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 	})
 	if err != nil {
 		return fmt.Errorf("snapshot identity templates: %w", err)
+	}
+	secretsTemplateDirectory, err := fssecure.Resolve(tree.root, "platform/templates/secrets", false)
+	if err != nil {
+		return err
+	}
+	err = fssecure.WalkRegularFiles(secretsTemplateDirectory, func(_ string, relative string, _ os.FileInfo) error {
+		paths = append(paths, filepath.ToSlash(filepath.Join("platform/templates/secrets", relative)))
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("snapshot secret templates: %w", err)
 	}
 	for _, asset := range desired.Platform.Flux.Assets {
 		paths = append(paths, asset.File, filepath.Join(filepath.Dir(asset.File), "kustomization.yaml"))

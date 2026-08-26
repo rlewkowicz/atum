@@ -5,52 +5,68 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"atum/cli/secretvalue"
 )
 
 const (
-	seedSize          = 32
-	derivedSecretSize = 32
-	bootstrapPurpose  = "atum.dev/identity/bootstrap/v1"
-	clientPurpose     = "atum.dev/identity/client/v1"
+	seedSize                = 32
+	derivedSecretSize       = 32
+	identityProjectionLimit = 64 << 10
+	bootstrapPurpose        = "atum.dev/identity/bootstrap/v1"
+	adminPurpose            = "atum.dev/identity/administrator/v1"
+	clientPurpose           = "atum.dev/identity/client/v1"
 )
 
 type BootstrapProjection struct {
-	values map[string]string
-	digest string
+	values secretvalue.Values
+	digest []byte
 }
 
-func Derive(contract *Contract, encodedSeed, cluster, domain string) (*BootstrapProjection, error) {
+func Derive(contract *Contract, encodedSeed []byte, cluster, domain string) (*BootstrapProjection, error) {
 	if contract == nil {
 		return nil, errors.New("identity contract is required")
 	}
-	seed, err := base64.RawStdEncoding.DecodeString(encodedSeed)
-	if err != nil || len(seed) != seedSize {
+	seed := make([]byte, base64.RawStdEncoding.DecodedLen(len(encodedSeed)))
+	size, err := base64.RawStdEncoding.Decode(seed, encodedSeed)
+	if err != nil || size != seedSize {
 		clear(seed)
 		return nil, errors.New("identity seed must be 32 raw-base64 encoded bytes")
 	}
+	seed = seed[:size]
 	defer clear(seed)
 	if cluster == "" || domain == "" || domain != contract.Domain() {
 		return nil, errors.New("identity cluster and contract domain are required and must agree")
 	}
-	values := make(map[string]string, len(contract.clients)+8)
-	values["ATUM_IDENTITY_SCHEMA_VERSION"] = contract.SchemaVersion()
-	values["ATUM_IDENTITY_CLUSTER"] = cluster
-	values["ATUM_IDENTITY_DOMAIN"] = domain
-	values["ATUM_IDENTITY_ISSUER"] = contract.Issuer()
+	values := make(secretvalue.Values, len(contract.clients)+9)
+	complete := false
+	defer func() {
+		if !complete {
+			values.Clear()
+		}
+	}()
+	values["ATUM_IDENTITY_SCHEMA_VERSION"] = []byte(contract.SchemaVersion())
+	values["ATUM_IDENTITY_CLUSTER"] = []byte(cluster)
+	values["ATUM_IDENTITY_DOMAIN"] = []byte(domain)
+	values["ATUM_IDENTITY_ISSUER"] = []byte(contract.Issuer())
 	admin := contract.Administrator()
-	values["ATUM_IDENTITY_ADMIN_USERNAME"] = admin.Username
-	values["ATUM_IDENTITY_ADMIN_PASSWORD"] = admin.Password
-	values["ATUM_IDENTITY_ADMIN_GROUP"] = admin.Group
+	values["ATUM_IDENTITY_ADMIN_USERNAME"] = []byte(admin.Username)
+	values["ATUM_IDENTITY_ADMIN_GROUP"] = []byte(admin.Group)
+	adminPassword, err := derive(seed, adminPurpose, cluster, domain, admin.Username)
+	if err != nil {
+		return nil, err
+	}
+	values["ATUM_IDENTITY_ADMIN_PASSWORD"] = encodeRawURL(adminPassword)
+	clear(adminPassword)
 	bootstrap, err := derive(seed, bootstrapPurpose, cluster, domain, "atum-bootstrap")
 	if err != nil {
 		return nil, err
 	}
-	values["ATUM_IDENTITY_BOOTSTRAP_PASSWORD"] = base64.RawURLEncoding.EncodeToString(bootstrap)
+	values["ATUM_IDENTITY_BOOTSTRAP_PASSWORD"] = encodeRawURL(bootstrap)
 	clear(bootstrap)
 	for _, client := range contract.clients {
 		if client.Type != Confidential {
@@ -58,10 +74,9 @@ func Derive(contract *Contract, encodedSeed, cluster, domain string) (*Bootstrap
 		}
 		secret, err := derive(seed, clientPurpose+"/"+client.SecretPurpose, cluster, domain, client.ID)
 		if err != nil {
-			clearValues(values)
 			return nil, err
 		}
-		values[clientSecretKey(client.ID)] = base64.RawURLEncoding.EncodeToString(secret)
+		values[clientSecretKey(client.ID)] = encodeRawURL(secret)
 		clear(secret)
 	}
 	contractBytes := contract.Canonical()
@@ -75,16 +90,17 @@ func Derive(contract *Contract, encodedSeed, cluster, domain string) (*Bootstrap
 	// Projection hashing is deterministic without retaining a second registry.
 	slices.Sort(keys)
 	for _, key := range keys {
-		if key == "ATUM_IDENTITY_ADMIN_PASSWORD" {
-			continue
-		}
-		sum := sha256.Sum256([]byte(values[key]))
+		sum := sha256.Sum256(values[key])
 		_, _ = hash.Write([]byte{0})
 		_, _ = hash.Write([]byte(key))
 		_, _ = hash.Write(sum[:])
 	}
-	digest := hex.EncodeToString(hash.Sum(nil))
-	values["ATUM_IDENTITY_DIGEST"] = digest
+	digestSum := hash.Sum(nil)
+	digest := make([]byte, hex.EncodedLen(len(digestSum)))
+	hex.Encode(digest, digestSum)
+	clear(digestSum)
+	values["ATUM_IDENTITY_DIGEST"] = append([]byte(nil), digest...)
+	complete = true
 	return &BootstrapProjection{values: values, digest: digest}, nil
 }
 
@@ -102,34 +118,61 @@ func derive(seed []byte, purpose, cluster, domain, client string) ([]byte, error
 	return output, nil
 }
 
+func encodeRawURL(value []byte) []byte {
+	encoded := make([]byte, base64.RawURLEncoding.EncodedLen(len(value)))
+	base64.RawURLEncoding.Encode(encoded, value)
+	return encoded
+}
+
 func (projection *BootstrapProjection) MarshalAnsibleJSON() ([]byte, error) {
-	if projection == nil || len(projection.values) == 0 || projection.digest == "" {
+	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
 		return nil, errors.New("identity projection is unavailable")
 	}
-	return json.Marshal(struct {
-		Identity map[string]string `json:"atum_platform_identity"`
-		Digest   string            `json:"atum_platform_identity_digest"`
-	}{projection.values, projection.digest})
+	return secretvalue.MarshalProjection(
+		"atum_platform_identity",
+		projection.values,
+		"atum_platform_identity_digest",
+		projection.digest,
+		identityProjectionLimit,
+	)
+}
+
+func (projection *BootstrapProjection) MarshalKubernetesSecret() ([]byte, error) {
+	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
+		return nil, errors.New("identity projection is unavailable")
+	}
+	return secretvalue.MarshalKubernetesSecret(
+		"atum-platform-identity",
+		"flux-system",
+		"atum.dev/identity-digest",
+		projection.digest,
+		projection.values,
+		identityProjectionLimit,
+	)
 }
 
 func (projection *BootstrapProjection) Digest() string {
 	if projection == nil {
 		return ""
 	}
-	return projection.digest
+	return string(projection.digest)
+}
+
+// AdministratorPassword crosses the unavoidable final terminal-display
+// boundary. The returned Go string cannot be overwritten; callers must keep
+// the containing completion result bounded to that display lifecycle.
+func (projection *BootstrapProjection) AdministratorPassword() string {
+	if projection == nil {
+		return ""
+	}
+	return string(projection.values["ATUM_IDENTITY_ADMIN_PASSWORD"])
 }
 
 func (projection *BootstrapProjection) Clear() {
 	if projection == nil {
 		return
 	}
-	clearValues(projection.values)
-	projection.digest = ""
-}
-
-func clearValues(values map[string]string) {
-	for key := range values {
-		values[key] = ""
-	}
-	clear(values)
+	projection.values.Clear()
+	clear(projection.digest)
+	projection.digest = nil
 }

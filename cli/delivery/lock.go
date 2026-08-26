@@ -1,17 +1,11 @@
 package delivery
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
 	"reflect"
 	"sort"
 
 	"atum/cli/config"
-	"atum/cli/fssecure"
 )
 
 func currentEntries(project *config.Project) map[string]config.LockedImage {
@@ -42,7 +36,7 @@ func reusableEntry(
 }
 
 func reusableBundle(project *config.Project, delivery config.ImageLock) (*config.Bundle, error) {
-	if project.Lock.Bundle == nil || project.Lock.DesiredSHA256 != project.DesiredSHA256 ||
+	if project.ExecutionBundle == nil || project.Lock.DesiredSHA256 != project.DesiredSHA256 ||
 		!reflect.DeepEqual(delivery, project.Lock.Delivery) {
 		return nil, nil
 	}
@@ -50,11 +44,33 @@ func reusableBundle(project *config.Project, delivery config.ImageLock) (*config
 	if err != nil {
 		return nil, err
 	}
-	if sourceSHA != project.Lock.Bundle.AtumSourceSHA256 {
+	if sourceSHA != project.ExecutionBundle.AtumSourceSHA256 {
 		return nil, nil
 	}
-	bundle := *project.Lock.Bundle
+	bundle := *project.ExecutionBundle
 	return &bundle, nil
+}
+
+// matchesCommittedDelivery compares the updater-owned immutable selection
+// while leaving compatibility-build output digests under execution-state
+// ownership. Mirror digests remain immutable inputs and are compared exactly.
+func matchesCommittedDelivery(reproduced, committed config.ImageLock) bool {
+	if len(reproduced.Images) != len(committed.Images) {
+		return false
+	}
+	immutable := reproduced
+	immutable.Images = append([]config.LockedImage(nil), reproduced.Images...)
+	for index := range committed.Images {
+		if committed.Images[index].Delivery.Type != "build" {
+			continue
+		}
+		if committed.Images[index].Digest != "" ||
+			immutable.Images[index].Delivery.Type != "build" {
+			return false
+		}
+		immutable.Images[index].Digest = ""
+	}
+	return reflect.DeepEqual(immutable, committed)
 }
 
 func assembleImageLock(
@@ -89,13 +105,9 @@ func assembleImageLock(
 		images = append(images, entry)
 	}
 	sort.Slice(images, func(i, j int) bool { return images[i].ID < images[j].ID })
-	counts := config.DeliveryCounts{Total: len(images)}
 	for _, image := range images {
 		switch image.Delivery.Type {
-		case "mirror":
-			counts.Mirrored++
-		case "build":
-			counts.Built++
+		case "mirror", "build":
 		default:
 			return config.ImageLock{}, fmt.Errorf("image %s has unsupported locked delivery %q", image.ID, image.Delivery.Type)
 		}
@@ -106,86 +118,6 @@ func assembleImageLock(
 		Platform:        project.Desired.Project.Platform,
 		InventorySHA256: inventorySHA,
 		GraphSHA256:     graphSHA,
-		Counts:          counts,
 		Images:          images,
 	}, nil
-}
-
-func writeRootLock(project *config.Project, delivery config.ImageLock, bundle *config.Bundle) (bool, error) {
-	if err := compareFile(project.Root, config.DesiredFilename, project.DesiredData); err != nil {
-		return false, fmt.Errorf("desired state changed during image operation: %w", err)
-	}
-	if err := compareFile(project.Root, config.LockFilename, project.LockData); err != nil {
-		return false, fmt.Errorf("resolved state changed during image operation: %w", err)
-	}
-	graphSHA, err := config.DeliveryGraphSHA256(project, delivery.Profile)
-	if err != nil {
-		return false, fmt.Errorf("recompute delivery graph: %w", err)
-	}
-	if graphSHA != delivery.GraphSHA256 {
-		return false, fmt.Errorf("delivery graph changed during image operation: found %s, want %s", graphSHA, delivery.GraphSHA256)
-	}
-	next := project.Lock
-	next.DesiredSHA256 = project.DesiredSHA256
-	next.Delivery = delivery
-	next.Bundle = bundle
-	data, err := json.MarshalIndent(next, "", "  ")
-	if err != nil {
-		return false, fmt.Errorf("encode resolved state: %w", err)
-	}
-	data = append(data, '\n')
-	validation := *project
-	validation.Lock = next
-	validation.LockData = data
-	if err := validation.Validate(); err != nil {
-		return false, fmt.Errorf("refuse invalid image lock: %w", err)
-	}
-	if bytes.Equal(data, project.LockData) {
-		return false, nil
-	}
-	if err := compareFile(project.Root, config.DesiredFilename, project.DesiredData); err != nil {
-		return false, fmt.Errorf("desired state changed while preparing image lock: %w", err)
-	}
-	if err := compareFile(project.Root, config.LockFilename, project.LockData); err != nil {
-		return false, fmt.Errorf("resolved state changed while preparing image lock: %w", err)
-	}
-	graphSHA, err = config.DeliveryGraphSHA256(project, delivery.Profile)
-	if err != nil {
-		return false, fmt.Errorf("recheck delivery graph before publishing image lock: %w", err)
-	}
-	if graphSHA != delivery.GraphSHA256 {
-		return false, fmt.Errorf("delivery graph changed while preparing image lock: found %s, want %s", graphSHA, delivery.GraphSHA256)
-	}
-	if bundle != nil {
-		sourceSHA, err := config.AtumSourceSHA256(&validation)
-		if err != nil {
-			return false, fmt.Errorf("recheck deployment source before publishing image lock: %w", err)
-		}
-		if sourceSHA != bundle.AtumSourceSHA256 {
-			return false, fmt.Errorf("deployment source changed while preparing image lock: found %s, want %s", sourceSHA, bundle.AtumSourceSHA256)
-		}
-	}
-	if err := fssecure.ReplaceRegular(project.Root, config.LockFilename, data, 0o644); err != nil {
-		return false, err
-	}
-	project.Lock = next
-	project.LockData = data
-	return true, nil
-}
-
-func compareFile(root, relative string, expected []byte) error {
-	file, err := fssecure.OpenRegular(root, relative)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return err
-	}
-	want := sha256.Sum256(expected)
-	if !bytes.Equal(hash.Sum(nil), want[:]) {
-		return fmt.Errorf("%s has checksum %s, want %s", relative, hex.EncodeToString(hash.Sum(nil)), hex.EncodeToString(want[:]))
-	}
-	return nil
 }
