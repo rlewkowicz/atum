@@ -154,6 +154,10 @@ var configuredOfficialImages = map[string]configuredOfficialIdentity{
 		provenance: "https://github.com/moby/buildkit",
 		license:    "Apache-2.0",
 	},
+	"docker.io/library/golang": {
+		provenance: "docker.io/library/golang",
+		license:    "BSD-3-Clause",
+	},
 	"docker.io/rancher/local-path-provisioner": {
 		provenance: "https://github.com/rancher/local-path-provisioner",
 		license:    "Apache-2.0",
@@ -280,6 +284,13 @@ func admitFinalRenderedImages(
 				},
 			})
 			seenTargets[index] = struct{}{}
+		case "first-party":
+			if image.Delivery.Default.Type != "build" ||
+				image.Delivery.Default.BakeTarget == "" {
+				return fmt.Errorf("first-party image %s has no reproducible build", image.ID)
+			}
+			preAdmitted++
+			continue
 		case "controller-generated":
 			return fmt.Errorf(
 				"controller-generated image %s has no current official admission boundary",

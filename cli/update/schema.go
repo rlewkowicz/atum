@@ -72,7 +72,22 @@ func projectGenericChartSchema(tree *candidateTree) error {
 	} else if !bytes.Contains(data, []byte(newRequired)) {
 		return errors.New("project desired schema: generic chart source shape is unsupported")
 	}
+	if err := projectFirstPartyImageSchema(tree); err != nil {
+		return err
+	}
 	return projectChartArtifactSchema(tree)
+}
+
+func projectFirstPartyImageSchema(tree *candidateTree) error {
+	data, err := tree.CandidateData(desiredSchemaFile)
+	if err != nil { return err }
+	const oldEnum = `"discovery": {"enum": ["rendered", "configuration", "controller-generated", "kubespray"]}`
+	const newEnum = `"discovery": {"enum": ["rendered", "configuration", "first-party", "controller-generated", "kubespray"]}`
+	if bytes.Contains(data, []byte(newEnum)) { return nil }
+	if bytes.Count(data, []byte(oldEnum)) != 1 {
+		return errors.New("project desired schema: image discovery vocabulary is unsupported")
+	}
+	return tree.Set(desiredSchemaFile, bytes.Replace(data, []byte(oldEnum), []byte(newEnum), 1))
 }
 
 func projectChartArtifactSchema(tree *candidateTree) error {

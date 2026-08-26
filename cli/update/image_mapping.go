@@ -26,6 +26,37 @@ func imageTargetsByID(images []config.Image) map[string]string {
 	return targets
 }
 
+func projectOperatorImage(tree *candidateTree, images []config.Image) error {
+	target := ""
+	for _, image := range images {
+		if image.ID == "atum-operator" {
+			target = image.Target
+			break
+		}
+	}
+	if target == "" {
+		return errors.New("delivery inventory has no atum-operator image")
+	}
+	const relative = "platform/apps/atum-operator/deployment.yaml"
+	current, err := tree.YAML(relative)
+	if err != nil {
+		return fmt.Errorf("read Atum operator deployment: %w", err)
+	}
+	candidate := cloneMap(current)
+	spec, ok := candidate["spec"].(map[string]any)
+	if !ok { return errors.New("Atum operator deployment has no spec") }
+	template, ok := spec["template"].(map[string]any)
+	if !ok { return errors.New("Atum operator deployment has no pod template") }
+	pod, ok := template["spec"].(map[string]any)
+	if !ok { return errors.New("Atum operator deployment has no pod spec") }
+	containers, ok := pod["containers"].([]any)
+	if !ok || len(containers) != 1 { return errors.New("Atum operator deployment must have exactly one container") }
+	container, ok := containers[0].(map[string]any)
+	if !ok || container["name"] != "manager" { return errors.New("Atum operator manager container is invalid") }
+	container["image"] = target
+	return setCandidateYAML(tree, relative, current, candidate)
+}
+
 func imageTargetReplacements(
 	previous map[string]string,
 	images []config.Image,

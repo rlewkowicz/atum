@@ -103,7 +103,8 @@ func materializeBuildWorkspace(root string) (string, func(), error) {
 
 func buildSnapshotPath(name string) bool {
 	return name == ".dockerignore" || name == "go.mod" || name == "go.sum" ||
-		strings.HasPrefix(name, "cli/") || strings.HasPrefix(name, "platform/build/")
+		strings.HasPrefix(name, "cli/") || strings.HasPrefix(name, "cmd/atum-operator/") ||
+		strings.HasPrefix(name, "operator/") || strings.HasPrefix(name, "platform/build/")
 }
 
 func materializeGitFile(entry gitsnapshot.File, path string, mode os.FileMode, buffer []byte) error {

@@ -1,0 +1,89 @@
+apiVersion: platform.atum.dev/v1alpha1
+kind: PlatformConfiguration
+metadata:
+  name: atum
+  namespace: atum-system
+spec:
+  domain: atum.test
+  keycloak:
+    realm: master
+    administrator:
+      username: atum
+      group: atum-admins
+      realmRole: admin
+    groupsScope:
+      name: atum-groups
+      claimName: groups
+    scopes: [openid, profile, email, groups]
+    clients:
+      - id: atum-headlamp
+        kind: PublicPKCE
+        redirectURIs: [https://headlamp.atum.test/oidc-callback]
+        webOrigins: [https://headlamp.atum.test]
+        audience: true
+      - id: atum-kiali
+        kind: Confidential
+        redirectURIs: [https://kiali.atum.test/kiali]
+        webOrigins: [https://kiali.atum.test]
+        secretKey: ATUM_KIALI_CLIENT_SECRET
+        audience: true
+      - id: atum-grafana
+        kind: Confidential
+        redirectURIs: [https://grafana.atum.test/login/generic_oauth]
+        webOrigins: [https://grafana.atum.test]
+        secretKey: ATUM_GRAFANA_CLIENT_SECRET
+      - id: atum-gitlab
+        kind: Confidential
+        redirectURIs: [https://gitlab.atum.test/users/auth/openid_connect/callback]
+        webOrigins: [https://gitlab.atum.test]
+        secretKey: ATUM_GITLAB_CLIENT_SECRET
+      - id: atum-policy-reporter
+        kind: Confidential
+        redirectURIs: [https://policy.atum.test/callback]
+        webOrigins: [https://policy.atum.test]
+        secretKey: ATUM_POLICY_REPORTER_CLIENT_SECRET
+      - id: atum-harbor
+        kind: Confidential
+        redirectURIs: [https://harbor.atum.test/c/oidc/callback]
+        webOrigins: [https://harbor.atum.test]
+        secretKey: ATUM_HARBOR_CLIENT_SECRET
+      - id: atum-vault
+        kind: Confidential
+        redirectURIs: [https://vault.atum.test/ui/vault/auth/oidc/oidc/callback]
+        webOrigins: [https://vault.atum.test]
+        secretKey: ATUM_VAULT_CLIENT_SECRET
+      - id: atum-prometheus
+        kind: Confidential
+        redirectURIs: [https://prometheus.atum.test/oauth2/callback]
+        webOrigins: [https://prometheus.atum.test]
+        secretKey: ATUM_PROMETHEUS_CLIENT_SECRET
+      - id: atum-alertmanager
+        kind: Confidential
+        redirectURIs: [https://alertmanager.atum.test/oauth2/callback]
+        webOrigins: [https://alertmanager.atum.test]
+        secretKey: ATUM_ALERTMANAGER_CLIENT_SECRET
+      - id: atum-opensearch
+        kind: Confidential
+        redirectURIs: [https://opensearch.atum.test/oauth2/callback]
+        webOrigins: [https://opensearch.atum.test]
+        secretKey: ATUM_OPENSEARCH_CLIENT_SECRET
+  vault:
+    authPath: oidc
+    policy:
+      name: atum-admin
+      rules: |
+        path "*" {
+          capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
+        }
+    role:
+      name: atum-admin
+      clientID: atum-vault
+      clientSecretKey: ATUM_VAULT_CLIENT_SECRET
+      redirectURIs:
+        - https://vault.atum.test/ui/vault/auth/oidc/oidc/callback
+      scopes: [openid, profile, email, groups]
+      groupsClaim: groups
+    externalGroup:
+      name: atum-admins
+      claim: atum-admins
+      policyName: atum-admin

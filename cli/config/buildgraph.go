@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -157,7 +158,9 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	}
 	graphFiles := []string{
 		"docker/Dockerfile.delivery",
+		"docker/Dockerfile.operator",
 	}
+	repositoryFiles := make([]string, 0, 16)
 	for _, image := range project.Desired.Delivery.Images {
 		if image.Delivery.Default.Type != "build" {
 			continue
@@ -165,6 +168,13 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 		for _, material := range image.Delivery.Default.Materials {
 			local, exists := strings.CutPrefix(material, filepath.ToSlash(filepath.Dir(buildGraphPath))+"/")
 			if !exists {
+				if image.Discovery == "first-party" {
+					resolved, err := repositoryGraphMaterialFiles(project, material)
+					if err != nil {
+						return "", fmt.Errorf("resolve first-party build material %s: %w", material, err)
+					}
+					repositoryFiles = append(repositoryFiles, resolved...)
+				}
 				continue
 			}
 			files, err := localGraphMaterialFiles(project, local)
@@ -173,6 +183,14 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 			}
 			graphFiles = append(graphFiles, files...)
 		}
+	}
+	repositoryFiles = compactStrings(repositoryFiles)
+	sort.Strings(repositoryFiles)
+	for _, relative := range repositoryFiles {
+		data, mode, err := graphFile(project, relative, files)
+		if err != nil { return "", err }
+		digest := sha256.Sum256(data)
+		_, _ = fmt.Fprintf(hash, "%s\x00%o\n%s  %s\n", relative, mode.Perm(), hex.EncodeToString(digest[:]), relative)
 	}
 	graphFiles = compactStrings(graphFiles)
 	sort.Strings(graphFiles)
@@ -187,7 +205,12 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	}
 	buildkit := ""
 	sbom := ""
+	operatorBuilder := ""
+	operatorBuild := false
 	for _, image := range project.Desired.Delivery.Images {
+		if image.ID == "atum-operator" && image.Delivery.Default.Type == "build" {
+			operatorBuild = true
+		}
 		if image.Delivery.Default.Type != "mirror" ||
 			image.Delivery.Default.Source == "" || image.Delivery.Default.Digest == "" {
 			continue
@@ -198,6 +221,8 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 			buildkit = reference
 		case "sbom-scanner":
 			sbom = reference
+		case "operator-builder":
+			operatorBuilder = reference
 		}
 	}
 	if buildkit == "" {
@@ -205,6 +230,9 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	}
 	if sbom == "" {
 		return "", fmt.Errorf("delivery graph has no sbom-scanner image")
+	}
+	if operatorBuild && operatorBuilder == "" {
+		return "", fmt.Errorf("delivery graph has no operator-builder image")
 	}
 	for _, input := range []string{
 		"ATUM_CACHE_REGISTRY=" + project.Desired.Delivery.Registry.Host + "/buildkit",
@@ -214,6 +242,7 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 		"ATUM_DEBIAN_IMAGE=" + project.Desired.Delivery.Policy.BuildBase,
 		"ATUM_PLATFORM=" + project.Desired.Project.Platform,
 		"ATUM_SBOM_GENERATOR_IMAGE=" + sbom,
+		"ATUM_OPERATOR_BUILDER_IMAGE=" + operatorBuilder,
 		"SOURCE_DATE_EPOCH=0",
 	} {
 		_, _ = fmt.Fprintln(hash, input)
@@ -259,6 +288,23 @@ func localGraphMaterialFiles(project *Project, relative string) ([]string, error
 	return files, err
 }
 
+func repositoryGraphMaterialFiles(project *Project, relative string) ([]string, error) {
+	clean, err := fssecure.Relative(relative)
+	if err != nil { return nil, err }
+	path, err := fssecure.Resolve(project.Root, clean, false)
+	if err != nil { return nil, err }
+	info, err := os.Lstat(path)
+	if err != nil { return nil, err }
+	if info.Mode().IsRegular() { return []string{filepath.ToSlash(clean)}, nil }
+	if !info.IsDir() { return nil, errors.New("material is not a regular file or directory") }
+	result := make([]string, 0, 16)
+	err = fssecure.WalkRegularFiles(path, func(_ string, child string, _ os.FileInfo) error {
+		result = append(result, filepath.ToSlash(filepath.Join(clean, child)))
+		return nil
+	})
+	return result, err
+}
+
 func compactStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := values[:0]
@@ -302,6 +348,11 @@ func validatePinnedBuildMaterial(problems *[]string, policy DeliveryPolicy, labe
 		local := strings.TrimPrefix(material, filepath.ToSlash(filepath.Dir(buildGraphPath))+"/")
 		if _, err := fssecure.Relative(local); err != nil {
 			*problems = append(*problems, fmt.Sprintf("%s local input is invalid: %s", label, material))
+		}
+	case material == "go.mod" || material == "go.sum" ||
+		material == "cmd/atum-operator" || material == "operator":
+		if _, err := fssecure.Relative(material); err != nil {
+			*problems = append(*problems, fmt.Sprintf("%s first-party input is invalid: %s", label, material))
 		}
 	case strings.HasPrefix(material, "https://"):
 		marker := "#sha256:"

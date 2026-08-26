@@ -373,6 +373,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	if err := projectOperatorImage(tree, desired.Delivery.Images); err != nil {
+		return Result{}, err
+	}
 
 	_, err = reconcileBootstrapImageVersions(&desired, &lock, bootstrapCharts)
 	if err != nil {

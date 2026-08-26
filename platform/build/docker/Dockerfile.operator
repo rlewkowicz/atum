@@ -1,0 +1,15 @@
+FROM atum_go_upstream AS build
+WORKDIR /src
+COPY --from=atum_source go.mod go.sum ./
+COPY --from=atum_source cmd/atum-operator ./cmd/atum-operator
+COPY --from=atum_source operator ./operator
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+    go build -trimpath -buildvcs=false -ldflags="-s -w" \
+    -o /out/atum-operator ./cmd/atum-operator
+
+FROM scratch AS atum-operator
+COPY --from=build /out/atum-operator /atum-operator
+USER 65532:65532
+ENTRYPOINT ["/atum-operator"]

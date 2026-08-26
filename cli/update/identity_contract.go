@@ -12,16 +12,20 @@ import (
 
 	"atum/cli/config"
 	"atum/cli/identity"
+	platformv1alpha1 "atum/operator/api/v1alpha1"
 
 	"gopkg.in/yaml.v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 const identityTemplateRoot = "platform/templates/identity"
 
 type identityRenderContext struct {
-	Values    string
-	Namespace string
-	Cluster   string
+	Values                string
+	OperatorConfiguration string
+	Namespace             string
+	Cluster               string
 }
 
 type identityOutput struct {
@@ -110,20 +114,6 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 			}},
 		},
 	}}
-	dnsEgress := map[string]any{
-		"to": []any{map[string]any{
-			"namespaceSelector": map[string]any{"matchLabels": map[string]any{
-				"kubernetes.io/metadata.name": "kube-system",
-			}},
-			"podSelector": map[string]any{"matchLabels": map[string]any{
-				"k8s-app": "kube-dns",
-			}},
-		}},
-		"ports": []any{
-			map[string]any{"port": 53, "protocol": "TCP"},
-			map[string]any{"port": 53, "protocol": "UDP"},
-		},
-	}
 	harborSettings, err := json.Marshal(map[string]any{
 		"auth_mode":                    "oidc_auth",
 		"oidc_name":                    "Atum",
@@ -288,70 +278,16 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 					"KEYCLOAK_ADMIN":          "atum-bootstrap",
 					"KEYCLOAK_ADMIN_PASSWORD": "${ATUM_IDENTITY_BOOTSTRAP_PASSWORD}",
 				}}},
-			},
-				"networkPolicies": map[string]any{"additionalPolicies": []any{map[string]any{
-					"name": "allow-identity-reconcile-to-keycloak",
-					"spec": map[string]any{
-						"podSelector": map[string]any{"matchLabels": map[string]any{
-							"atum.dev/identity-job": "keycloak",
-						}},
-						"policyTypes": []any{"Egress"},
-						"egress": []any{
-							dnsEgress,
-							map[string]any{"to": []any{map[string]any{
-								"namespaceSelector": map[string]any{"matchLabels": map[string]any{
-									"kubernetes.io/metadata.name": "istio-gateway",
-								}},
-								"podSelector": map[string]any{"matchLabels": map[string]any{
-									"istio": "ingressgateway",
-								}},
-							}}, "ports": []any{map[string]any{
-								"port": 8443, "protocol": "TCP",
-							}}},
-						},
-					},
-				}}},
 			}},
 			"vault": map[string]any{"values": map[string]any{
 				"istio": map[string]any{"serviceEntries": map[string]any{
 					"custom": keycloakServiceEntries,
 				}},
-				"networkPolicies": map[string]any{
-					"egress": map[string]any{"from": map[string]any{
-						"vault": map[string]any{"to": map[string]any{"definition": map[string]any{
-							"sso": true,
-						}}},
-					}},
-					"additionalPolicies": []any{map[string]any{
-						"name": "allow-vault-identity-reconcile",
-						"spec": map[string]any{
-							"podSelector": map[string]any{"matchLabels": map[string]any{
-								"atum.dev/identity-job": "vault",
-							}},
-							"policyTypes": []any{"Egress"},
-							"egress": []any{
-								dnsEgress,
-								map[string]any{
-									"to": []any{map[string]any{"podSelector": map[string]any{
-										"matchLabels": map[string]any{"app.kubernetes.io/name": "vault"},
-									}}},
-									"ports": []any{map[string]any{"port": 8200, "protocol": "TCP"}},
-								},
-								map[string]any{
-									"to": []any{map[string]any{
-										"namespaceSelector": map[string]any{"matchLabels": map[string]any{
-											"kubernetes.io/metadata.name": "istio-system",
-										}},
-										"podSelector": map[string]any{"matchLabels": map[string]any{
-											"app": "istiod",
-										}},
-									}},
-									"ports": []any{map[string]any{"port": 15012, "protocol": "TCP"}},
-								},
-							},
-						},
-					}},
-				},
+				"networkPolicies": map[string]any{"egress": map[string]any{"from": map[string]any{
+					"vault": map[string]any{"to": map[string]any{"definition": map[string]any{
+						"sso": true,
+					}}},
+				}}},
 				"upstream": map[string]any{"server": map[string]any{
 					"extraEnvironmentVars": map[string]any{"VAULT_CACERT": "/var/run/atum-sso/ca.crt"},
 					"volumes": []any{map[string]any{
@@ -503,11 +439,13 @@ func renderIdentityManifests(
 		{"cluster-profile-prep.yaml.tmpl", filepath.Join(clusterRoot, "platform-profile-prep.yaml"), nil},
 		{"cluster-profile-access.yaml.tmpl", filepath.Join(clusterRoot, "platform-profile-access.yaml"), nil},
 		{"cluster-platform-certificates.yaml.tmpl", filepath.Join(clusterRoot, "platform-certificates.yaml"), nil},
+		{"cluster-atum-operator.yaml.tmpl", filepath.Join(clusterRoot, "atum-operator.yaml"), nil},
 		{"local-prep-kustomization.yaml.tmpl", "platform/profiles/local/prep/kustomization.yaml", nil},
 		{"local-prep-certificates-kustomization.yaml.tmpl", "platform/profiles/local/prep/certificates/kustomization.yaml", nil},
 		{"identity-certificate.yaml.tmpl", "platform/profiles/local/prep/certificates/identity-certificate.yaml", nil},
 		{"identity-values.yaml.tmpl", "platform/profiles/local/prep/identity-values.yaml", nil},
 		{"local-access-kustomization.yaml.tmpl", "platform/profiles/local/access/kustomization.yaml", nil},
+		{"operator-configuration.yaml.tmpl", "platform/apps/atum-operator/configuration.yaml", nil},
 	}
 	for _, namespace := range []string{"harbor", "keycloak", "vault"} {
 		namespace := namespace
@@ -636,9 +574,69 @@ func newIdentityRenderContext(
 	if err != nil {
 		return identityRenderContext{}, fmt.Errorf("encode generated identity values: %w", err)
 	}
-	return identityRenderContext{
-		Values: string(valuesYAML),
-	}, nil
+	configuration, err := operatorConfiguration(contract)
+	if err != nil {
+		return identityRenderContext{}, err
+	}
+	return identityRenderContext{Values: string(valuesYAML), OperatorConfiguration: string(configuration)}, nil
+}
+
+func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
+	admin := contract.Administrator()
+	clients := contract.Clients()
+	projected := make([]platformv1alpha1.KeycloakClient, len(clients))
+	for index, client := range clients {
+		kind := platformv1alpha1.ClientConfidential
+		if client.Type == identity.PublicPKCE {
+			kind = platformv1alpha1.ClientPublicPKCE
+		}
+		projected[index] = platformv1alpha1.KeycloakClient{
+			ID: client.ID, Kind: kind,
+			RedirectURIs: append([]string(nil), client.Callbacks...),
+			WebOrigins: []string{"https://" + client.Host},
+			Audience: client.Audience,
+		}
+	}
+	vault, found := contract.ClientForApplication(identity.Vault)
+	if !found {
+		return nil, errors.New("identity contract has no Vault client")
+	}
+	configuration := platformv1alpha1.PlatformConfiguration{
+		TypeMeta: metav1.TypeMeta{APIVersion: platformv1alpha1.GroupVersion.String(), Kind: "PlatformConfiguration"},
+		ObjectMeta: metav1.ObjectMeta{Name: platformv1alpha1.SingletonName, Namespace: platformv1alpha1.SingletonNamespace},
+		Spec: platformv1alpha1.PlatformConfigurationSpec{
+			Domain: contract.Domain(),
+			Keycloak: platformv1alpha1.KeycloakIntent{
+				Realm: contract.Realm(),
+				Administrator: platformv1alpha1.Administrator{
+					Username: admin.Username, Group: admin.Group, RealmRole: admin.ServerRole,
+				},
+				GroupsScope: platformv1alpha1.GroupsScope{Name: "atum-groups", ClaimName: contract.GroupClaim()},
+				Scopes: contract.Scopes(),
+				Clients: projected,
+			},
+			Vault: platformv1alpha1.VaultIntent{
+				AuthPath: "oidc",
+				Policy: platformv1alpha1.VaultPolicy{
+					Name: "atum-admin",
+					Purpose: platformv1alpha1.VaultPlatformAdministration,
+				},
+				Role: platformv1alpha1.VaultRole{
+					Name: "atum-admin", ClientID: vault.ID,
+					RedirectURIs: append([]string(nil), vault.Callbacks...),
+					Scopes: contract.Scopes(), GroupsClaim: contract.GroupClaim(),
+				},
+				ExternalGroup: platformv1alpha1.VaultExternalGroup{
+					Name: admin.Group, Claim: admin.Group, PolicyName: "atum-admin",
+				},
+			},
+		},
+	}
+	data, err := sigsyaml.Marshal(configuration)
+	if err != nil {
+		return nil, fmt.Errorf("encode PlatformConfiguration: %w", err)
+	}
+	return data, nil
 }
 
 func identitySecretKey(id string) string {

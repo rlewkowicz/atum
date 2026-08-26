@@ -3,3 +3,11 @@
 !go.sum
 !cli
 !cli/**
+!cmd
+!cmd/atum-operator
+!cmd/atum-operator/**
+!operator
+!operator/**
+!platform
+!platform/build
+!platform/build/**

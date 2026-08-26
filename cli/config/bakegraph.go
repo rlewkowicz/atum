@@ -315,7 +315,8 @@ func (graph *bakeGraph) validate(problems *[]string, policy DeliveryPolicy, root
 					*problems = append(*problems, fmt.Sprintf("Bake Git context %s/%s is not object-pinned: %s", name, contextName, source))
 				}
 			case source == "../.." && contextName == "atum_source" &&
-				(name == "build-job" || name == "delivery-build-job"):
+				(name == "build-job" || name == "delivery-build-job" ||
+					name == "atum-operator"):
 			default:
 				*problems = append(*problems, fmt.Sprintf("Bake target %s context %s has unsupported source %q", name, contextName, source))
 			}

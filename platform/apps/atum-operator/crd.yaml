@@ -1,0 +1,170 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: platformconfigurations.platform.atum.dev
+spec:
+  group: platform.atum.dev
+  names:
+    kind: PlatformConfiguration
+    listKind: PlatformConfigurationList
+    plural: platformconfigurations
+    singular: platformconfiguration
+    shortNames: [atumconfig]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          additionalProperties: false
+          x-kubernetes-validations:
+            - rule: self.metadata.name == 'atum' && self.metadata.namespace == 'atum-system'
+              message: PlatformConfiguration is the atum-system/atum singleton
+          required: [spec]
+          properties:
+            apiVersion: {type: string}
+            kind: {type: string}
+            metadata: {type: object}
+            spec:
+              type: object
+              additionalProperties: false
+              required: [domain, keycloak, vault]
+              x-kubernetes-validations:
+                - rule: self.domain == oldSelf.domain
+                  message: domain is immutable after provider ownership is established
+                - rule: self.keycloak.clients.exists(c, c.id == self.vault.role.clientID && c.kind == 'Confidential')
+                  message: vault.role.clientID must name one declared confidential client
+                - rule: self.vault.role.scopes == self.keycloak.scopes
+                  message: Vault role scopes must equal the canonical Keycloak scopes
+              properties:
+                domain:
+                  type: string
+                  pattern: '^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
+                keycloak:
+                  type: object
+                  additionalProperties: false
+                  required: [realm, administrator, groupsScope, scopes, clients]
+                  properties:
+                    realm: {type: string, enum: [master]}
+                    administrator:
+                      type: object
+                      additionalProperties: false
+                      required: [username, group, realmRole]
+                      properties:
+                        username: {type: string, minLength: 1}
+                        group: {type: string, minLength: 1}
+                        realmRole: {type: string, enum: [admin]}
+                    groupsScope:
+                      type: object
+                      additionalProperties: false
+                      required: [name, claimName]
+                      properties:
+                        name: {type: string, enum: [atum-groups]}
+                        claimName: {type: string, enum: [groups]}
+                    scopes:
+                      type: array
+                      minItems: 4
+                      maxItems: 4
+                      uniqueItems: true
+                      x-kubernetes-validations:
+                        - rule: self == ['openid', 'profile', 'email', 'groups']
+                          message: scopes must be openid, profile, email, groups in canonical order
+                      items: {type: string, enum: [openid, profile, email, groups]}
+                    clients:
+                      type: array
+                      minItems: 1
+                      maxItems: 32
+                      x-kubernetes-list-type: map
+                      x-kubernetes-list-map-keys: [id]
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [id, kind, redirectURIs]
+                        properties:
+                          id: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}
+                          kind: {type: string, enum: [PublicPKCE, Confidential]}
+                          redirectURIs:
+                            type: array
+                            minItems: 1
+                            maxItems: 16
+                            uniqueItems: true
+                            items: {type: string}
+                          webOrigins:
+                            type: array
+                            maxItems: 16
+                            uniqueItems: true
+                            items: {type: string}
+                          audience: {type: boolean}
+                vault:
+                  type: object
+                  additionalProperties: false
+                  required: [authPath, policy, role, externalGroup]
+                  properties:
+                    authPath: {type: string, enum: [oidc]}
+                    policy:
+                      type: object
+                      additionalProperties: false
+                      required: [name, purpose]
+                      properties:
+                        name: {type: string, minLength: 1}
+                        purpose: {type: string, enum: [PlatformAdministration]}
+                    role:
+                      type: object
+                      additionalProperties: false
+                      required: [name, clientID, redirectURIs, scopes, groupsClaim]
+                      properties:
+                        name: {type: string, minLength: 1}
+                        clientID: {type: string, minLength: 1}
+                        redirectURIs:
+                          type: array
+                          minItems: 1
+                          maxItems: 16
+                          uniqueItems: true
+                          items: {type: string}
+                        scopes:
+                          type: array
+                          minItems: 1
+                          maxItems: 4
+                          uniqueItems: true
+                          items: {type: string}
+                        groupsClaim: {type: string, enum: [groups]}
+                    externalGroup:
+                      type: object
+                      additionalProperties: false
+                      required: [name, claim, policyName]
+                      properties:
+                        name: {type: string, minLength: 1}
+                        claim: {type: string, minLength: 1}
+                        policyName: {type: string, minLength: 1}
+            status:
+              type: object
+              additionalProperties: false
+              properties:
+                observedGeneration: {type: integer, format: int64}
+                failureCount: {type: integer, format: int32, minimum: 0, maximum: 6}
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [lastTransitionTime, message, reason, status, type]
+                    properties:
+                      lastTransitionTime: {type: string, format: date-time}
+                      message: {type: string, maxLength: 512}
+                      observedGeneration: {type: integer, format: int64}
+                      reason: {type: string}
+                      status: {type: string, enum: ["True", "False", Unknown]}
+                      type: {type: string}

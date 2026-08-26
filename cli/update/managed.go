@@ -323,9 +323,18 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		"platform/apps/bigbang/source-bigbang.yaml",
 		"platform/apps/bigbang/source-opensearch.yaml",
 		"platform/apps/bigbang/source-opensearch-operator.yaml",
+		"platform/apps/atum-operator/kustomization.yaml",
+		"platform/apps/atum-operator/crd.yaml",
+		"platform/apps/atum-operator/service-account.yaml",
+		"platform/apps/atum-operator/rbac.yaml",
+		"platform/apps/atum-operator/certificate.yaml",
+		"platform/apps/atum-operator/deployment.yaml",
+		"platform/apps/atum-operator/network-policy.yaml",
+		"platform/apps/atum-operator/configuration.yaml",
 		"platform/apps/prep/kustomization.yaml",
 		"platform/apps/prep/namespace.yaml",
 		filepath.Join(clusterRoot, "bigbang.yaml"),
+		filepath.Join(clusterRoot, "atum-operator.yaml"),
 		filepath.Join(clusterRoot, "kustomization.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-access.yaml"),
 		filepath.Join(clusterRoot, "platform-certificates.yaml"),
@@ -455,6 +464,17 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 	if err != nil {
 		return err
 	}
+	for _, root := range []string{"cmd/atum-operator", "operator"} {
+		directory, err := fssecure.Resolve(tree.root, root, false)
+		if err != nil { return err }
+		if err := fssecure.WalkRegularFiles(directory, func(_ string, relative string, _ os.FileInfo) error {
+			paths = append(paths, filepath.ToSlash(filepath.Join(root, relative)))
+			return nil
+		}); err != nil {
+			return fmt.Errorf("snapshot first-party build source %s: %w", root, err)
+		}
+	}
+	paths = append(paths, "go.mod", "go.sum")
 	seen := make(map[string]struct{}, len(paths))
 	for _, relative := range paths {
 		clean, err := fssecure.Relative(relative)

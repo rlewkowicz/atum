@@ -1462,6 +1462,7 @@ func (p *Project) validate(
 		imageIDs[image.ID] = image
 		imageTargets[image.Target] = image.ID
 		if image.Discovery != "rendered" && image.Discovery != "configuration" &&
+			image.Discovery != "first-party" &&
 			image.Discovery != "controller-generated" && image.Discovery != "kubespray" {
 			add("delivery image %s has invalid discovery evidence", image.ID)
 		}
@@ -1522,6 +1523,15 @@ func (p *Project) validate(
 				add("delivery build %s requires bakeTarget and materials", image.ID)
 			}
 			evidence := image.Compatibility
+			if image.Discovery == "first-party" {
+				if evidence != nil {
+					add("first-party delivery build %s must not carry compatibility evidence", image.ID)
+				}
+				for _, material := range image.Delivery.Default.Materials {
+					validatePinnedBuildMaterial(&problems, p.Desired.Delivery.Policy, "delivery build "+image.ID, material)
+				}
+				break
+			}
 			if evidence == nil || len(evidence.Observations) == 0 ||
 				evidence.Incompatibility == "" ||
 				!strings.Contains(evidence.OfficialMaterial, "@sha256:") ||

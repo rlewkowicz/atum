@@ -15,7 +15,19 @@ const buildGraphFile = "platform/build/docker-bake.hcl"
 type compatibilityTarget struct {
 	image    config.Image
 	stage    string
-	contexts map[string]string
+	contexts map[string]bakeContext
+}
+
+type bakeContextKind uint8
+
+const (
+	bakeImageContext bakeContextKind = iota
+	bakeLocalContext
+)
+
+type bakeContext struct {
+	kind   bakeContextKind
+	source string
 }
 
 func mappedUpstreamVersion(reference, prefix string) (string, string, error) {
@@ -32,9 +44,38 @@ func mappedUpstreamVersion(reference, prefix string) (string, string, error) {
 
 func renderBuildGraph(desired config.Document) ([]byte, error) {
 	targets := make([]compatibilityTarget, 0, 4)
+	operatorBuilder := ""
+	for _, image := range desired.Delivery.Images {
+		if image.ID == "operator-builder" &&
+			image.Delivery.Default.Type == "mirror" &&
+			strings.HasPrefix(image.Delivery.Default.Digest, "sha256:") {
+			operatorBuilder = image.Target + "@" + image.Delivery.Default.Digest
+			break
+		}
+	}
 	for _, image := range desired.Delivery.Images {
 		choice := image.Delivery.Default
 		if choice.Type != "build" {
+			continue
+		}
+		if image.Discovery == "first-party" {
+			if image.ID != "atum-operator" || choice.BakeTarget != "atum-operator" {
+				return nil, fmt.Errorf("unsupported first-party build %s", image.ID)
+			}
+			if operatorBuilder == "" {
+				return nil, errors.New("Atum operator build has no immutable Harbor builder image")
+			}
+			targets = append(targets, compatibilityTarget{
+				image: image, stage: "atum-operator",
+				contexts: map[string]bakeContext{
+					"atum_source": {
+						kind: bakeLocalContext, source: "../..",
+					},
+					"atum_go_upstream": {
+						kind: bakeImageContext, source: operatorBuilder,
+					},
+				},
+			})
 			continue
 		}
 		if image.Compatibility == nil ||
@@ -44,7 +85,7 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 		}
 		target := compatibilityTarget{
 			image:    image,
-			contexts: make(map[string]string, 2),
+			contexts: make(map[string]bakeContext, 2),
 		}
 		primaryContext := ""
 		switch {
@@ -74,7 +115,9 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 					image.ID,
 				)
 			}
-			target.contexts["atum_curl_upstream"] = curlMaterial
+			target.contexts["atum_curl_upstream"] = bakeContext{
+				kind: bakeImageContext, source: curlMaterial,
+			}
 		default:
 			return nil, fmt.Errorf(
 				"build image %s has unsupported compatibility target %s",
@@ -92,8 +135,10 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 			)
 		}
 		if primaryContext != "" {
-			target.contexts[primaryContext] =
-				image.Compatibility.OfficialMaterial
+			target.contexts[primaryContext] = bakeContext{
+				kind: bakeImageContext,
+				source: image.Compatibility.OfficialMaterial,
+			}
 		}
 		targets = append(targets, target)
 	}
@@ -167,7 +212,11 @@ target "_attested" {
 		name := target.image.Delivery.Default.BakeTarget
 		fmt.Fprintf(&graph, "target %s {\n", strconv.Quote(name))
 		graph.WriteString("  inherits   = [\"_attested\"]\n")
-		graph.WriteString("  dockerfile = \"docker/Dockerfile.delivery\"\n")
+		dockerfile := "docker/Dockerfile.delivery"
+		if target.image.Discovery == "first-party" {
+			dockerfile = "docker/Dockerfile.operator"
+		}
+		fmt.Fprintf(&graph, "  dockerfile = %s\n", strconv.Quote(dockerfile))
 		fmt.Fprintf(&graph, "  target     = %s\n", strconv.Quote(target.stage))
 		fmt.Fprintf(&graph, "  tags       = [%s]\n", strconv.Quote(target.image.Target))
 		if len(target.contexts) != 0 {
@@ -178,13 +227,20 @@ target "_attested" {
 			}
 			sort.Strings(contextNames)
 			for _, contextName := range contextNames {
+				source, err := renderBakeContext(target.contexts[contextName])
+				if err != nil {
+					return nil, fmt.Errorf(
+						"build target %s context %s: %w",
+						name,
+						contextName,
+						err,
+					)
+				}
 				fmt.Fprintf(
 					&graph,
 					"    %s = %s\n",
 					contextName,
-					strconv.Quote(
-						"docker-image://"+target.contexts[contextName],
-					),
+					strconv.Quote(source),
 				)
 			}
 			graph.WriteString("  }\n")
@@ -226,6 +282,26 @@ target "_attested" {
 		graph.WriteString("}\n\n")
 	}
 	return []byte(strings.TrimRight(graph.String(), "\n") + "\n"), nil
+}
+
+func renderBakeContext(value bakeContext) (string, error) {
+	if value.source == "" {
+		return "", errors.New("source is empty")
+	}
+	switch value.kind {
+	case bakeLocalContext:
+		if value.source != "../.." {
+			return "", fmt.Errorf("unsupported local source %q", value.source)
+		}
+		return value.source, nil
+	case bakeImageContext:
+		if strings.Contains(value.source, "://") {
+			return "", fmt.Errorf("image source %q is already qualified", value.source)
+		}
+		return "docker-image://" + value.source, nil
+	default:
+		return "", fmt.Errorf("source %q has an unsupported context kind", value.source)
+	}
 }
 
 func materialWithPrefix(materials []string, prefix string) (string, bool) {

@@ -151,6 +151,30 @@ func (projection *BootstrapProjection) MarshalKubernetesSecret() ([]byte, error)
 	)
 }
 
+func (projection *BootstrapProjection) MarshalOperatorSecret() ([]byte, error) {
+	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
+		return nil, errors.New("identity projection is unavailable")
+	}
+	values := make(secretvalue.Values, len(projection.values))
+	for key, value := range projection.values {
+		if key == "ATUM_IDENTITY_ADMIN_USERNAME" ||
+			key == "ATUM_IDENTITY_ADMIN_PASSWORD" ||
+			key == "ATUM_IDENTITY_BOOTSTRAP_PASSWORD" ||
+			strings.HasSuffix(key, "_CLIENT_SECRET") {
+			values[key] = append([]byte(nil), value...)
+		}
+	}
+	defer values.Clear()
+	return secretvalue.MarshalKubernetesSecret(
+		"atum-provider-credentials",
+		"atum-system",
+		"atum.dev/identity-digest",
+		projection.digest,
+		values,
+		identityProjectionLimit,
+	)
+}
+
 func (projection *BootstrapProjection) Digest() string {
 	if projection == nil {
 		return ""

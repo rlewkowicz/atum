@@ -56,9 +56,12 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 		desired.Platform.Values.Operational,
 		desired.Platform.Values.Generated,
 		filepath.Join(desired.Platform.Directory, "apps", "prep", "namespace.yaml"),
+		filepath.Join(desired.Platform.Directory, "apps", "atum-operator")+"/",
 		filepath.Join(desired.Platform.Directory, "build", "docker-bake.hcl"),
 		filepath.Join(desired.Platform.Directory, "build", "docker", "Dockerfile.delivery"),
+		filepath.Join(desired.Platform.Directory, "build", "docker", "Dockerfile.operator"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "bigbang.yaml"),
+		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "atum-operator.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "kustomization.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-profile-access.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-certificates.yaml"),
@@ -102,12 +105,13 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 			if strings.Contains(material, "://") || strings.Contains(material, "@") {
 				continue
 			}
-			if filepath.ToSlash(material) == filepath.ToSlash(filepath.Join(
-				desired.Platform.Directory,
-				"build",
-				"docker",
-				"Dockerfile.delivery",
-			)) {
+			if material == "go.mod" || material == "go.sum" ||
+				filepath.ToSlash(material) == filepath.ToSlash(filepath.Join(
+					desired.Platform.Directory, "build", "docker", "Dockerfile.delivery",
+				)) ||
+				filepath.ToSlash(material) == filepath.ToSlash(filepath.Join(
+					desired.Platform.Directory, "build", "docker", "Dockerfile.operator",
+				)) {
 				members = append(members, material)
 				continue
 			}
@@ -144,8 +148,10 @@ func FluxSecretSourceNames() []string {
 	return []string{
 		".sops.yaml",
 		"kustomization.yaml",
+		"operator-namespace.yaml",
 		"stateful.json",
 		"identity.json",
+		"operator.json",
 		"pki/kustomization.yaml",
 		"pki/cert-manager-namespace.yaml",
 		"pki/root-ca.json",

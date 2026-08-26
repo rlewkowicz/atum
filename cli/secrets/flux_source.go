@@ -23,8 +23,10 @@ const fluxSourceEncryptedRegex = "^(data|stringData)$"
 var fluxSourceKustomization = []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - operator-namespace.yaml
   - stateful.json
   - identity.json
+  - operator.json
 `)
 
 var fluxPKIKustomization = []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
@@ -40,6 +42,16 @@ var certManagerNamespace = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
   name: cert-manager
+`)
+
+var operatorNamespace = []byte(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: atum-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 `)
 
 type FluxSourceResult struct {
@@ -127,6 +139,11 @@ func RenderFluxSource(
 		return FluxSourceResult{}, err
 	}
 	defer clear(identityPlaintext)
+	operatorPlaintext, err := identityProjection.MarshalOperatorSecret()
+	if err != nil {
+		return FluxSourceResult{}, err
+	}
+	defer clear(operatorPlaintext)
 	rootCAPlaintext, _, err := rootCAKubernetesSecret(credentials)
 	if err != nil {
 		return FluxSourceResult{}, err
@@ -146,6 +163,13 @@ func RenderFluxSource(
 		return FluxSourceResult{}, fmt.Errorf("encrypt identity Flux Secret: %w", err)
 	}
 	defer clear(identityEncrypted)
+	operatorEncrypted, err := sops.EncryptKubernetesSecret(
+		ctx, operatorPlaintext, ageIdentity.Recipient(),
+	)
+	if err != nil {
+		return FluxSourceResult{}, fmt.Errorf("encrypt operator Flux Secret: %w", err)
+	}
+	defer clear(operatorEncrypted)
 	rootCAEncrypted, err := sops.EncryptKubernetesSecret(
 		ctx, rootCAPlaintext, ageIdentity.Recipient(),
 	)
@@ -167,8 +191,10 @@ func RenderFluxSource(
 	dataByName := map[string][]byte{
 		".sops.yaml":                   sopsConfiguration,
 		"kustomization.yaml":           fluxSourceKustomization,
+		"operator-namespace.yaml":       operatorNamespace,
 		"stateful.json":                 statefulEncrypted,
 		"identity.json":                 identityEncrypted,
+		"operator.json":                 operatorEncrypted,
 		"pki/kustomization.yaml":        fluxPKIKustomization,
 		"pki/cert-manager-namespace.yaml": certManagerNamespace,
 		"pki/root-ca.json":              rootCAEncrypted,
@@ -308,6 +334,14 @@ func ValidateFluxSource(
 	if !bytes.Equal(namespace, certManagerNamespace) {
 		return errors.New("Flux cert-manager namespace source is stale; run `atum secrets render`")
 	}
+	operatorNS, err := readFluxSourceFile(
+		sourceRoot, filepath.Join(root, "operator-namespace.yaml"),
+	)
+	if err != nil { return err }
+	defer clear(operatorNS)
+	if !bytes.Equal(operatorNS, operatorNamespace) {
+		return errors.New("Flux Atum operator namespace source is stale; run `atum secrets render`")
+	}
 	for _, expected := range []struct {
 		name       string
 		secretName string
@@ -329,6 +363,11 @@ func ValidateFluxSource(
 		{
 			name: "identity.json", secretName: "atum-platform-identity",
 			namespace: "flux-system", secretType: "Opaque",
+			annotation: "atum.dev/identity-digest", digest: identityDigest,
+		},
+		{
+			name: "operator.json", secretName: "atum-provider-credentials",
+			namespace: "atum-system", secretType: "Opaque",
 			annotation: "atum.dev/identity-digest", digest: identityDigest,
 		},
 	} {
