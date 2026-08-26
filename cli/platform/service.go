@@ -27,6 +27,7 @@ type Environment func(string) string
 
 type Service struct {
 	Project       *config.Project
+	Publication   *delivery.Publication
 	Logger        *slog.Logger
 	Runner        process.Runner
 	Environment   Environment
@@ -115,7 +116,7 @@ func (status LocalIntegrationStatus) Exact() bool {
 }
 
 type Status struct {
-	BundleSHA256   string                   `json:"bundleSha256"`
+	PublicationSHA256 string                `json:"publicationSha256"`
 	SourceCommit   string                   `json:"sourceCommit"`
 	ActiveProfile  string                   `json:"activeProfile"`
 	Reconciliation ReconciliationStatus     `json:"reconciliation"`
@@ -162,10 +163,6 @@ func (service Service) kubeconfig() string {
 		"artifacts",
 		"admin.conf",
 	)
-}
-
-func (service Service) deploymentBundle(ctx context.Context) (*delivery.DeploymentBundle, error) {
-	return delivery.MaterializeLockedBundle(ctx, service.Project)
 }
 
 func timeoutOrDefault(timeout time.Duration) time.Duration {

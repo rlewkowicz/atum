@@ -22,11 +22,11 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 			"parallelism", options.Parallelism)
 		return nil
 	}
-	credentials, bundle, err := service.platformInputs(ctx)
+	credentials, publication, err := service.platformInputs(ctx)
 	if err != nil {
 		return err
 	}
-	handoff, err := service.Seed(ctx, bundle, credentials, options)
+	handoff, err := service.Seed(ctx, publication, credentials, options)
 	credentials.Clear()
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 // potentially long Kubespray convergence without repeating it. Its fields are
 // deliberately private so callers cannot weaken the verified identities.
 type Handoff struct {
-	bundle           *delivery.DeploymentBundle
+	publication      *delivery.Publication
 	forgejo          *forgejoControl
 	identityContract *identity.Contract
 	rootCAPEM        []byte
@@ -52,7 +52,7 @@ func (handoff *Handoff) Clear() {
 	if handoff.forgejo != nil {
 		handoff.forgejo.clear()
 	}
-	handoff.bundle = nil
+	handoff.publication = nil
 	handoff.forgejo = nil
 	handoff.identityContract = nil
 	clear(handoff.rootCAPEM)
@@ -67,21 +67,22 @@ func (handoff *Handoff) RootCAPEM() []byte {
 }
 
 // Seed waits for the Terraform-owned bastion services and publishes the exact
-// bundle before Kubernetes convergence begins. It does not access or mutate a
+// publication before Kubernetes convergence begins. It does not access or mutate a
 // cluster.
 func (service Service) Seed(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	credentials atumsecrets.Document,
 	options PrepareOptions,
 ) (*Handoff, error) {
 	if err := service.Validate(); err != nil {
 		return nil, err
 	}
-	if bundle == nil || service.Project.ExecutionBundle == nil ||
-		bundle.ArchiveSHA256 != service.Project.ExecutionBundle.SHA256 ||
-		bundle.Identity.ArchiveSHA256 != service.Project.ExecutionBundle.SHA256 {
-		return nil, errors.New("exact deployment bundle is required")
+	if publication == nil ||
+		publication.SourceSHA256 == "" ||
+		len(publication.Images) != len(service.Project.Desired.Delivery.Images) ||
+		len(publication.Charts) != len(service.Project.Lock.Resolved.Artifacts) {
+		return nil, errors.New("canonical publication inputs are required")
 	}
 	if err := credentials.Validate(); err != nil {
 		return nil, fmt.Errorf("validate seed credentials: %w", err)
@@ -92,36 +93,40 @@ func (service Service) Seed(
 	}
 	if err := service.validateFluxSourceBeforePublication(
 		ctx,
-		bundle.SourceRoot,
+		publication.SourceRoot,
 		contract,
 		credentials,
 	); err != nil {
 		return nil, err
 	}
 	timeout := timeoutOrDefault(options.Timeout)
-	progress.Start(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", "waiting for bastion registry")
+	progress.Start(ctx, progress.Platform, "harbor-publication", "Harbor publication", "waiting for bastion registry")
 	registryCredentials, err := service.configureHarbor(ctx, credentials, timeout)
 	if err != nil {
-		progress.Fail(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", err)
+		progress.Fail(ctx, progress.Platform, "harbor-publication", "Harbor publication", err)
 		return nil, err
 	}
 	defer registryCredentials.Clear()
-	progress.Update(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", "publishing exact OCI content", 0, len(bundle.Images)+len(bundle.Charts))
-	if err := service.publishBundle(ctx, bundle, registryCredentials, options.Parallelism); err != nil {
-		progress.Fail(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", err)
-		return nil, fmt.Errorf("publish deployment bundle: %w", err)
+	progress.Update(ctx, progress.Platform, "harbor-publication", "Harbor publication", "publishing exact OCI content", 0, len(publication.Images)+len(publication.Charts))
+	if err := service.publishPublication(ctx, publication, registryCredentials, options.Parallelism); err != nil {
+		progress.Fail(ctx, progress.Platform, "harbor-publication", "Harbor publication", err)
+		return nil, fmt.Errorf("publish canonical platform content: %w", err)
 	}
-	progress.Done(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication",
-		fmt.Sprintf("%d images and %d charts published", len(bundle.Images), len(bundle.Charts)))
+	progress.Done(ctx, progress.Platform, "harbor-publication", "Harbor publication",
+		fmt.Sprintf("%d images and %d charts published", len(publication.Images), len(publication.Charts)))
 	progress.Start(ctx, progress.Platform, "forgejo", "Forgejo sources", "publishing exact source snapshots")
-	forgejo, err := service.configureForgejo(ctx, bundle, credentials)
+	forgejo, err := service.configureForgejo(ctx, publication, credentials)
 	if err != nil {
 		progress.Fail(ctx, progress.Platform, "forgejo", "Forgejo sources", err)
 		return nil, err
 	}
 	progress.Done(ctx, progress.Platform, "forgejo", "Forgejo sources", "immutable sources ready for planner handoff")
+	if err := delivery.SaveReceipt(service.Project, publication); err != nil {
+		forgejo.clear()
+		return nil, fmt.Errorf("persist immutable publication receipt: %w", err)
+	}
 	handoff := &Handoff{
-		bundle:           bundle,
+		publication:      publication,
 		forgejo:          forgejo,
 		identityContract: contract,
 		rootCAPEM:        append([]byte(nil), credentials.RootCA.Certificate.Bytes()...),
@@ -178,10 +183,10 @@ func (service Service) preparePlatform(
 	handoff *Handoff,
 	options PrepareOptions,
 ) error {
-	if handoff == nil || handoff.bundle == nil || handoff.forgejo == nil {
-		return errors.New("deployment bundle is required")
+	if handoff == nil || handoff.publication == nil || handoff.forgejo == nil {
+		return errors.New("verified publication handoff is required")
 	}
-	bundle := handoff.bundle
+	publication := handoff.publication
 	timeout := timeoutOrDefault(options.Timeout)
 	if len(handoff.forgejo.fluxToken) == 0 {
 		token, err := handoff.forgejo.rotateFluxToken(ctx)
@@ -192,11 +197,11 @@ func (service Service) preparePlatform(
 		handoff.forgejo.fluxToken = token
 	}
 
-	if err := service.bootstrapFlux(ctx, bundle, handoff, timeout); err != nil {
+	if err := service.bootstrapFlux(ctx, publication, handoff, timeout); err != nil {
 		progress.Fail(ctx, progress.Platform, "flux", "Flux", err)
 		return err
 	}
-	service.logger().InfoContext(ctx, "platform preparation complete", "bundle", bundle.ArchiveSHA256)
+	service.logger().InfoContext(ctx, "platform preparation complete", "source", publication.SourceSHA256)
 	return nil
 }
 
@@ -247,11 +252,11 @@ func (service Service) Apply(ctx context.Context, options ApplyOptions) error {
 		service.logger().InfoContext(ctx, "platform application would publish sources, invoke Flux, and observe readiness")
 		return nil
 	}
-	credentials, bundle, err := service.platformInputs(ctx)
+	credentials, publication, err := service.platformInputs(ctx)
 	if err != nil {
 		return err
 	}
-	handoff, err := service.Seed(ctx, bundle, credentials, PrepareOptions{Timeout: options.Timeout})
+	handoff, err := service.Seed(ctx, publication, credentials, PrepareOptions{Timeout: options.Timeout})
 	credentials.Clear()
 	if err != nil {
 		return err
@@ -260,50 +265,47 @@ func (service Service) Apply(ctx context.Context, options ApplyOptions) error {
 	if err := service.preparePlatform(ctx, handoff, PrepareOptions{Timeout: options.Timeout}); err != nil {
 		return err
 	}
-	return service.applyPlatform(ctx, handoff.bundle, options)
+	return service.applyPlatform(ctx, options)
 }
 
 func (service Service) platformInputs(
 	ctx context.Context,
-) (atumsecrets.Document, *delivery.DeploymentBundle, error) {
+) (atumsecrets.Document, *delivery.Publication, error) {
 	credentials, err := service.credentials(ctx)
 	if err != nil {
 		return atumsecrets.Document{}, nil, err
 	}
-	bundle, err := service.deploymentBundle(ctx)
-	if err != nil {
+	if service.Publication == nil {
 		credentials.Clear()
-		return atumsecrets.Document{}, nil, err
+		return atumsecrets.Document{}, nil, errors.New(
+			"canonical local publication inputs are unavailable",
+		)
 	}
-	return credentials, bundle, nil
+	return credentials, service.Publication, nil
 }
 
 func (service Service) ApplySeeded(ctx context.Context, handoff *Handoff, options ApplyOptions) error {
 	if err := service.requireReadyCluster(ctx); err != nil {
 		return err
 	}
-	if handoff == nil || handoff.bundle == nil || handoff.forgejo == nil {
+	if handoff == nil || handoff.publication == nil || handoff.forgejo == nil {
 		return errors.New("verified platform handoff is required")
 	}
 	if err := service.preparePlatform(ctx, handoff, PrepareOptions{Timeout: options.Timeout}); err != nil {
 		return err
 	}
-	return service.applyPlatform(ctx, handoff.bundle, options)
+	return service.applyPlatform(ctx, options)
 }
 
 func (service Service) applyPlatform(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
 	options ApplyOptions,
 ) error {
-	if bundle == nil {
-		return errors.New("deployment bundle is required")
-	}
 	timeout := timeoutOrDefault(options.Timeout)
 	if err := service.waitForPlatformReconciliation(ctx, timeout); err != nil {
 		return err
 	}
-	service.logger().InfoContext(ctx, "platform apply complete", "bundle", bundle.ArchiveSHA256)
+	service.logger().InfoContext(ctx, "platform apply complete")
 	return nil
 }
 

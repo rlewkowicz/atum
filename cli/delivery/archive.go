@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"archive/tar"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -16,10 +15,7 @@ import (
 	"atum/cli/fssecure"
 	"atum/cli/gitsnapshot"
 
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
-	"github.com/go-git/go-git/v5/plumbing/revlist"
 )
 
 const copyBufferSize = 128 << 10
@@ -33,69 +29,6 @@ type archiveIdentity struct {
 	File   string `json:"file"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
-}
-
-func writeGitArchive(destination, root, bundlePath string, overrides map[string][]byte) (archiveIdentity, gitsnapshot.Identity, error) {
-	snapshot, err := gitsnapshot.Load(root)
-	if err != nil {
-		return archiveIdentity{}, gitsnapshot.Identity{}, err
-	}
-	snapshotIdentity, err := snapshot.Identity(overrides)
-	if err != nil {
-		return archiveIdentity{}, gitsnapshot.Identity{}, err
-	}
-	identity, err := writeArchive(destination, bundlePath, func(writer *tar.Writer, buffer []byte) error {
-		for _, entry := range snapshot.Files {
-			name, err := cleanArchiveName(entry.Name)
-			if err != nil {
-				return err
-			}
-			if data, replaced := overrides[name]; replaced {
-				if err := writeBytesEntry(writer, name, data, 0o644); err != nil {
-					return err
-				}
-				continue
-			}
-			switch entry.Mode {
-			case filemode.Regular, filemode.Deprecated, filemode.Executable:
-				mode := int64(0o644)
-				if entry.Mode == filemode.Executable {
-					mode = 0o755
-				}
-				reader, err := entry.Reader()
-				if err != nil {
-					return err
-				}
-				if err := writeReaderEntry(writer, buffer, reader, name, mode, entry.Size); err != nil {
-					_ = reader.Close()
-					return err
-				}
-				if err := reader.Close(); err != nil {
-					return err
-				}
-			case filemode.Symlink:
-				target, err := entry.Contents()
-				if err != nil {
-					return fmt.Errorf("read Git symlink %s: %w", name, err)
-				}
-				if !containedLink(name, target) {
-					return fmt.Errorf("Git symlink %s escapes through %s", name, target)
-				}
-				if err := writer.WriteHeader(normalizedHeader(name, 0o777, 0, tar.TypeSymlink, target)); err != nil {
-					return err
-				}
-			case filemode.Submodule:
-				return fmt.Errorf("Git repository %s contains unsupported submodule %s", root, name)
-			default:
-				return fmt.Errorf("Git repository %s contains unsupported mode %s at %s", root, entry.Mode, name)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return archiveIdentity{}, gitsnapshot.Identity{}, err
-	}
-	return identity, snapshotIdentity, nil
 }
 
 func materializeBuildWorkspace(root string) (string, func(), error) {
@@ -215,8 +148,8 @@ func writeReaderEntry(writer *tar.Writer, buffer []byte, reader io.Reader, name 
 	return nil
 }
 
-func writeDirectoryArchive(destination, root, bundlePath string) (archiveIdentity, error) {
-	return writeArchive(destination, bundlePath, func(writer *tar.Writer, buffer []byte) error {
+func writeDirectoryArchive(destination, root, artifactPath string) (archiveIdentity, error) {
+	return writeArchive(destination, artifactPath, func(writer *tar.Writer, buffer []byte) error {
 		return filepath.WalkDir(root, func(currentPath string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -240,8 +173,7 @@ func writeDirectoryArchive(destination, root, bundlePath string) (archiveIdentit
 			}
 			switch {
 			case info.Mode().IsRegular():
-				// Directory archives contain generated OCI layouts, chart
-				// payloads, and bare Git repositories. None are executable;
+				// The generated seed payload files are not executable;
 				// normalizing their mode makes the archive independent of the
 				// host umask and cache implementation.
 				if err := writeFileEntry(writer, buffer, entryPath, name, 0o644); err != nil {
@@ -266,78 +198,7 @@ func writeDirectoryArchive(destination, root, bundlePath string) (archiveIdentit
 	})
 }
 
-// writeRepositoryArchive emits a normalized bare repository containing the
-// exact selected commit and every reachable object. A worktree's Git index and
-// logs contain checkout-time metadata, so archiving .git directly would make
-// identical source pins produce different bundles. Retaining complete history
-// also lets a disconnected Forgejo accept the exact upstream commit without
-// enabling unsafe shallow-receive behavior.
-func writeRepositoryArchive(
-	ctx context.Context,
-	destination, checkout, bundlePath, version, expectedCommit string,
-) (archiveIdentity, error) {
-	source, err := git.PlainOpen(checkout)
-	if err != nil {
-		return archiveIdentity{}, fmt.Errorf("open source repository %s: %w", checkout, err)
-	}
-	head, err := source.Head()
-	if err != nil {
-		return archiveIdentity{}, fmt.Errorf("read source repository HEAD %s: %w", checkout, err)
-	}
-	if head.Hash().String() != expectedCommit {
-		return archiveIdentity{}, fmt.Errorf("source repository %s is at %s, want %s", checkout, head.Hash(), expectedCommit)
-	}
-	tag := plumbing.NewTagReferenceName(version)
-	if err := tag.Validate(); err != nil {
-		return archiveIdentity{}, fmt.Errorf("source repository tag %q is invalid: %w", version, err)
-	}
-	if _, err := source.CommitObject(head.Hash()); err != nil {
-		return archiveIdentity{}, fmt.Errorf("read source commit %s: %w", expectedCommit, err)
-	}
-
-	parent := filepath.Dir(destination)
-	repositoryRoot, err := os.MkdirTemp(parent, ".bare-repository-")
-	if err != nil {
-		return archiveIdentity{}, err
-	}
-	defer os.RemoveAll(repositoryRoot)
-	destinationRepository, err := git.PlainInit(repositoryRoot, true)
-	if err != nil {
-		return archiveIdentity{}, fmt.Errorf("initialize normalized bare repository: %w", err)
-	}
-	objects, err := revlist.Objects(source.Storer, []plumbing.Hash{head.Hash()}, nil)
-	if err != nil {
-		return archiveIdentity{}, fmt.Errorf("enumerate reachable source objects: %w", err)
-	}
-	for _, hash := range objects {
-		if err := ctx.Err(); err != nil {
-			return archiveIdentity{}, err
-		}
-		encoded, err := source.Storer.EncodedObject(plumbing.AnyObject, hash)
-		if err != nil {
-			return archiveIdentity{}, fmt.Errorf("read Git object %s: %w", hash, err)
-		}
-		written, err := destinationRepository.Storer.SetEncodedObject(encoded)
-		if err != nil {
-			return archiveIdentity{}, fmt.Errorf("write Git object %s: %w", hash, err)
-		}
-		if written != hash {
-			return archiveIdentity{}, fmt.Errorf("Git object %s changed to %s while normalizing", hash, written)
-		}
-	}
-	for _, reference := range []*plumbing.Reference{
-		plumbing.NewHashReference(plumbing.NewBranchReferenceName("main"), head.Hash()),
-		plumbing.NewHashReference(tag, head.Hash()),
-		plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main")),
-	} {
-		if err := destinationRepository.Storer.SetReference(reference); err != nil {
-			return archiveIdentity{}, fmt.Errorf("write normalized Git reference %s: %w", reference.Name(), err)
-		}
-	}
-	return writeDirectoryArchive(destination, repositoryRoot, bundlePath)
-}
-
-func writeArchive(destination, bundlePath string, populate func(*tar.Writer, []byte) error) (archiveIdentity, error) {
+func writeArchive(destination, artifactPath string, populate func(*tar.Writer, []byte) error) (archiveIdentity, error) {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 		return archiveIdentity{}, err
 	}
@@ -381,7 +242,7 @@ func writeArchive(destination, bundlePath string, populate func(*tar.Writer, []b
 	if err := syncDirectory(filepath.Dir(destination)); err != nil {
 		return archiveIdentity{}, err
 	}
-	return archiveIdentity{File: bundlePath, SHA256: hex.EncodeToString(hash.Sum(nil)), Size: counting.size}, nil
+	return archiveIdentity{File: artifactPath, SHA256: hex.EncodeToString(hash.Sum(nil)), Size: counting.size}, nil
 }
 
 func syncDirectory(path string) error {

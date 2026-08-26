@@ -252,6 +252,7 @@ func admitFinalRenderedImages(
 		}
 	}
 	requests := make([]officialInspectionRequest, 0, len(seenTargets))
+	preAdmitted := 0
 	for index := range desired.Delivery.Images {
 		image := &desired.Delivery.Images[index]
 		switch image.Discovery {
@@ -284,6 +285,23 @@ func admitFinalRenderedImages(
 				"controller-generated image %s has no current official admission boundary",
 				image.ID,
 			)
+		case "kubespray":
+			if _, rendered := seenTargets[index]; rendered {
+				return fmt.Errorf(
+					"Kubespray image %s is also owned by a rendered platform contract",
+					image.ID,
+				)
+			}
+			if image.Delivery.Default.Type != "mirror" ||
+				image.Delivery.Default.Source == "" ||
+				!strings.HasPrefix(image.Delivery.Default.Digest, "sha256:") {
+				return fmt.Errorf(
+					"Kubespray image %s has no exact official offline mirror",
+					image.ID,
+				)
+			}
+			preAdmitted++
+			continue
 		default:
 			return fmt.Errorf("image %s has unknown discovery evidence %q", image.ID, image.Discovery)
 		}
@@ -301,6 +319,9 @@ func admitFinalRenderedImages(
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(max(1, parallelism))
 	completed := 0
+	if progress != nil && preAdmitted != 0 {
+		progress(preAdmitted, len(desired.Delivery.Images))
+	}
 	var progressMu sync.Mutex
 	reportCompleted := func() {
 		if progress == nil {
@@ -308,7 +329,7 @@ func admitFinalRenderedImages(
 		}
 		progressMu.Lock()
 		completed++
-		progress(completed, len(requests))
+		progress(preAdmitted+completed, len(desired.Delivery.Images))
 		progressMu.Unlock()
 	}
 	for requestIndex := range requests {

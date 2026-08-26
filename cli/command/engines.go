@@ -199,7 +199,7 @@ func (a *app) runTerraformActionWithEnvironment(
 
 type terraformSeed struct {
 	environment []string
-	bundle      *delivery.DeploymentBundle
+	publication *delivery.Publication
 	credentials atumsecrets.Document
 }
 
@@ -226,16 +226,15 @@ func (seed *terraformSeed) Clear() {
 	}
 	seed.ClearEnvironment()
 	seed.credentials.Clear()
-	seed.bundle = nil
+	seed.publication = nil
 }
 
 func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, error) {
-	bundle, err := delivery.MaterializeLockedBundle(ctx, a.project)
-	if err != nil {
-		return terraformSeed{}, fmt.Errorf("materialize Terraform seed payload: %w", err)
-	}
-	if bundle.SeedPayload.Path == "" || bundle.SeedPayload.SHA256 == "" {
-		return terraformSeed{}, errors.New("deployment bundle has no verified seed payload")
+	publication := a.publication
+	if publication == nil ||
+		publication.Seed.File == "" ||
+		publication.Seed.SHA256 == "" {
+		return terraformSeed{}, errors.New("minimal Terraform seed payload is unavailable")
 	}
 	credentials, err := atumsecrets.Ensure(ctx, a.project, a.sops, a.logger)
 	if err != nil {
@@ -244,8 +243,8 @@ func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, erro
 	seed := a.project.Desired.Delivery.Seed
 	environment := make([]string, 0, 10)
 	environment = append(environment,
-		"TF_VAR_seed_archive_path="+bundle.SeedPayload.Path,
-		"TF_VAR_seed_archive_sha256="+bundle.SeedPayload.SHA256,
+		"TF_VAR_seed_archive_path="+filepath.Join(a.project.Root, publication.Seed.File),
+		"TF_VAR_seed_archive_sha256="+publication.Seed.SHA256,
 		"TF_VAR_seed_forgejo_image="+seed.Forgejo.Image.Source,
 		"TF_VAR_seed_forgejo_url="+seed.Forgejo.URL,
 		"TF_VAR_seed_forgejo_username="+credentials.Forgejo.Username,
@@ -255,7 +254,11 @@ func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, erro
 		"TF_VAR_seed_harbor_admin_password="+string(credentials.Harbor.AdminPassword.Bytes()),
 		"TF_VAR_seed_harbor_secret_key="+string(credentials.Harbor.SecretKey.Bytes()),
 	)
-	return terraformSeed{bundle: bundle, credentials: credentials, environment: environment}, nil
+	return terraformSeed{
+		publication: publication,
+		credentials: credentials,
+		environment: environment,
+	}, nil
 }
 
 func terraformInformational(args []string) bool {
@@ -450,8 +453,8 @@ func (a *app) printOrchestrationPlan(plan orchestration.UpgradePlan) error {
 	if current == "" {
 		current = "absent"
 	}
-	if _, err := fmt.Fprintf(a.out, "current=%s target=%s order=%s resume=%s->%s\n",
-		current, plan.Target, plan.Order, plan.ResumeFrom, plan.ResumeTarget); err != nil {
+	if _, err := fmt.Fprintf(a.out, "current=%s target=%s order=%s\n",
+		current, plan.Target, plan.Order); err != nil {
 		return err
 	}
 	for _, step := range plan.Steps {
@@ -509,7 +512,7 @@ func (a *app) convergeOrchestration(
 	planning := true
 	platformApplied := false
 	progress.Start(ctx, progress.Orchestration, "plan", "Convergence plan",
-		"inspecting live cluster and durable install state")
+		"inspecting the live cluster and committed release ladder")
 	for range limit {
 		plan, err := service.Plan(ctx)
 		if err != nil {
@@ -551,14 +554,15 @@ func convergencePlanDetail(plan orchestration.UpgradePlan) string {
 	switch plan.Order {
 	case orchestration.InstallTarget:
 		return "fresh cluster install to Kubernetes " + plan.Target
-	case orchestration.FinalizeInstall:
-		return "finalizing interrupted Kubernetes " + plan.Target + " install"
-	case orchestration.ReconcileCurrent:
-		return "reconciling current Kubernetes " + plan.Target + " configuration"
 	case orchestration.PlatformFirst:
 		return "platform reconciliation before Kubernetes " + plan.Target
 	case orchestration.KubernetesFirst:
-		return "Kubernetes " + plan.Current + " → " + plan.Target + " before platform reconciliation"
+		next := plan.Target
+		if len(plan.Steps) == 1 {
+			next = plan.Steps[0].Kubernetes
+		}
+		return "Kubernetes " + plan.Current + " → " + next +
+			" toward " + plan.Target + " before platform reconciliation"
 	case orchestration.AlreadyCurrent:
 		return "Kubernetes " + plan.Target + " is current; verifying health"
 	default:

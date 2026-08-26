@@ -35,24 +35,8 @@ func reusableEntry(
 	return config.LockedImage{}, false
 }
 
-func reusableBundle(project *config.Project, delivery config.ImageLock) (*config.Bundle, error) {
-	if project.ExecutionBundle == nil || project.Lock.DesiredSHA256 != project.DesiredSHA256 ||
-		!reflect.DeepEqual(delivery, project.Lock.Delivery) {
-		return nil, nil
-	}
-	sourceSHA, err := config.AtumSourceSHA256(project)
-	if err != nil {
-		return nil, err
-	}
-	if sourceSHA != project.ExecutionBundle.AtumSourceSHA256 {
-		return nil, nil
-	}
-	bundle := *project.ExecutionBundle
-	return &bundle, nil
-}
-
 // matchesCommittedDelivery compares the updater-owned immutable selection
-// while leaving compatibility-build output digests under execution-state
+// while leaving compatibility-build output digests under local publication
 // ownership. Mirror digests remain immutable inputs and are compared exactly.
 func matchesCommittedDelivery(reproduced, committed config.ImageLock) bool {
 	if len(reproduced.Images) != len(committed.Images) {

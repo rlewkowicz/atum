@@ -81,7 +81,8 @@ func projectChartArtifactSchema(tree *candidateTree) error {
 		return err
 	}
 	const oldRequired = `"required": ["clusterReleases", "bigBang", "flux", "packages", "charts", "vendors", "bootstrap"],`
-	const newRequired = `"required": ["clusterReleases", "bigBang", "flux", "packages", "charts", "artifacts", "vendors", "bootstrap"],`
+	const artifactRequired = `"required": ["clusterReleases", "bigBang", "flux", "packages", "charts", "artifacts", "vendors", "bootstrap"],`
+	const newRequired = `"required": ["clusterReleases", "kubespray", "bigBang", "flux", "packages", "charts", "artifacts", "vendors", "bootstrap"],`
 	const oldProperty = `        "vendors": {`
 	const newProperty = `        "artifacts": {
           "type": "array",
@@ -125,6 +126,15 @@ func projectChartArtifactSchema(tree *candidateTree) error {
 	if bytes.Contains(data, []byte(newRequired)) &&
 		bytes.Contains(data, []byte(`"$ref": "#/$defs/chartArtifact"`)) {
 		return nil
+	}
+	if bytes.Contains(data, []byte(artifactRequired)) {
+		if bytes.Count(data, []byte(artifactRequired)) != 1 {
+			return errors.New("project lock schema: resolved artifact inventory shape is unsupported")
+		}
+		return tree.Set(
+			lockSchemaFile,
+			bytes.Replace(data, []byte(artifactRequired), []byte(newRequired), 1),
+		)
 	}
 	if bytes.Count(data, []byte(oldRequired)) != 1 ||
 		bytes.Count(data, []byte(oldProperty)) != 1 {

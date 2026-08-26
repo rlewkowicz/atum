@@ -12,12 +12,18 @@
     "resolved": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["clusterReleases", "bigBang", "flux", "packages", "charts", "vendors", "bootstrap"],
+      "required": ["clusterReleases", "kubespray", "bigBang", "flux", "packages", "charts", "artifacts", "vendors", "bootstrap"],
       "properties": {
         "clusterReleases": {
           "type": "array",
           "minItems": 1,
           "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/clusterRelease"}
+        },
+        "kubespray": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "https://atum.dev/schema/config/v1#/$defs/kubesprayArtifactInventory"}
         },
         "bigBang": {"$ref": "https://atum.dev/schema/config/v1#/$defs/gitSource"},
         "flux": {"$ref": "https://atum.dev/schema/config/v1#/$defs/gitSource"},

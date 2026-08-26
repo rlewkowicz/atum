@@ -23,12 +23,10 @@ type UpgradeOrder string
 type ConvergenceMode uint8
 
 const (
-	InstallTarget    UpgradeOrder = "install"
-	FinalizeInstall  UpgradeOrder = "install-finalize"
-	ReconcileCurrent UpgradeOrder = "reconcile"
-	PlatformFirst    UpgradeOrder = "platform-first"
-	KubernetesFirst  UpgradeOrder = "kubernetes-first"
-	AlreadyCurrent   UpgradeOrder = "current"
+	InstallTarget   UpgradeOrder = "install"
+	PlatformFirst   UpgradeOrder = "platform-first"
+	KubernetesFirst UpgradeOrder = "kubernetes-first"
+	AlreadyCurrent  UpgradeOrder = "current"
 )
 
 const (
@@ -38,21 +36,14 @@ const (
 )
 
 type ClusterState struct {
-	Kubernetes          string
-	RecordedKubernetes  string
-	KubesprayVersion    string
-	KubesprayCommit     string
-	OrchestrationSHA256 string
-	TargetKubernetes    string
+	Kubernetes string
 }
 
 type UpgradePlan struct {
-	Current      string
-	Target       string
-	Order        UpgradeOrder
-	ResumeFrom   string
-	ResumeTarget string
-	Steps        []config.ClusterRelease
+	Current string
+	Target  string
+	Order   UpgradeOrder
+	Steps   []config.ClusterRelease
 }
 
 type clusterClient = kube.Observer
@@ -100,13 +91,14 @@ func (service Service) validatePlatformState(state ClusterState) error {
 }
 
 func (service Service) validateClusterIdentity(state ClusterState) error {
-	if state.RecordedKubernetes != state.Kubernetes {
-		return fmt.Errorf("orchestration receipt records Kubernetes %q but the API server reports %s", state.RecordedKubernetes, state.Kubernetes)
-	}
-	release, tracked := releaseForKubernetes(service.Project.Desired.Orchestration.Releases, state.Kubernetes)
-	if !tracked || state.KubesprayVersion != release.Kubespray.Version ||
-		state.KubesprayCommit != release.Kubespray.Commit {
-		return fmt.Errorf("Kubernetes %s has no exact committed Kubespray receipt", state.Kubernetes)
+	if _, tracked := releaseForKubernetes(
+		service.Project.Desired.Orchestration.Releases,
+		state.Kubernetes,
+	); !tracked {
+		return fmt.Errorf(
+			"live Kubernetes %s is absent from the exact committed release ladder",
+			state.Kubernetes,
+		)
 	}
 	return nil
 }
@@ -138,26 +130,7 @@ func (service Service) discoverState(ctx context.Context, client *clusterClient)
 	if err != nil {
 		return ClusterState{}, err
 	}
-	state := ClusterState{Kubernetes: kubernetesVersion}
-	receipt, found, err := service.readOrchestrationReceipt()
-	if err != nil {
-		return ClusterState{}, err
-	}
-	if !found {
-		return state, nil
-	}
-	state.RecordedKubernetes = receipt.Kubernetes
-	state.KubesprayVersion = receipt.KubesprayVersion
-	state.KubesprayCommit = receipt.KubesprayCommit
-	state.OrchestrationSHA256 = receipt.OrchestrationSHA256
-	state.TargetKubernetes = receipt.NextKubernetes
-	if state.RecordedKubernetes != state.Kubernetes && state.TargetKubernetes != state.Kubernetes {
-		return ClusterState{}, fmt.Errorf(
-			"orchestration receipt records Kubernetes %q with checkpoint %q but the API server reports %s",
-			state.RecordedKubernetes, state.TargetKubernetes, state.Kubernetes,
-		)
-	}
-	return state, nil
+	return ClusterState{Kubernetes: kubernetesVersion}, nil
 }
 
 func (service Service) bigBangObservation(
@@ -186,14 +159,6 @@ func (service Service) bigBangObservation(
 
 func (service Service) bigBangArtifact() (config.ChartArtifact, error) {
 	return service.Project.BigBangArtifact()
-}
-
-func (service Service) receiptForRelease(release config.ClusterRelease, previous ClusterState) ClusterState {
-	return ClusterState{
-		Kubernetes: release.Kubernetes, RecordedKubernetes: release.Kubernetes,
-		KubesprayVersion: release.Kubespray.Version, KubesprayCommit: release.Kubespray.Commit,
-		OrchestrationSHA256: previous.OrchestrationSHA256,
-	}
 }
 
 type namedConstraint struct {

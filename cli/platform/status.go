@@ -52,14 +52,9 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 			service.Project.Desired.Infrastructure.Active,
 		)
 	}
-	project, err := delivery.LoadExecutionProject(service.Project)
+	receipt, err := delivery.LoadReceipt(service.Project)
 	if err != nil {
-		return Status{}, fmt.Errorf("load local deployment state: %w", err)
-	}
-	service.Project = project
-	bundle, err := service.deploymentBundle(ctx)
-	if err != nil {
-		return Status{}, err
+		return Status{}, fmt.Errorf("load local publication receipt: %w", err)
 	}
 	client, err := service.cluster()
 	if err != nil {
@@ -70,7 +65,7 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, fmt.Errorf("observe native Flux conditions: %w", err)
 	}
-	compliance, err := service.observeDeliveryCompliance(ctx, client, bundle)
+	compliance, err := service.observeDeliveryCompliance(ctx, client, receipt)
 	if err != nil {
 		return Status{}, fmt.Errorf("observe delivery compliance: %w", err)
 	}
@@ -79,8 +74,8 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 		return Status{}, fmt.Errorf("observe local integration: %w", err)
 	}
 	return Status{
-		BundleSHA256:   bundle.ArchiveSHA256,
-		SourceCommit:   bundle.SourceCommit,
+		PublicationSHA256: receipt.SourceSHA256,
+		SourceCommit:   receipt.SourceCommit,
 		ActiveProfile:  target.PlatformProfile,
 		Reconciliation: reconciliation,
 		Delivery:       compliance,
@@ -212,17 +207,17 @@ func firstLine(value string) string {
 func (service Service) observeDeliveryCompliance(
 	ctx context.Context,
 	client *kube.Observer,
-	bundle *delivery.DeploymentBundle,
+	receipt delivery.Receipt,
 ) (DeliveryComplianceStatus, error) {
 	result := DeliveryComplianceStatus{}
-	sourceIssues, err := service.sourceComplianceIssues(ctx, client, bundle)
+	sourceIssues, err := service.sourceComplianceIssues(ctx, client, receipt)
 	if err != nil {
 		return result, err
 	}
 	result.SourcesInternal = len(sourceIssues) == 0
 	result.Issues = append(result.Issues, sourceIssues...)
 
-	imageIssues, err := runtimeImageIssues(ctx, client, bundle)
+	imageIssues, err := runtimeImageIssues(ctx, client, receipt.Delivery)
 	if err != nil {
 		return result, err
 	}
@@ -243,7 +238,7 @@ type expectedGitSource struct {
 func (service Service) sourceComplianceIssues(
 	ctx context.Context,
 	client *kube.Observer,
-	bundle *delivery.DeploymentBundle,
+	receipt delivery.Receipt,
 ) ([]string, error) {
 	objects, err := client.Resources(ctx, kube.GitRepository, "", "")
 	if apierrors.IsNotFound(err) {
@@ -258,7 +253,7 @@ func (service Service) sourceComplianceIssues(
 		sources.ClusterURL, sources.Organization, sources.Repository,
 	)
 	expected[normalizedRepositoryURL(rootURL)] = expectedGitSource{
-		id: "platform", commit: bundle.SourceCommit,
+		id: "platform", commit: receipt.SourceCommit,
 	}
 
 	seen := make(map[string]struct{}, len(expected))
@@ -312,11 +307,14 @@ func normalizedRepositoryURL(value string) string {
 func runtimeImageIssues(
 	ctx context.Context,
 	client *kube.Observer,
-	bundle *delivery.DeploymentBundle,
+	lock config.ImageLock,
 ) ([]string, error) {
-	locked, err := bundle.RuntimeImageDigests(ctx)
-	if err != nil {
-		return nil, err
+	locked := make(map[string]map[string]struct{}, len(lock.Images))
+	for _, image := range lock.Images {
+		if _, duplicate := locked[image.Target]; duplicate {
+			return nil, fmt.Errorf("publication target %s is duplicated", image.Target)
+		}
+		locked[image.Target] = map[string]struct{}{image.Digest: {}}
 	}
 	pods, err := client.Pods(ctx, "", "")
 	if err != nil {

@@ -12,11 +12,6 @@ spec:
   force: false
   dependsOn:
     - name: bigbang
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: cert-manager
-      namespace: bigbang
   sourceRef:
     kind: GitRepository
     name: flux-system

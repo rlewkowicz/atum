@@ -2,8 +2,12 @@ package delivery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,7 +24,127 @@ import (
 
 const seedPayloadSchema = "atum.dev/seed-payload/v1"
 
-type bundleSeed struct {
+func (service *Service) prepareSeed(
+	ctx context.Context,
+	project *config.Project,
+	local localDelivery,
+) (ArtifactIdentity, error) {
+	stageRoot, err := fssecure.EnsureDirectory(
+		project.Root,
+		filepath.Join(".atum", "state", "seed-stage"),
+		0o700,
+	)
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	stage, err := os.MkdirTemp(stageRoot, ".seed-")
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	stageRelative, err := filepath.Rel(project.Root, stage)
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	defer func() { _ = fssecure.RemoveTree(project.Root, stageRelative) }()
+	registry, err := atumoci.NewClient(
+		project.Desired.Delivery.Registry,
+		atumoci.Credentials{},
+	)
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	defer registry.Clear()
+	seed, err := service.prepareSeedArchive(
+		ctx,
+		project,
+		registry,
+		stage,
+		effectiveParallelism(0, project.Desired.Updates.Parallelism),
+		&local,
+	)
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	if err := validateSeedArchive(project, seed); err != nil {
+		return ArtifactIdentity{}, err
+	}
+	destinationRelative := filepath.Join(
+		".atum",
+		"artifacts",
+		"seed",
+		"atum-seed-"+seed.Artifact.SHA256+".tar",
+	)
+	sourceRelative, err := filepath.Rel(
+		project.Root,
+		filepath.Join(stage, seed.Artifact.File),
+	)
+	if err != nil {
+		return ArtifactIdentity{}, err
+	}
+	if err := publishSeedArchive(
+		project.Root,
+		sourceRelative,
+		destinationRelative,
+		seed.Artifact,
+	); err != nil {
+		return ArtifactIdentity{}, err
+	}
+	return ArtifactIdentity{
+		File:   filepath.ToSlash(destinationRelative),
+		SHA256: seed.Artifact.SHA256,
+		Size:   seed.Artifact.Size,
+	}, nil
+}
+
+func publishSeedArchive(
+	root, sourceRelative, destinationRelative string,
+	identity archiveIdentity,
+) error {
+	destination, err := fssecure.Resolve(root, destinationRelative, true)
+	if err != nil {
+		return err
+	}
+	for {
+		file, openErr := fssecure.OpenRegular(root, destinationRelative)
+		if openErr == nil {
+			digest, size, err := readerSHA256(file)
+			closeErr := file.Close()
+			if err != nil {
+				return err
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			if digest != identity.SHA256 || size != identity.Size {
+				return fmt.Errorf(
+					"content-addressed seed %s is %s/%d, want %s/%d",
+					destination,
+					digest,
+					size,
+					identity.SHA256,
+					identity.Size,
+				)
+			}
+			return nil
+		}
+		if !errors.Is(openErr, os.ErrNotExist) {
+			return openErr
+		}
+		published, err := fssecure.RenameRegularNoReplace(
+			root,
+			sourceRelative,
+			destinationRelative,
+		)
+		if err != nil {
+			return err
+		}
+		if published {
+			return syncDirectory(filepath.Dir(destination))
+		}
+	}
+}
+
+type seedArchive struct {
 	Artifact  archiveIdentity     `json:"artifact"`
 	Manifest  archiveIdentity     `json:"manifest"`
 	Checksums archiveIdentity     `json:"checksums"`
@@ -37,21 +161,21 @@ type seedPayloadManifest struct {
 	Images          []config.SeedImage `json:"images"`
 }
 
-func (service *Service) bundleSeed(
+func (service *Service) prepareSeedArchive(
 	ctx context.Context,
 	project *config.Project,
 	registry *atumoci.Client,
 	stage string,
 	parallelism int,
 	local *localDelivery,
-) (bundleSeed, error) {
+) (seedArchive, error) {
 	seedRoot := filepath.Join(stage, ".seed-payload")
 	if err := os.MkdirAll(seedRoot, 0o700); err != nil {
-		return bundleSeed{}, fmt.Errorf("create seed payload stage: %w", err)
+		return seedArchive{}, fmt.Errorf("create seed payload stage: %w", err)
 	}
 	seedRelative, err := filepath.Rel(project.Root, seedRoot)
 	if err != nil {
-		return bundleSeed{}, err
+		return seedArchive{}, err
 	}
 	defer func() { _ = fssecure.RemoveTree(project.Root, seedRelative) }()
 
@@ -64,7 +188,7 @@ func (service *Service) bundleSeed(
 	group, groupContext := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		var imageErr error
-		dockerArchive, imageErr = service.bundleSeedImages(
+		dockerArchive, imageErr = service.prepareSeedImages(
 			groupContext, project, registry, seedRoot, images, parallelism, local,
 		)
 		return imageErr
@@ -92,7 +216,7 @@ func (service *Service) bundleSeed(
 		})
 	})
 	if err := group.Wait(); err != nil {
-		return bundleSeed{}, err
+		return seedArchive{}, err
 	}
 
 	payload := seedPayloadManifest{
@@ -106,12 +230,12 @@ func (service *Service) bundleSeed(
 	}
 	manifestData, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		return bundleSeed{}, fmt.Errorf("encode seed payload manifest: %w", err)
+		return seedArchive{}, fmt.Errorf("encode seed payload manifest: %w", err)
 	}
 	manifestData = append(manifestData, '\n')
 	manifest := archiveIdentity{File: "seed.json", SHA256: config.SHA256(manifestData), Size: int64(len(manifestData))}
 	if err := writeRegular(filepath.Join(seedRoot, manifest.File), manifestData, 0o644); err != nil {
-		return bundleSeed{}, err
+		return seedArchive{}, err
 	}
 	checksumData := []byte(fmt.Sprintf(
 		"%s  %s\n%s  %s\n%s  %s\n",
@@ -121,16 +245,16 @@ func (service *Service) bundleSeed(
 	))
 	checksums := archiveIdentity{File: "SHA256SUMS", SHA256: config.SHA256(checksumData), Size: int64(len(checksumData))}
 	if err := writeRegular(filepath.Join(seedRoot, checksums.File), checksumData, 0o644); err != nil {
-		return bundleSeed{}, err
+		return seedArchive{}, err
 	}
 	artifact, err := writeDirectoryArchive(filepath.Join(stage, "seed", "atum-seed.tar"), seedRoot, "seed/atum-seed.tar")
 	if err != nil {
-		return bundleSeed{}, fmt.Errorf("write deterministic seed payload: %w", err)
+		return seedArchive{}, fmt.Errorf("write deterministic seed payload: %w", err)
 	}
-	return bundleSeed{Artifact: artifact, Manifest: manifest, Checksums: checksums, Payload: payload}, nil
+	return seedArchive{Artifact: artifact, Manifest: manifest, Checksums: checksums, Payload: payload}, nil
 }
 
-func (service *Service) bundleSeedImages(
+func (service *Service) prepareSeedImages(
 	ctx context.Context,
 	project *config.Project,
 	registry *atumoci.Client,
@@ -201,7 +325,7 @@ func (service *Service) bundleSeedImages(
 	return identity, nil
 }
 
-func validateBundleSeed(project *config.Project, seed bundleSeed) error {
+func validateSeedArchive(project *config.Project, seed seedArchive) error {
 	desired := project.Desired.Delivery.Seed
 	if !validArchive(seed.Artifact, "seed/atum-seed.tar") || !validArchive(seed.Manifest, "seed.json") ||
 		!validArchive(seed.Checksums, "SHA256SUMS") || seed.Payload.SchemaVersion != seedPayloadSchema ||
@@ -211,22 +335,87 @@ func validateBundleSeed(project *config.Project, seed bundleSeed) error {
 		seed.Payload.HarborInstaller.File != desired.Harbor.Installer.File ||
 		seed.Payload.HarborInstaller.SHA256 != desired.Harbor.Installer.SHA256 ||
 		seed.Payload.HarborInstaller.Size != desired.Harbor.Installer.Size {
-		return fmt.Errorf("deployment bundle seed payload does not match desired state")
+		return fmt.Errorf("minimal seed payload does not match desired state")
 	}
 	wanted := make([]config.SeedImage, 0, 1+len(desired.Harbor.Images))
 	wanted = append(wanted, desired.Forgejo.Image)
 	wanted = append(wanted, desired.Harbor.Images...)
 	sort.Slice(wanted, func(i, j int) bool { return wanted[i].ID < wanted[j].ID })
 	if len(seed.Payload.Images) != len(wanted) {
-		return fmt.Errorf("deployment bundle seed image inventory is incomplete")
+		return fmt.Errorf("minimal seed image inventory is incomplete")
 	}
 	for index := range wanted {
 		if seed.Payload.Images[index] != wanted[index] {
-			return fmt.Errorf("deployment bundle seed image %d does not match desired state", index)
+			return fmt.Errorf("minimal seed image %d does not match desired state", index)
 		}
 	}
 	if strings.Contains(seed.Artifact.File, "\\") {
-		return fmt.Errorf("deployment bundle seed artifact path is not portable")
+		return fmt.Errorf("minimal seed artifact path is not portable")
 	}
 	return nil
+}
+
+func copyVerified(
+	root, sourceRelative, destination, artifactPath, expectedSHA string,
+	maxSize int64,
+) (archiveIdentity, error) {
+	input, err := fssecure.OpenRegular(root, sourceRelative)
+	if err != nil {
+		return archiveIdentity{}, err
+	}
+	defer input.Close()
+	info, err := input.Stat()
+	if err != nil {
+		return archiveIdentity{}, err
+	}
+	if info.Size() <= 0 || maxSize >= 0 && info.Size() > maxSize {
+		return archiveIdentity{}, fmt.Errorf(
+			"%s has invalid size %d",
+			sourceRelative,
+			info.Size(),
+		)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return archiveIdentity{}, err
+	}
+	output, err := os.OpenFile(
+		destination,
+		os.O_CREATE|os.O_EXCL|os.O_WRONLY,
+		0o600,
+	)
+	if err != nil {
+		return archiveIdentity{}, err
+	}
+	buffer := acquireCopyBuffer()
+	defer releaseCopyBuffer(buffer)
+	hash := sha256.New()
+	size, copyErr := io.CopyBuffer(
+		io.MultiWriter(output, hash),
+		input,
+		*buffer,
+	)
+	closeErr := output.Close()
+	if copyErr != nil {
+		return archiveIdentity{}, copyErr
+	}
+	if closeErr != nil {
+		return archiveIdentity{}, closeErr
+	}
+	actual := hex.EncodeToString(hash.Sum(nil))
+	if size != info.Size() || actual != expectedSHA {
+		_ = os.Remove(destination)
+		return archiveIdentity{}, fmt.Errorf(
+			"%s copied as %s/%d, want %s/%d",
+			sourceRelative,
+			actual,
+			size,
+			expectedSHA,
+			info.Size(),
+		)
+	}
+	return archiveIdentity{
+		File: artifactPath,
+		SHA256: actual,
+		Size: size,
+	}, nil
 }

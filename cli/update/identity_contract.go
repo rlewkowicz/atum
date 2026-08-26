@@ -456,7 +456,7 @@ func renderIdentityManifests(
 	}
 	context.Cluster = desired.Project.Cluster
 	clusterRoot := filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster)
-	for _, name := range [...]string{"prep.yaml", "bigbang.yaml"} {
+	for _, name := range [...]string{"prep.yaml"} {
 		relative := filepath.Join(clusterRoot, name)
 		current, err := tree.YAML(relative)
 		if err != nil {
@@ -468,9 +468,35 @@ func renderIdentityManifests(
 			return fmt.Errorf("Flux consumer %s has no spec", relative)
 		}
 		spec["force"] = false
+		delete(spec, "healthChecks")
+		delete(spec, "healthCheckExprs")
 		if err := setCandidateYAML(tree, relative, current, candidate); err != nil {
 			return fmt.Errorf("render explicit Flux defaults in %s: %w", relative, err)
 		}
+	}
+	bigBangRelative := filepath.Join(clusterRoot, "bigbang.yaml")
+	currentBigBang, err := tree.YAML(bigBangRelative)
+	if err != nil {
+		return fmt.Errorf("read Flux consumer %s: %w", bigBangRelative, err)
+	}
+	candidateBigBang := cloneMap(currentBigBang)
+	if err := config.NormalizeBigBangReadinessKustomization(
+		candidateBigBang,
+	); err != nil {
+		return fmt.Errorf(
+			"normalize Flux consumer %s: %w",
+			bigBangRelative,
+			err,
+		)
+	}
+	if err := setCandidateYAML(
+		tree, bigBangRelative, currentBigBang, candidateBigBang,
+	); err != nil {
+		return fmt.Errorf(
+			"render Big Bang Flux readiness gate in %s: %w",
+			bigBangRelative,
+			err,
+		)
 	}
 	outputs := []identityOutput{
 		{"cluster-root.yaml.tmpl", filepath.Join(clusterRoot, "kustomization.yaml"), nil},

@@ -22,7 +22,7 @@ const fluxComponents = "source-controller,kustomize-controller,helm-controller,n
 // credentials, and the SOPS key projection that must precede reconciliation.
 func (service Service) bootstrapFlux(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	handoff *Handoff,
 	timeout time.Duration,
 ) error {
@@ -54,7 +54,7 @@ func (service Service) bootstrapFlux(
 		return fmt.Errorf("check Flux bootstrap prerequisites: %w", err)
 	}
 	if err := forgejo.waitExactBranch(
-		ctx, sources.Organization, sources.Repository, "main", bundle.SourceCommit,
+		ctx, sources.Organization, sources.Repository, "main", publication.SourceCommit,
 	); err != nil {
 		return fmt.Errorf("verify candidate platform source: %w", err)
 	}
@@ -90,7 +90,7 @@ func (service Service) bootstrapFlux(
 	}
 	if err := atumsecrets.ValidateFluxSource(
 		service.Project,
-		bundle.SourceRoot,
+		publication.SourceRoot,
 		statefulProjection.Digest(),
 		identityProjection.Digest(),
 		rootCADigest,
@@ -127,7 +127,7 @@ func (service Service) bootstrapFlux(
 		return fmt.Errorf("bootstrap Flux from exact Forgejo source: %w", fluxErr)
 	}
 	if err := forgejo.waitExactBranch(
-		ctx, sources.Organization, sources.Repository, "main", bundle.SourceCommit,
+		ctx, sources.Organization, sources.Repository, "main", publication.SourceCommit,
 	); err != nil {
 		return fmt.Errorf("Flux bootstrap changed the declarative main source: %w", err)
 	}

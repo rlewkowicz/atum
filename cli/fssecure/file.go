@@ -80,7 +80,7 @@ func ReplaceRegular(root, relative string, data []byte, mode os.FileMode) error 
 
 // WriteRegularFrom streams a reader into an atomically replaced regular file.
 // It preserves the same path and durability guarantees as WriteRegular without
-// materializing large bundle or backup payloads in memory.
+// materializing large publication or backup payloads in memory.
 func WriteRegularFrom(root, relative string, reader io.Reader, mode os.FileMode) (int64, error) {
 	if reader == nil {
 		return 0, errors.New("managed file reader is nil")

@@ -35,22 +35,10 @@ type PublishOptions struct {
 	Parallelism int
 }
 
-type BundleOptions struct {
-	Locked    bool
-	Reproduce bool
-	Push      bool
-	Publish   PublishOptions
-}
-
 type PublishResult struct {
 	Lock      config.ImageLock
 	Published int
 	Reused    int
-}
-
-type BundleResult struct {
-	Bundle config.Bundle
-	Path   string
 }
 
 func NewService(

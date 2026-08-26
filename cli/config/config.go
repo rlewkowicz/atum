@@ -45,7 +45,6 @@ type Project struct {
 	LockData        []byte
 	Desired         Document
 	Lock            Lock
-	ExecutionBundle *Bundle
 }
 
 type LoadOptions struct {
@@ -354,11 +353,37 @@ type Secrets struct {
 }
 
 type Delivery struct {
-	Registry Registry           `json:"registry"`
-	Seed     SeedPlane          `json:"seed"`
-	Profiles map[string]Profile `json:"profiles"`
-	Policy   DeliveryPolicy     `json:"policy"`
-	Images   []Image            `json:"images"`
+	Registry   Registry                    `json:"registry"`
+	Seed       SeedPlane                   `json:"seed"`
+	Kubespray []KubesprayArtifactInventory `json:"kubespray"`
+	Profiles   map[string]Profile          `json:"profiles"`
+	Policy     DeliveryPolicy              `json:"policy"`
+	Images     []Image                     `json:"images"`
+}
+
+// KubesprayArtifactInventory is the exact output of the selected Kubespray
+// release's official contrib/offline workflow. The updater is its sole writer;
+// delivery projects the image entries into the common image graph and
+// Kubespray consumes registry settings derived from those same targets.
+type KubesprayArtifactInventory struct {
+	SchemaVersion     string           `json:"schemaVersion"`
+	KubernetesVersion string           `json:"kubernetesVersion"`
+	KubesprayCommit   string           `json:"kubesprayCommit"`
+	InventorySHA256   string           `json:"inventorySha256"`
+	Files             []KubesprayFile  `json:"files"`
+	Images            []string         `json:"images"`
+}
+
+// KubesprayFile is one content-pinned output of Kubespray's official offline
+// discovery and acquisition workflow. Variable is the exact Kubespray URL
+// variable replaced with LocalPath while the pinned playbook is running.
+type KubesprayFile struct {
+	Variable  string `json:"variable"`
+	Source    string `json:"source"`
+	LocalPath string `json:"localPath"`
+	CacheFile string `json:"cacheFile"`
+	SHA256    string `json:"sha256"`
+	Size      int64  `json:"size"`
 }
 
 type SeedPlane struct {
@@ -503,15 +528,16 @@ type Lock struct {
 }
 
 type Resolved struct {
-	ClusterReleases []ClusterRelease `json:"clusterReleases"`
-	BigBang         GitSource        `json:"bigBang"`
-	Flux            GitSource        `json:"flux"`
-	Packages        []Package        `json:"packages"`
-	SupportSources  []SupportSource  `json:"supportSources,omitempty"`
-	Charts          []TrackedChart   `json:"charts"`
-	Artifacts       []ChartArtifact  `json:"artifacts"`
-	Vendors         []Vendor         `json:"vendors"`
-	Bootstrap       BootstrapCharts  `json:"bootstrap"`
+	ClusterReleases []ClusterRelease            `json:"clusterReleases"`
+	Kubespray       []KubesprayArtifactInventory `json:"kubespray"`
+	BigBang         GitSource                   `json:"bigBang"`
+	Flux            GitSource                   `json:"flux"`
+	Packages        []Package                   `json:"packages"`
+	SupportSources  []SupportSource             `json:"supportSources,omitempty"`
+	Charts          []TrackedChart              `json:"charts"`
+	Artifacts       []ChartArtifact             `json:"artifacts"`
+	Vendors         []Vendor                    `json:"vendors"`
+	Bootstrap       BootstrapCharts             `json:"bootstrap"`
 }
 
 // ChartArtifact is the single immutable chart handoff from update selection
@@ -751,17 +777,17 @@ type LockedDelivery struct {
 	SourceProfile string   `json:"sourceProfile"`
 }
 
-type Bundle struct {
-	File             string `json:"file"`
-	SHA256           string `json:"sha256"`
-	Size             int64  `json:"size"`
-	AtumSourceSHA256 string `json:"atumSourceSha256"`
-	OCIReference     string `json:"ociReference,omitempty"`
-	OCIDigest        string `json:"ociDigest,omitempty"`
-}
-
 func (d Document) DeliverySHA256() (string, error) {
 	data, err := canonicalJSON(d.Delivery)
+	if err != nil {
+		return "", err
+	}
+	return SHA256(data), nil
+}
+
+func KubesprayInventorySHA256(inventory KubesprayArtifactInventory) (string, error) {
+	inventory.InventorySHA256 = ""
+	data, err := canonicalJSON(inventory)
 	if err != nil {
 		return "", err
 	}
@@ -956,7 +982,150 @@ func ValidateCandidate(root string, desired Document, lock Lock, candidate Candi
 	if err := validateCandidateVendorTrees(desired.Platform.Vendors, candidate); err != nil {
 		return nil, nil, nil, err
 	}
+	if err := validateCandidateBigBangReadiness(project, schemaFiles); err != nil {
+		return nil, nil, nil, err
+	}
 	return project, desiredData, lockData, nil
+}
+
+func validateCandidateBigBangReadiness(
+	project *Project,
+	files map[string][]byte,
+) error {
+	relative := filepath.Join(
+		project.Desired.Platform.Directory,
+		"clusters",
+		project.Desired.Project.Cluster,
+		"bigbang.yaml",
+	)
+	kustomization, err := readCandidateYAML(project.Root, relative, files)
+	if err != nil {
+		return fmt.Errorf("Big Bang readiness Kustomization is invalid: %w", err)
+	}
+	metadata, ok := kustomization["metadata"].(map[string]any)
+	if !ok ||
+		stringValue(kustomization, "apiVersion") != bigBangReadiness.apiVersion ||
+		stringValue(kustomization, "kind") != bigBangReadiness.kind ||
+		stringValue(metadata, "name") != bigBangReadiness.name ||
+		stringValue(metadata, "namespace") != bigBangReadiness.namespace {
+		return errors.New(
+			"Big Bang readiness Kustomization has a noncanonical identity",
+		)
+	}
+	spec, ok := kustomization["spec"].(map[string]any)
+	if !ok {
+		return errors.New("Big Bang readiness Kustomization has no spec")
+	}
+	if _, exists := spec["wait"]; exists {
+		return errors.New("Big Bang readiness Kustomization must not set wait")
+	}
+	if _, exists := spec["healthCheckExprs"]; exists {
+		return errors.New(
+			"Big Bang readiness Kustomization must not set healthCheckExprs",
+		)
+	}
+	force, ok := spec["force"].(bool)
+	if !ok || force {
+		return errors.New("Big Bang readiness Kustomization must set force to false")
+	}
+	if !isBigBangReadinessHealthChecks(spec["healthChecks"]) {
+		return errors.New(
+			"Big Bang readiness Kustomization must contain only the ordered bigbang and cert-manager HelmRelease health checks",
+		)
+	}
+	return nil
+}
+
+type readinessHealthCheck struct {
+	apiVersion string
+	kind       string
+	name       string
+	namespace  string
+}
+
+type readinessKustomization struct {
+	apiVersion  string
+	kind        string
+	name        string
+	namespace   string
+	healthChecks [2]readinessHealthCheck
+}
+
+var bigBangReadiness = readinessKustomization{
+	apiVersion: "kustomize.toolkit.fluxcd.io/v1",
+	kind:       "Kustomization",
+	name:       "bigbang",
+	namespace:  "flux-system",
+	healthChecks: [2]readinessHealthCheck{
+		{
+			apiVersion: "helm.toolkit.fluxcd.io/v2",
+			kind:       "HelmRelease",
+			name:       "bigbang",
+			namespace:  "bigbang",
+		},
+		{
+			apiVersion: "helm.toolkit.fluxcd.io/v2",
+			kind:       "HelmRelease",
+			name:       "cert-manager",
+			namespace:  "bigbang",
+		},
+	},
+}
+
+func bigBangReadinessHealthChecks() []any {
+	checks := make([]any, len(bigBangReadiness.healthChecks))
+	for index, check := range bigBangReadiness.healthChecks {
+		checks[index] = map[string]any{
+			"apiVersion": check.apiVersion,
+			"kind":       check.kind,
+			"name":       check.name,
+			"namespace":  check.namespace,
+		}
+	}
+	return checks
+}
+
+func isBigBangReadinessHealthChecks(value any) bool {
+	checks, ok := value.([]any)
+	if !ok || len(checks) != len(bigBangReadiness.healthChecks) {
+		return false
+	}
+	for index, expected := range bigBangReadiness.healthChecks {
+		check, ok := checks[index].(map[string]any)
+		if !ok || len(check) != 4 ||
+			stringValue(check, "apiVersion") != expected.apiVersion ||
+			stringValue(check, "kind") != expected.kind ||
+			stringValue(check, "name") != expected.name ||
+			stringValue(check, "namespace") != expected.namespace {
+			return false
+		}
+	}
+	return true
+}
+
+// NormalizeBigBangReadinessKustomization applies the complete identity and
+// readiness policy owned by the generated Big Bang gate while retaining the
+// independently owned reconciliation and source fields.
+func NormalizeBigBangReadinessKustomization(
+	kustomization map[string]any,
+) error {
+	metadata, ok := kustomization["metadata"].(map[string]any)
+	if !ok {
+		return errors.New("Big Bang readiness Kustomization has no metadata")
+	}
+	spec, ok := kustomization["spec"].(map[string]any)
+	if !ok {
+		return errors.New("Big Bang readiness Kustomization has no spec")
+	}
+	kustomization["apiVersion"] = bigBangReadiness.apiVersion
+	kustomization["kind"] = bigBangReadiness.kind
+	metadata["name"] = bigBangReadiness.name
+	metadata["namespace"] = bigBangReadiness.namespace
+	spec["force"] = false
+	delete(spec, "wait")
+	delete(spec, "healthCheckExprs")
+	spec["healthChecks"] = bigBangReadinessHealthChecks()
+	return nil
 }
 
 func validateCandidateVendorTrees(vendors []Vendor, candidate CandidateFiles) error {
@@ -1261,6 +1430,12 @@ func (p *Project) validate(
 	if p.Desired.Delivery.Policy.RuntimeRegistryPrefix != expectedRuntimePrefix {
 		add("delivery runtimeRegistryPrefix must be %q", expectedRuntimePrefix)
 	}
+	validateKubesprayArtifactInventories(
+		&problems,
+		p.Desired.Delivery.Kubespray,
+		p.Desired.Orchestration,
+		allowStale,
+	)
 
 	imageIDs := make(map[string]*Image, len(p.Desired.Delivery.Images))
 	imageTargets := make(map[string]string, len(p.Desired.Delivery.Images))
@@ -1287,7 +1462,7 @@ func (p *Project) validate(
 		imageIDs[image.ID] = image
 		imageTargets[image.Target] = image.ID
 		if image.Discovery != "rendered" && image.Discovery != "configuration" &&
-			image.Discovery != "controller-generated" {
+			image.Discovery != "controller-generated" && image.Discovery != "kubespray" {
 			add("delivery image %s has invalid discovery evidence", image.ID)
 		}
 		if !allowStale && strings.TrimSpace(image.Provenance) == "" {
@@ -1301,7 +1476,8 @@ func (p *Project) validate(
 		}
 		seenScopes := make(map[string]struct{}, len(image.Scopes))
 		for _, scope := range image.Scopes {
-			if scope != "prep" && scope != "bigbang" && scope != "build-system" {
+			if scope != "prep" && scope != "bigbang" && scope != "build-system" &&
+				scope != "kubespray" {
 				add("delivery image %s uses unsupported scope %q", image.ID, scope)
 			}
 			if _, duplicate := seenScopes[scope]; duplicate {
@@ -1405,10 +1581,17 @@ func (p *Project) validate(
 			add("delivery image %s has unsupported type %q", image.ID, image.Delivery.Default.Type)
 		}
 	}
+	validateKubesprayImageProjection(
+		&problems,
+		p.Desired.Delivery.Kubespray,
+		p.Desired.Delivery.Images,
+		p.Desired.Delivery.Policy.RuntimeRegistryPrefix,
+		allowStale,
+	)
 	validateBootstrapImageBindings(&problems, p.Desired.Platform.Bootstrap.Charts, imageIDs, allowStale)
 	validateBuildGraph(&problems, p, files, allowStale)
 	validateCharts(&problems, p.Desired.Platform.Bootstrap.Charts, p.Desired.Platform.Values.Profiles)
-	validateBundledChartInventory(
+	validateChartPublicationInventory(
 		&problems,
 		p.Desired.Platform.Bootstrap.Registry,
 		p.Desired.Platform.Bootstrap.Charts,
@@ -1524,6 +1707,7 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 	lock := &p.Lock
 	desired := &p.Desired
 	if !allowStale && (!reflect.DeepEqual(lock.Resolved.ClusterReleases, desired.Orchestration.Releases) ||
+		!reflect.DeepEqual(lock.Resolved.Kubespray, desired.Delivery.Kubespray) ||
 		!reflect.DeepEqual(lock.Resolved.BigBang, desired.Platform.BigBang) ||
 		!reflect.DeepEqual(lock.Resolved.Flux, desired.Platform.Flux) ||
 		!reflect.DeepEqual(lock.Resolved.Packages, desired.Platform.Packages) ||
@@ -2270,14 +2454,14 @@ func validateTrackedCharts(problems *[]string, charts []TrackedChart) {
 	}
 }
 
-func validateBundledChartInventory(problems *[]string, registry Registry, bootstrap []Chart, tracked []TrackedChart) {
+func validateChartPublicationInventory(problems *[]string, registry Registry, bootstrap []Chart, tracked []TrackedChart) {
 	seenIDs := make(map[string]string, len(bootstrap)+len(tracked))
 	seenFiles := make(map[string]string, len(bootstrap)+len(tracked))
 	seenTargets := make(map[string]string, len(bootstrap)+len(tracked))
 	add := func(id, name, version, file, target string) {
 		claim := func(label, value string, seen map[string]string) {
 			if previous, duplicate := seen[value]; duplicate {
-				*problems = append(*problems, fmt.Sprintf("bundled chart %s %q is shared by %s and %s", label, value, previous, id))
+				*problems = append(*problems, fmt.Sprintf("published chart %s %q is shared by %s and %s", label, value, previous, id))
 			}
 			seen[value] = id
 		}
@@ -2287,7 +2471,7 @@ func validateBundledChartInventory(problems *[]string, registry Registry, bootst
 		expectedFile := name + "-" + version + ".tgz"
 		expectedTarget := registry.Host + "/" + registry.Project + "/" + name + ":" + version
 		if file != expectedFile || target != expectedTarget {
-			*problems = append(*problems, fmt.Sprintf("bundled chart %s does not match internal file and target naming", id))
+			*problems = append(*problems, fmt.Sprintf("published chart %s does not match internal file and target naming", id))
 		}
 	}
 	for _, chart := range bootstrap {
@@ -2557,6 +2741,188 @@ func validateSeedPlane(
 		sort.Strings(missing)
 		*problems = append(*problems, "seed Harbor image inventory omits "+strings.Join(missing, ", "))
 	}
+}
+
+func validateKubesprayArtifactInventories(
+	problems *[]string,
+	inventories []KubesprayArtifactInventory,
+	orchestration Orchestration,
+	allowStale bool,
+) {
+	if allowStale && len(inventories) == 0 {
+		return
+	}
+	if len(inventories) != len(orchestration.Releases) {
+		*problems = append(
+			*problems,
+			"Kubespray artifact inventories do not match the release ladder",
+		)
+		return
+	}
+	for index, inventory := range inventories {
+		release := orchestration.Releases[index]
+		validateKubesprayArtifactInventory(
+			problems,
+			inventory,
+			release,
+		)
+	}
+}
+
+func validateKubesprayArtifactInventory(
+	problems *[]string,
+	inventory KubesprayArtifactInventory,
+	release ClusterRelease,
+) {
+	if inventory.SchemaVersion != "atum.dev/kubespray-artifacts/v2" ||
+		inventory.KubernetesVersion != release.Kubernetes ||
+		inventory.KubesprayCommit != release.Kubespray.Commit ||
+		!validHexSHA256(inventory.InventorySHA256) ||
+		len(inventory.Files) == 0 || len(inventory.Images) == 0 {
+		*problems = append(*problems, "Kubespray artifact inventory identity is invalid")
+		return
+	}
+	validateEntries := func(label string, entries []string) {
+		for index, entry := range entries {
+			if strings.TrimSpace(entry) != entry || entry == "" ||
+				index > 0 && entries[index-1] >= entry {
+				*problems = append(
+					*problems,
+					fmt.Sprintf("Kubespray %s inventory is not a sorted unique non-empty list", label),
+				)
+				return
+			}
+		}
+	}
+	validateEntries("image", inventory.Images)
+	fileVariables := make(map[string]struct{}, len(inventory.Files))
+	fileSources := make(map[string]struct{}, len(inventory.Files))
+	filePaths := make(map[string]struct{}, len(inventory.Files))
+	for index, file := range inventory.Files {
+		if !validKubesprayURLVariable(file.Variable) ||
+			!strings.HasPrefix(file.Source, "https://") ||
+			!validKubesprayLocalPath(file.LocalPath) ||
+			!strings.HasPrefix(
+				file.CacheFile,
+				".atum/cache/kubespray-offline/sha256/",
+			) ||
+			!validHexSHA256(file.SHA256) ||
+			!strings.HasSuffix(file.CacheFile, file.SHA256) ||
+			file.Size <= 0 ||
+			index > 0 &&
+				inventory.Files[index-1].Variable >= file.Variable {
+			*problems = append(
+				*problems,
+				"Kubespray file inventory has an invalid artifact record",
+			)
+			return
+		}
+		if _, duplicate := fileVariables[file.Variable]; duplicate {
+			*problems = append(*problems, "Kubespray file variable is duplicated")
+			return
+		}
+		if _, duplicate := fileSources[file.Source]; duplicate {
+			*problems = append(*problems, "Kubespray file source is duplicated")
+			return
+		}
+		if _, duplicate := filePaths[file.LocalPath]; duplicate {
+			*problems = append(*problems, "Kubespray file local path is duplicated")
+			return
+		}
+		fileVariables[file.Variable] = struct{}{}
+		fileSources[file.Source] = struct{}{}
+		filePaths[file.LocalPath] = struct{}{}
+	}
+	digest, err := KubesprayInventorySHA256(inventory)
+	if err != nil || digest != inventory.InventorySHA256 {
+		*problems = append(*problems, "Kubespray artifact inventory digest is invalid")
+	}
+}
+
+func validateKubesprayImageProjection(
+	problems *[]string,
+	inventories []KubesprayArtifactInventory,
+	images []Image,
+	targetPrefix string,
+	allowStale bool,
+) {
+	if allowStale && len(inventories) == 0 {
+		return
+	}
+	imageIDs := make(map[string]struct{})
+	for _, inventory := range inventories {
+		for _, id := range inventory.Images {
+			imageIDs[id] = struct{}{}
+		}
+	}
+	projected := make(map[string]Image, len(imageIDs))
+	for _, image := range images {
+		if image.Discovery != "kubespray" {
+			continue
+		}
+		if _, duplicate := projected[image.ID]; duplicate {
+			*problems = append(*problems, "Kubespray image id is projected more than once")
+			return
+		}
+		projected[image.ID] = image
+	}
+	if len(projected) != len(imageIDs) {
+		*problems = append(*problems, "Kubespray image projection is incomplete")
+		return
+	}
+	ids := make([]string, 0, len(imageIDs))
+	for id := range imageIDs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		image, found := projected[id]
+		source := image.Delivery.Default.Source
+		tag := imageReferenceTag(source)
+		repository := imageRepository(source)
+		expectedTarget := strings.TrimSuffix(targetPrefix, "/") +
+			"/kubespray/" + repository + ":" + tag
+		if !found || tag == "" || repository == "" ||
+			image.Target != expectedTarget ||
+			len(image.Scopes) != 1 || image.Scopes[0] != "kubespray" ||
+			!image.Runtime || image.Delivery.Default.Type != "mirror" ||
+			!validDigest(image.Delivery.Default.Digest) {
+			*problems = append(
+				*problems,
+				fmt.Sprintf("Kubespray image %s does not exactly project to Harbor", id),
+			)
+			return
+		}
+	}
+}
+
+func validKubesprayLocalPath(value string) bool {
+	if value == "" || strings.HasPrefix(value, "/") ||
+		strings.ContainsRune(value, '\\') ||
+		filepath.ToSlash(filepath.Clean(value)) != value {
+		return false
+	}
+	for _, segment := range strings.Split(value, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func validKubesprayURLVariable(value string) bool {
+	if !strings.HasSuffix(value, "_url") || len(value) <= len("_url") {
+		return false
+	}
+	for index, character := range value {
+		if character >= 'a' && character <= 'z' ||
+			index > 0 && character >= '0' && character <= '9' ||
+			index > 0 && character == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func validResourceID(value string) bool {

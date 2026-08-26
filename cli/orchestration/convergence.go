@@ -22,10 +22,11 @@ type orchestrationInput struct {
 	InventorySHA256 string               `json:"inventorySha256"`
 }
 
-// orchestrationInputSHA256 is the exact desired-state handoff to Kubespray:
-// declarative orchestration configuration, tracked Atum-owned orchestration
-// files, and the generated infrastructure inventory. Platform and CLI-only
-// edits therefore do not cause an unnecessary cluster.yml replay.
+// orchestrationInputSHA256 captures the exact desired-state handoff for one
+// active Kubespray invocation: declarative orchestration configuration,
+// tracked Atum-owned orchestration files, and the generated infrastructure
+// inventory. The value is never persisted or used to trigger a later replay;
+// it only rejects inputs that change while the current invocation is running.
 func (service Service) orchestrationInputSHA256(inventoryPath string) (string, error) {
 	if service.Project == nil {
 		return "", fmt.Errorf("Atum project is not loaded")

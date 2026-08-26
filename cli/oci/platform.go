@@ -44,7 +44,7 @@ func NewBlobVerifier() *BlobVerifier {
 }
 
 // ValidateLinuxAMD64Manifest requires one exact runnable manifest. Official
-// mirror pins use this stricter contract so a bundle never retains unrelated
+// mirror pins use this stricter contract so publication never retains unrelated
 // architectures from a multi-platform source index.
 func ValidateLinuxAMD64Manifest(ctx context.Context, source content.ReadOnlyStorage, root ocispec.Descriptor) error {
 	switch root.MediaType {

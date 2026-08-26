@@ -69,13 +69,11 @@ func (service Service) ClearLocalState() error {
 		return errors.New("Atum project is not loaded")
 	}
 	inventory := service.Project.Desired.Orchestration.Inventory
-	for _, relative := range []string{
+	if err := fssecure.RemoveRegular(
+		service.Project.Root,
 		filepath.Join(inventory, "hosts.yaml"),
-		orchestrationReceiptPath,
-	} {
-		if err := fssecure.RemoveRegular(service.Project.Root, relative); err != nil {
-			return err
-		}
+	); err != nil {
+		return err
 	}
 	return fssecure.RemoveTree(service.Project.Root, filepath.Join(inventory, "artifacts"))
 }

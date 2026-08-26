@@ -40,7 +40,7 @@ type dockerArchiveBlob struct {
 // written once even when multiple seed services share them.
 func writeDockerArchive(
 	ctx context.Context,
-	destination, bundlePath string,
+	destination, artifactPath string,
 	input []dockerArchiveImage,
 ) (archiveIdentity, error) {
 	if len(input) == 0 {
@@ -92,7 +92,7 @@ func writeDockerArchive(
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return writeArchive(destination, bundlePath, func(writer *tar.Writer, buffer []byte) error {
+	return writeArchive(destination, artifactPath, func(writer *tar.Writer, buffer []byte) error {
 		for _, name := range names {
 			if err := writeDockerBlob(ctx, writer, buffer, blobs[name]); err != nil {
 				return err

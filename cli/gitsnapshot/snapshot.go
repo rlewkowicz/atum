@@ -363,7 +363,7 @@ func (file File) Contents() (string, error) {
 
 // SHA256 identifies normalized paths, modes, and bytes. Overrides replace
 // committed regular-file content before hashing, preventing the generated
-// bundle field in atum.lock.json from making the source identity recursive.
+// generated lock fields in atum.lock.json from making the source identity recursive.
 func (snapshot *Snapshot) SHA256(overrides map[string][]byte) (string, error) {
 	identity, err := snapshot.Identity(overrides)
 	return identity.SHA256, err

@@ -104,7 +104,7 @@ func imageReferenceRepository(reference string) string {
 
 // DeliveryGraphSHA256 returns the content identity for all inputs reachable by
 // a delivery profile. It is shared by update resolution, publication, and
-// bundle verification so those paths cannot drift onto different graph
+// publication verification so those paths cannot drift onto different graph
 // projections.
 func DeliveryGraphSHA256(project *Project, profile string) (string, error) {
 	return deliveryGraphSHA256(project, profile, nil)
@@ -118,7 +118,7 @@ func DeliveryGraphSHA256WithFiles(project *Project, profile string, files map[st
 
 // ReachableBakeTargets returns every concrete target required by roots. Image
 // delivery uses it to replace registry exporters with local caches when a
-// bootstrap bundle is built before Harbor exists.
+// minimal bootstrap seed is built before Harbor exists.
 func ReachableBakeTargets(project *Project, roots []string) ([]string, error) {
 	data, _, err := graphFile(project, buildGraphPath, nil)
 	if err != nil {

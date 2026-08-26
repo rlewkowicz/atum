@@ -77,10 +77,9 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 	}
 	if scope&ScopePlatform != 0 {
 		items := []itemSpec{
-			{id: "bundle", label: "Deployment bundle"},
-			{id: "bundle-materialization", label: "Bundle materialization"},
+			{id: "publication", label: "Publication inputs"},
 			{id: "compatibility-builds", label: "Compatibility builds"},
-			{id: "harbor-seed", label: "Seed Harbor publication"},
+			{id: "harbor-publication", label: "Harbor publication"},
 			{id: "forgejo", label: "Forgejo sources"},
 			{id: "flux", label: "Flux"},
 			{id: "prep", label: "Platform prerequisites"},
@@ -91,7 +90,7 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 			{id: "platform-profile-access", label: "Platform profile access"},
 		}
 		seen := map[string]struct{}{
-			"bundle": {}, "bundle-materialization": {}, "compatibility-builds": {}, "harbor-seed": {}, "forgejo": {}, "flux": {}, "prep": {},
+			"publication": {}, "compatibility-builds": {}, "harbor-publication": {}, "forgejo": {}, "flux": {}, "prep": {},
 			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {},
 			"platform-profile-access": {},
 		}

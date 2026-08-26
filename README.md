@@ -17,7 +17,7 @@ Big Bang is a platform in a box. The deployment model is open source and openly 
 1. All images are swapped out for their official upstreams and built from scratch where there is no analog or the upstream was sunset.
 2. It's all fully declarative. Big Bang itself is a Helm chart of Helm charts. Nothing is vendored to this repo. The platform is mostly value overrides with minimal Flux/Kustomize wiring.
 3. As of this writing, it uses Kubespray for the cluster. Lean into it. Own the cluster. I may add support for cloud-native Kubernetes implementations in the future, but this handles upgrades and deployment using Ansible with Mitogen. I'm also out of money in a big way.
-4. It's air-gap ready. It bundles all images into an OCI bundle for deployment. It stands up a provisional [Harbor](https://github.com/goharbor/harbor)/[Forgejo](https://forgejo.org/) combo on the bastion for first-time deployment.
+4. It's air-gap ready. It publishes every cluster image and chart to [Harbor](https://github.com/goharbor/harbor), while a minimal bastion seed starts Harbor and [Forgejo](https://forgejo.org/) for first-time deployment.
 
 # Infra, Orchestration, Platform
 
@@ -148,7 +148,7 @@ atum platform flux <flux-args...>
 
 ```sh
 jq -r '.delivery.images[] | [.id, .delivery.default.type, .target] | @tsv' atum.json
-atum images bundle
+atum images publish
 ```
 
 ## Status

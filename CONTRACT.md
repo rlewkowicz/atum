@@ -149,12 +149,13 @@ record. Generated values, Flux manifests, source references, build metadata,
 and `platform/docs/finalpackages.md` are projections of the selected source
 trees and lock.
 
-Build output digests and registry publication results are execution receipts,
-not immutable resolution. They live only in ignored
-`.atum/state/deployment.lock.json`, bound to the exact desired hash, root-lock
-hash, source snapshot, inventory, and build graph. A missing or stale receipt
-is repaired by rerunning the explicit delivery operation; delivery never
-rewrites tracked resolution state.
+Build output digests and registry publication results are publication facts,
+not immutable resolution. One mode-0600 receipt lives only in ignored
+`.atum/state/publication.lock.json`, bound to the exact desired hash, root-lock
+hash, source snapshot and commit, image and chart publication identities, and
+minimal seed identity. A missing or stale receipt is repaired by rerunning the
+explicit delivery operation; delivery never rewrites tracked resolution
+state.
 
 The updater is the sole writer of coupled upstream coordinates, digests,
 desired derived fields, lock state, generated platform values, generated Flux
@@ -343,10 +344,11 @@ The local apply sequence is linear:
 7. directly apply only Flux's SOPS age-key Secret;
 8. wait for normal Flux reconciliation to decrypt the platform source and
    deploy Big Bang;
-9. wait for Big Bang to create its Harbor-backed generic cert-manager
-   `HelmRelease`;
-10. wait for Flux's health gate on that `HelmRelease`, then for the
-    Flux-managed issuer and Certificate resources;
+9. let the generated Big Bang Kustomization establish one native readiness
+   condition from ordered health checks on the root Big Bang and its
+   Harbor-backed generic cert-manager `HelmRelease`;
+10. let the dependent Flux Kustomization reconcile and wait for only its owned
+    issuer and Certificate resources;
 11. wait for the Flux-deployed Atum operator to finish its typed Keycloak and
     Vault provider configuration;
 12. reconcile explicit local DNS and CA integration.
@@ -357,6 +359,22 @@ otherwise it leaves an inspectable state and an idempotent rerun path. It does
 not mutate live resources manually to manufacture success, call
 `flux reconcile`, activate a deployment branch, or retain an in-cluster Atum
 receipt object.
+
+The explicit local-access install command uses the same native platform status
+and delivery-compliance observation as the automatic apply path. Missing
+kubeconfig, incomplete or failed Flux reconciliation, or incomplete delivery
+compliance terminates before either workstation DNS or CA trust is changed.
+Infrastructure-only apply invokes Terraform without installing or verifying
+workstation access.
+
+Kubespray planning observes only the live API-server Kubernetes version and
+the exact committed release ladder. An existing cluster must match one ladder
+entry, and each observation may select only the next exact entry; unavailable,
+newer, skipped, or unlisted versions terminate without mutation. Atum retains
+no orchestration receipt, resume checkpoint, or durable configuration hash.
+A direct user-requested Kubespray apply may reconcile the current exact target,
+with native health checks and an in-memory input-consistency check confined to
+that invocation.
 
 Flux and package/controller `Ready` or failure conditions own reconciliation
 completion. Atum does not install Flux twice or infer completion from
@@ -402,10 +420,16 @@ Ansible playbooks, and imperative post-Flux handoffs are prohibited.
 
 ## Repository and documentation
 
-Upstream directories are replaceable read-only inputs. Atum does not modify
-`../bigbang`, any Kubespray checkout, or hydrated package trees, and does not
-vendor whole upstream repositories. If a minimal chart must be vendored, it
-belongs under `platform/charts`.
+Upstream directories are replaceable read-only inputs. The exact pinned
+Kubespray offline scripts may create their own transient output inside an
+ignored hydrated checkout while running; Atum removes that output before the
+workflow returns. Atum supplies synthesized offline variables from a unique
+mode-`0600` invocation directory beneath `.atum/`, removes that directory as
+soon as the official discovery process returns, and retains only
+content-pinned files beneath `.atum/`.
+Atum does not modify `../bigbang`, `../kubespray`, or hydrated package source,
+and does not vendor whole upstream repositories. If a minimal chart must be
+vendored, it belongs under `platform/charts`.
 
 `platform/docs/finalpackages.md` is an updater-generated factual snapshot of
 the exact selected lock and render: package versions, official chart/project

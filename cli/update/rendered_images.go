@@ -17,6 +17,7 @@ import (
 
 type officialImageSpec struct {
 	id         string
+	targetName string
 	family     string
 	version    string
 	targetTag  string
@@ -107,11 +108,15 @@ func reconstructRenderedImages(
 				spec.source,
 			)
 		}
+		targetName := spec.id
+		if spec.targetName != "" {
+			targetName = spec.targetName
+		}
 		candidate := config.Image{
 			ID:          spec.id,
 			Family:      spec.family,
 			Version:     spec.version,
-			Target:      desired.Delivery.Policy.RuntimeRegistryPrefix + spec.id + ":" + spec.targetTag,
+			Target:      desired.Delivery.Policy.RuntimeRegistryPrefix + targetName + ":" + spec.targetTag,
 			Scopes:      []string{"bigbang"},
 			Runtime:     true,
 			License:     spec.license,
@@ -307,7 +312,8 @@ func officialImageFor(
 	switch {
 	case strings.HasPrefix(path, "fluxcd/"):
 		name := strings.TrimPrefix(path, "fluxcd/")
-		spec.id, spec.family, spec.license = "flux-"+name, "flux", "Apache-2.0"
+		spec.id, spec.targetName, spec.family, spec.license =
+			"flux-"+name, name, "flux", "Apache-2.0"
 		spec.source = "ghcr.io/fluxcd/" + name + ":" + tag
 	case strings.HasPrefix(path, "opensource/goharbor/"):
 		name := strings.TrimPrefix(path, "opensource/goharbor/")

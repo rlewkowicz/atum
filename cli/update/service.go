@@ -20,6 +20,7 @@ import (
 	"atum/cli/gitcache"
 	"atum/cli/identity"
 	"atum/cli/orchestration"
+	"atum/cli/process"
 	"atum/cli/progress"
 
 	"github.com/Masterminds/semver/v3"
@@ -32,6 +33,7 @@ type Service struct {
 	cache  *gitcache.Manager
 	charts *chartClient
 	logger *slog.Logger
+	runner process.Runner
 }
 
 type Options struct {
@@ -60,6 +62,7 @@ func NewService(root string, logger *slog.Logger) *Service {
 		cache:  gitcache.New(root),
 		charts: newChartClient(root),
 		logger: logger,
+		runner: process.ExecRunner{},
 	}
 }
 
@@ -335,6 +338,29 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	for i := range bootstrapCharts {
 		desired.Platform.Bootstrap.Charts[i] = bootstrapCharts[i].Chart
+	}
+	desired.Delivery.Kubespray, err = service.reconstructKubesprayReleaseArtifacts(
+		ctx,
+		&desired,
+		selection.clusterReleases,
+		selection.kubespray,
+		parallelism,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	containerdValues, err := kubesprayRegistryValues(desired)
+	if err != nil {
+		return Result{}, err
+	}
+	containerdPath := filepath.Join(
+		desired.Orchestration.Inventory,
+		"group_vars",
+		"all",
+		"containerd.yml",
+	)
+	if err := tree.SetYAML(containerdPath, containerdValues); err != nil {
+		return Result{}, err
 	}
 	imageArtifacts := append([]chartArtifact(nil), artifacts...)
 	imageArtifacts = append(imageArtifacts, chartArtifact{ID: "flux"})
@@ -666,6 +692,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 
 	lock.Resolved = config.Resolved{
 		ClusterReleases: desired.Orchestration.Releases,
+		Kubespray:       desired.Delivery.Kubespray,
 		BigBang:         desired.Platform.BigBang,
 		Flux:            desired.Platform.Flux,
 		Packages:        desired.Platform.Packages,
@@ -1172,6 +1199,7 @@ type platformSelection struct {
 	constraints     []versionConstraint
 	generated       map[string]any
 	artifacts       []chartArtifact
+	kubespray       resolvedGit
 	kubernetes      kubernetesRelease
 	inspections     []chartInspection
 	clusterReleases []config.ClusterRelease
@@ -1477,6 +1505,7 @@ func (service *Service) selectCompatiblePlatform(
 				constraints:     constraints,
 				generated:       candidateGenerated,
 				artifacts:       artifacts,
+				kubespray:       kubernetesCandidate.kubespray,
 				kubernetes:      kubernetesCandidate.kubernetes,
 				inspections:     inspections,
 				clusterReleases: clusterReleases,

@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +19,6 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
-	"oras.land/oras-go/v2/content/memory"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
@@ -144,7 +141,7 @@ func (client *Client) ValidateLinuxAMD64Manifest(ctx context.Context, reference 
 }
 
 // ValidateHelmChart proves that a registry manifest contains the one exact
-// checksum-pinned Helm archive Atum bundled. It validates only bounded OCI
+// checksum-pinned Helm archive Atum selected. It validates only bounded OCI
 // metadata; the content-addressed chart layer itself need not be downloaded a
 // second time merely to establish the same SHA-256 and size.
 func (client *Client) ValidateHelmChart(
@@ -285,7 +282,7 @@ func (client *Client) CopyFromStore(
 }
 
 // CopyTargetToStore copies an exact graph from an already-open content target
-// into another target. It is used for local build outputs so bundle creation
+// into another target. It is used for local build outputs so publication
 // never needs to round-trip those bytes through a registry.
 func CopyTargetToStore(
 	ctx context.Context,
@@ -305,104 +302,6 @@ func CopyTargetToStore(
 		return ocispec.Descriptor{}, fmt.Errorf("OCI graph %s copied as %s", digest, descriptor.Digest)
 	}
 	return descriptor, nil
-}
-
-func (client *Client) PushArtifact(
-	ctx context.Context,
-	path, sha256 string,
-	size int64,
-	target string,
-) (ocispec.Descriptor, error) {
-	targetReference, repository, err := client.repository(target)
-	if err != nil {
-		return ocispec.Descriptor{}, err
-	}
-	if targetReference.Registry != client.target.Host {
-		return ocispec.Descriptor{}, fmt.Errorf("artifact destination %s is outside %s", target, client.target.Host)
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("open bundle artifact: %w", err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != size || size <= 0 {
-		if err != nil {
-			return ocispec.Descriptor{}, fmt.Errorf("inspect bundle artifact: %w", err)
-		}
-		return ocispec.Descriptor{}, fmt.Errorf("bundle artifact is not a regular file of %d bytes", size)
-	}
-	layerDigest := digest.NewDigestFromEncoded(digest.SHA256, sha256)
-	if err := layerDigest.Validate(); err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("bundle artifact digest is invalid: %w", err)
-	}
-	layer := ocispec.Descriptor{
-		MediaType: "application/vnd.atum.bundle.v1+tar",
-		Digest:    layerDigest,
-		Size:      size,
-		Annotations: map[string]string{
-			ocispec.AnnotationTitle: filepath.Base(path),
-		},
-	}
-	metadata := memory.New()
-	manifest, err := oras.PackManifest(ctx, metadata, oras.PackManifestVersion1_1, "application/vnd.atum.bundle.v1", oras.PackManifestOptions{
-		Layers: layerSlice(layer),
-		ManifestAnnotations: map[string]string{
-			ocispec.AnnotationCreated: "1970-01-01T00:00:00Z",
-			ocispec.AnnotationTitle:   filepath.Base(path),
-		},
-	})
-	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("pack bundle artifact: %w", err)
-	}
-	if err := metadata.Tag(ctx, manifest, manifest.Digest.String()); err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("index bundle artifact manifest: %w", err)
-	}
-	store := &artifactTarget{metadata: metadata, file: file, layer: layer}
-	options := oras.DefaultCopyOptions
-	options.CopyGraphOptions.Concurrency = copyConcurrency
-	options.CopyGraphOptions.MaxMetadataBytes = metadataLimit
-	published, err := oras.Copy(ctx, store, manifest.Digest.String(), repository, targetReference.Identifier, options)
-	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("publish bundle artifact to %s: %w", target, err)
-	}
-	resolved, err := repository.Resolve(ctx, targetReference.Identifier)
-	if err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("resolve published bundle artifact %s: %w", target, err)
-	}
-	if resolved.Digest != published.Digest || resolved.Size != published.Size {
-		return ocispec.Descriptor{}, fmt.Errorf("published bundle artifact %s changed from %s/%d to %s/%d",
-			target, published.Digest, published.Size, resolved.Digest, resolved.Size)
-	}
-	return published, nil
-}
-
-type artifactTarget struct {
-	metadata *memory.Store
-	file     *os.File
-	layer    ocispec.Descriptor
-}
-
-func (target *artifactTarget) Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error) {
-	return target.metadata.Resolve(ctx, reference)
-}
-
-func (target *artifactTarget) Exists(ctx context.Context, descriptor ocispec.Descriptor) (bool, error) {
-	if descriptor.Digest == target.layer.Digest {
-		return descriptor.Size == target.layer.Size, nil
-	}
-	return target.metadata.Exists(ctx, descriptor)
-}
-
-func (target *artifactTarget) Fetch(ctx context.Context, descriptor ocispec.Descriptor) (io.ReadCloser, error) {
-	if descriptor.Digest == target.layer.Digest && descriptor.Size == target.layer.Size {
-		return io.NopCloser(io.NewSectionReader(target.file, 0, target.layer.Size)), nil
-	}
-	return target.metadata.Fetch(ctx, descriptor)
-}
-
-func layerSlice(descriptor ocispec.Descriptor) []ocispec.Descriptor {
-	return []ocispec.Descriptor{descriptor}
 }
 
 func (client *Client) repository(reference string) (Reference, *remote.Repository, error) {

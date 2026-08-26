@@ -9,7 +9,7 @@ import (
 	"atum/cli/gitsnapshot"
 )
 
-// AtumSourceSHA256 identifies the current tracked Atum handoff. Execution
+// AtumSourceSHA256 identifies the current tracked Atum handoff. Publication
 // receipts live beneath ignored local state, so the tracked root lock can be
 // hashed without normalizing mutable delivery results.
 func AtumSourceSHA256(project *Project) (string, error) {
@@ -236,7 +236,7 @@ func ValidateSourceSnapshot(project *Project) error {
 }
 
 // SourceLockData returns the exact tracked root lock bytes. Runtime delivery
-// resolution lives in ignored execution state and cannot change this identity.
+// resolution lives in ignored publication state and cannot change this identity.
 func SourceLockData(project *Project) ([]byte, error) {
 	if project == nil || len(project.LockData) == 0 {
 		return nil, fmt.Errorf("Atum project has no tracked lock data")

@@ -22,7 +22,7 @@ type localDelivery struct {
 // resolveLocalDelivery creates a complete delivery lock without depending on
 // the target registry. Official images are verified at their exact source
 // digest and source builds remain in content-addressed local OCI layouts for
-// direct bundle assembly.
+// direct publication.
 func (service *Service) resolveLocalDelivery(
 	ctx context.Context,
 	project *config.Project,
@@ -44,7 +44,7 @@ func (service *Service) resolveLocalDelivery(
 		return localDelivery{}, err
 	}
 	if len(selectedIDs) != len(project.Desired.Delivery.Images) {
-		return localDelivery{}, fmt.Errorf("deployment bundle requires the complete runtime image inventory")
+		return localDelivery{}, fmt.Errorf("publication requires the complete runtime image inventory")
 	}
 	registry, err := atumoci.NewClient(project.Desired.Delivery.Registry, atumoci.Credentials{})
 	if err != nil {
@@ -60,7 +60,7 @@ func (service *Service) resolveLocalDelivery(
 	if err != nil {
 		return localDelivery{}, err
 	}
-	progress.Update(ctx, progress.Platform, "bundle", "Deployment bundle",
+	progress.Update(ctx, progress.Platform, "publication", "Publication inputs",
 		fmt.Sprintf("verifying %d upstream images; building %d compatibility images", len(mirrors), len(builds)),
 		0, len(selected))
 	results := make(map[string]config.LockedImage, len(selected))
@@ -78,7 +78,7 @@ func (service *Service) resolveLocalDelivery(
 		)
 		if buildErr == nil {
 			current := int(resolved.Add(int64(len(buildEntries))))
-			progress.Update(groupContext, progress.Platform, "bundle", "Deployment bundle",
+			progress.Update(groupContext, progress.Platform, "publication", "Publication inputs",
 				"compatibility images ready", current, len(selected))
 		}
 		return buildErr
@@ -101,7 +101,7 @@ func (service *Service) resolveLocalDelivery(
 				mirrorOutputs[entry.ID] = output
 				resultMu.Unlock()
 				current := int(resolved.Add(1))
-				progress.Update(groupContext, progress.Platform, "bundle", "Deployment bundle",
+				progress.Update(groupContext, progress.Platform, "publication", "Publication inputs",
 					"verified upstream image "+entry.ID, current, len(selected))
 				return nil
 			})
@@ -110,7 +110,7 @@ func (service *Service) resolveLocalDelivery(
 	if err := group.Wait(); err != nil {
 		return localDelivery{}, err
 	}
-	progress.Update(ctx, progress.Platform, "bundle", "Deployment bundle",
+	progress.Update(ctx, progress.Platform, "publication", "Publication inputs",
 		"all runtime images resolved", len(selected), len(selected))
 	for id, entry := range buildEntries {
 		results[id] = entry

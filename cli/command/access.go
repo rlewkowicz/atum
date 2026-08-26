@@ -264,15 +264,13 @@ func (a *app) runAccessAction(ctx context.Context, action string) error {
 		)
 		return err
 	case "install":
+		if err := a.requireNativePlatformForLocalAccess(ctx); err != nil {
+			return err
+		}
 		if err := a.ensureLocalDNS(ctx); err != nil {
 			return err
 		}
-		err := a.ensureLocalCA(ctx)
-		if errors.Is(err, kube.ErrKubeconfigAbsent) {
-			_, printErr := fmt.Fprintln(a.out, "local CA will be installed after the local platform converges")
-			return printErr
-		}
-		return err
+		return a.ensureLocalCA(ctx)
 	case "uninstall":
 		if a.dryRun {
 			a.logger.InfoContext(ctx, "local access uninstall would remove only Atum-managed host files")
@@ -326,6 +324,62 @@ func (a *app) runAccessAction(ctx context.Context, action string) error {
 	default:
 		return fmt.Errorf("unsupported access action %q", action)
 	}
+}
+
+func (a *app) requireNativePlatformForLocalAccess(ctx context.Context) error {
+	status, err := a.platformService().Status(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"observe native platform readiness before local access install: %w",
+			err,
+		)
+	}
+	if !status.Reconciliation.Complete() {
+		return fmt.Errorf(
+			"native Flux reconciliation is incomplete; local access was not changed: %s",
+			nativeReconciliationDiagnostics(status.Reconciliation),
+		)
+	}
+	if !status.Delivery.Compliant() {
+		detail := strings.Join(status.Delivery.Issues, "; ")
+		if detail == "" {
+			detail = fmt.Sprintf(
+				"sourcesInternal=%t runtimeImagesExact=%t",
+				status.Delivery.SourcesInternal,
+				status.Delivery.RuntimeImagesExact,
+			)
+		}
+		return fmt.Errorf(
+			"platform delivery compliance is incomplete; local access was not changed: %s",
+			detail,
+		)
+	}
+	return nil
+}
+
+func nativeReconciliationDiagnostics(
+	status platform.ReconciliationStatus,
+) string {
+	issues := make([]string, 0, len(status.Kustomizations)+2)
+	appendIssue := func(resource platform.ResourceStatus) {
+		if resource.Ready {
+			return
+		}
+		detail := resource.Message
+		if detail == "" {
+			detail = "Ready condition is false"
+		}
+		issues = append(issues, resource.Name+": "+detail)
+	}
+	for _, resource := range status.Kustomizations {
+		appendIssue(resource)
+	}
+	appendIssue(status.BigBangSource)
+	appendIssue(status.BigBangRelease)
+	if len(issues) == 0 {
+		return "required native resources are absent"
+	}
+	return strings.Join(issues, "; ")
 }
 
 func (a *app) localAccessFacts() (infra.LocalAccessFacts, bool, error) {
@@ -522,33 +576,6 @@ func (a *app) ensureLocalDNS(ctx context.Context) error {
 	progress.Done(ctx, progress.Platform, "local-dns", "Local DNS",
 		"resolver configuration installed")
 	return nil
-}
-
-func (a *app) verifyLocalDNSLookups(ctx context.Context) error {
-	facts, local, err := a.localAccessFacts()
-	if err != nil || !local || a.dryRun {
-		return err
-	}
-	deadline := time.NewTimer(localDNSConvergenceTimeout)
-	defer deadline.Stop()
-	retry := time.NewTicker(localDNSRetryInterval)
-	defer retry.Stop()
-	for {
-		status, err := a.localDNSStatus(ctx, facts)
-		if err != nil {
-			return err
-		}
-		if status.PublicLookupExact && status.PassthroughLookupsExact {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return localDNSLookupError(status, facts)
-		case <-retry.C:
-		}
-	}
 }
 
 type localDNSObservation struct {

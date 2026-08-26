@@ -29,7 +29,9 @@ func resolveSelection(project *config.Project, options PublishOptions, graphSHA 
 			}
 		}
 	}
-	if len(wanted) == 0 && group != "all" && group != "platform" && group != "prep" && group != "bigbang" && group != "build-system" {
+	if len(wanted) == 0 && group != "all" && group != "platform" &&
+		group != "prep" && group != "bigbang" && group != "build-system" &&
+		group != "kubespray" {
 		return nil, nil, fmt.Errorf("unsupported image group %q", group)
 	}
 	selected := make([]selectedImage, 0, len(project.Desired.Delivery.Images))

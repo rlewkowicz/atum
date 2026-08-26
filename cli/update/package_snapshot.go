@@ -78,8 +78,8 @@ func renderFinalPackages(
   selected projections.
 - The updater observes the exact selected Big Bang and chart renders.
 - ` + "`atum.lock.json`" + ` is the sole immutable resolution record.
-- Build, publication, and bundle receipts live only in ignored
-  ` + "`.atum/state/deployment.lock.json`" + `.
+- The immutable publication receipt lives only in ignored
+  ` + "`.atum/state/publication.lock.json`" + `.
 - This file is a generated human-readable projection of those current facts;
   it owns no selection or runtime state.
 
@@ -273,9 +273,9 @@ are non-fetchable comparison evidence, never build inputs.
 		document.WriteString("| None | — | — | — | — | — |\n")
 	}
 	document.WriteString(`
-Build output digests are execution receipts and therefore never enter the root
-lock. Local build, publication, and bundle receipts are written only to
-ignored ` + "`.atum/state/deployment.lock.json`" + `; this snapshot does not
+Build output digests are publication facts and therefore never enter the root
+lock. The immutable publication receipt is written only to ignored
+` + "`.atum/state/publication.lock.json`" + `; this snapshot does not
 claim an output that has not been produced.
 `)
 	return []byte(document.String()), nil

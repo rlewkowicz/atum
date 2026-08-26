@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -81,21 +80,23 @@ func (service Service) configureHarbor(
 	if err := control.waitHealthy(ctx, timeout); err != nil {
 		return registryCredentials{}, err
 	}
+	runtimeProject := service.Project.Desired.Delivery.Registry.Project
 	for _, desired := range []struct {
 		name   string
 		public bool
 	}{
-		{name: "atum", public: true},
+		{name: runtimeProject, public: true},
 		{name: "charts", public: true},
 		{name: "buildkit"},
-		{name: "seed-artifacts"},
 	} {
 		if err := control.ensureProject(ctx, desired.name, desired.public); err != nil {
 			return registryCredentials{}, err
 		}
 	}
-	if err := control.ensureChartsImmutable(ctx); err != nil {
-		return registryCredentials{}, err
+	for _, projectName := range []string{runtimeProject, "charts"} {
+		if err := control.ensureAllTagsImmutable(ctx, projectName); err != nil {
+			return registryCredentials{}, err
+		}
 	}
 	return registryCredentials{
 		Username: "admin",
@@ -215,9 +216,9 @@ func projectMetadata(public bool) *models.ProjectMetadata {
 	}
 }
 
-func (service Service) publishBundle(
+func (service Service) publishPublication(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	credentials registryCredentials,
 	parallelism int,
 ) error {
@@ -241,77 +242,67 @@ func (service Service) publishBundle(
 		return err
 	}
 	defer client.Clear()
-	store, err := bundle.ImageStore()
-	if err != nil {
-		return fmt.Errorf("open verified bundled OCI layout: %w", err)
-	}
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(parallelism)
-	total := len(bundle.Images) + len(bundle.Charts)
+	total := len(publication.Images) + len(publication.Charts)
 	var publishedCount atomic.Int64
-	for _, image := range bundle.Images {
-		image := image
-		group.Go(func() error {
-			if _, err := client.Resolve(groupContext, image.Target); err != nil && !errors.Is(err, errdef.ErrNotFound) {
-				return err
-			}
-			published, err := client.CopyFromStore(groupContext, store, image.Digest, image.Target)
-			if err != nil {
-				return err
-			}
-			if published.Digest.String() != image.Digest {
-				return fmt.Errorf("publish %s produced %s, want %s", image.Target, published.Digest, image.Digest)
-			}
-			resolved, err := client.Resolve(groupContext, image.Target)
-			if err != nil {
-				return fmt.Errorf("resolve published image %s: %w", image.Target, err)
-			}
-			if resolved.Digest.String() != image.Digest {
-				return fmt.Errorf("published image %s resolves to %s, want %s", image.Target, resolved.Digest, image.Digest)
-			}
+	if err := delivery.PublishImages(
+		ctx,
+		client,
+		publication,
+		parallelism,
+		func(id string) {
 			current := int(publishedCount.Add(1))
-			progress.Update(groupContext, progress.Platform, "harbor-seed", "Seed Harbor publication",
-				"published runtime image "+image.ID, current, total)
-			return nil
-		})
-	}
-	if err := group.Wait(); err != nil {
+			progress.Update(
+				ctx,
+				progress.Platform,
+				"harbor-publication",
+				"Harbor publication",
+				"published runtime image "+id,
+				current,
+				total,
+			)
+		},
+	); err != nil {
 		return err
 	}
 	progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
-		"publishing immutable chart inventory", 0, len(bundle.Charts))
+		"publishing immutable chart inventory", 0, len(publication.Charts))
 	var chartCount atomic.Int64
-	return service.publishCharts(ctx, bundle, credentials, parallelism, func(id string) {
+	return service.publishCharts(ctx, publication, credentials, parallelism, func(id string) {
 		chartCurrent := int(chartCount.Add(1))
 		progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
-			"published or reused chart "+id, chartCurrent, len(bundle.Charts))
+			"published or reused chart "+id, chartCurrent, len(publication.Charts))
 		current := int(publishedCount.Add(1))
-		progress.Update(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication",
+		progress.Update(ctx, progress.Platform, "harbor-publication", "Harbor publication",
 			"published chart "+id, current, total)
 	})
 }
 
 func (service Service) publishCharts(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	credentials registryCredentials,
 	parallelism int,
 	report func(string),
 ) error {
-	charts := append([]delivery.BundleChart(nil), bundle.Charts...)
-	sort.Slice(charts, func(i, j int) bool { return charts[i].ID < charts[j].ID })
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(config.EffectiveWorkLimit(
 		parallelism,
 		service.Project.Desired.Updates.Parallelism,
 		config.DefaultWorkLimit,
 	))
-	for index := range charts {
-		chart := charts[index]
+	for index := range publication.Charts {
+		index := index
 		group.Go(func() error {
-			if err := service.publishChart(groupContext, chart, credentials); err != nil {
+			chart := publication.Charts[index]
+			digest, err := service.publishChart(
+				groupContext,
+				chart,
+				credentials,
+			)
+			if err != nil {
 				return err
 			}
+			publication.Charts[index].ManifestDigest = digest
 			report(chart.ID)
 			return nil
 		})
@@ -321,12 +312,12 @@ func (service Service) publishCharts(
 
 func (service Service) publishChart(
 	ctx context.Context,
-	chart delivery.BundleChart,
+	chart delivery.Chart,
 	credentials registryCredentials,
-) error {
+) (string, error) {
 	client, err := service.helmRegistryClient(credentials, chart.ArchiveSHA256)
 	if err != nil {
-		return err
+		return "", err
 	}
 	nativeCredentials := atumoci.Credentials{
 		Username: credentials.Username,
@@ -338,36 +329,36 @@ func (service Service) publishChart(
 		service.Project.Desired.Delivery.Registry, nativeCredentials,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resolver.Clear()
 	if chart.Size <= 0 || chart.Size > config.ChartArchiveLimit {
-		return fmt.Errorf("chart %s has invalid locked size %d", chart.ID, chart.Size)
+		return "", fmt.Errorf("chart %s has invalid locked size %d", chart.ID, chart.Size)
 	}
 	data, err := readBounded(chart.Path, config.ChartArchiveLimit)
 	if err != nil {
-		return fmt.Errorf("read chart %s: %w", chart.ID, err)
+		return "", fmt.Errorf("read chart %s: %w", chart.ID, err)
 	}
 	defer clear(data)
 	hash := sha256.Sum256(data)
 	if hex.EncodeToString(hash[:]) != chart.ArchiveSHA256 {
-		return fmt.Errorf("chart %s archive changed after bundle verification", chart.ID)
+		return "", fmt.Errorf("chart %s archive changed after publication preparation", chart.ID)
 	}
 	archiveSize := int64(len(data))
 	if archiveSize != chart.Size {
-		return fmt.Errorf("chart %s is %d bytes, want %d", chart.ID, archiveSize, chart.Size)
+		return "", fmt.Errorf("chart %s is %d bytes, want %d", chart.ID, archiveSize, chart.Size)
 	}
 	descriptor, resolveErr := resolver.Resolve(ctx, chart.Target)
 	if resolveErr == nil {
 		if err := resolver.ValidateHelmChart(
 			ctx, chart.Target, descriptor, chart.ArchiveSHA256, archiveSize,
 		); err != nil {
-			return fmt.Errorf("immutable Harbor chart %s differs from the bundle: %w", chart.Target, err)
+			return "", fmt.Errorf("immutable Harbor chart %s differs from its canonical input: %w", chart.Target, err)
 		}
-		return nil
+		return descriptor.Digest.String(), nil
 	}
 	if !errors.Is(resolveErr, errdef.ErrNotFound) {
-		return resolveErr
+		return "", resolveErr
 	}
 	result, err := client.Push(
 		data,
@@ -375,24 +366,24 @@ func (service Service) publishChart(
 		registry.PushOptCreationTime(time.Unix(0, 0).UTC().Format(time.RFC3339)),
 	)
 	if err != nil {
-		return fmt.Errorf("publish chart %s: %w", chart.ID, err)
+		return "", fmt.Errorf("publish chart %s: %w", chart.ID, err)
 	}
 	if result == nil || result.Manifest == nil || result.Manifest.Digest == "" {
-		return fmt.Errorf("publish chart %s returned no manifest digest", chart.ID)
+		return "", fmt.Errorf("publish chart %s returned no manifest digest", chart.ID)
 	}
 	verified, err := resolver.Resolve(ctx, chart.Target)
 	if err != nil {
-		return fmt.Errorf("verify published chart %s: %w", chart.ID, err)
+		return "", fmt.Errorf("verify published chart %s: %w", chart.ID, err)
 	}
 	if verified.Digest.String() != result.Manifest.Digest {
-		return fmt.Errorf("published chart %s does not resolve to its exact manifest and archive", chart.ID)
+		return "", fmt.Errorf("published chart %s does not resolve to its exact manifest and archive", chart.ID)
 	}
 	if err := resolver.ValidateHelmChart(
 		ctx, chart.Target, verified, chart.ArchiveSHA256, archiveSize,
 	); err != nil {
-		return fmt.Errorf("validate published chart %s: %w", chart.ID, err)
+		return "", fmt.Errorf("validate published chart %s: %w", chart.ID, err)
 	}
-	return nil
+	return verified.Digest.String(), nil
 }
 
 func (service Service) helmRegistryClient(
@@ -430,12 +421,15 @@ func (service Service) helmRegistryClient(
 	return client, nil
 }
 
-func (control *harborControl) ensureChartsImmutable(ctx context.Context) error {
+func (control *harborControl) ensureAllTagsImmutable(
+	ctx context.Context,
+	projectName string,
+) error {
 	client, err := control.apiClient()
 	if err != nil {
 		return err
 	}
-	current, err := control.chartsImmutable(ctx, client)
+	current, err := control.allTagsImmutable(ctx, client, projectName)
 	if err != nil || current {
 		return err
 	}
@@ -450,28 +444,56 @@ func (control *harborControl) ensureChartsImmutable(ctx context.Context) error {
 		},
 	}
 	_, err = client.Immutable.CreateImmuRule(ctx, &immutable.CreateImmuRuleParams{
-		ProjectNameOrID: "charts", XIsResourceName: &isName, ImmutableRule: rule,
+		ProjectNameOrID: projectName,
+		XIsResourceName: &isName,
+		ImmutableRule:   rule,
 	})
 	if err != nil {
-		return fmt.Errorf("create Harbor chart immutability rule: %w", err)
+		return fmt.Errorf(
+			"create Harbor project %s all-tags immutability rule: %w",
+			projectName,
+			err,
+		)
+	}
+	current, err = control.allTagsImmutable(ctx, client, projectName)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return fmt.Errorf(
+			"Harbor project %s all-tags immutability rule was not admitted",
+			projectName,
+		)
 	}
 	return nil
 }
 
-func (control *harborControl) chartsImmutable(
+func (control *harborControl) allTagsImmutable(
 	ctx context.Context,
 	client *harborclient.HarborAPI,
+	projectName string,
 ) (bool, error) {
 	page, pageSize := int64(1), int64(100)
 	isName := true
 	response, err := client.Immutable.ListImmuRules(ctx, &immutable.ListImmuRulesParams{
-		ProjectNameOrID: "charts", XIsResourceName: &isName, Page: &page, PageSize: &pageSize,
+		ProjectNameOrID: projectName,
+		XIsResourceName: &isName,
+		Page:            &page,
+		PageSize:        &pageSize,
 	})
 	if err != nil {
-		return false, fmt.Errorf("list Harbor chart immutability rules: %w", err)
+		return false, fmt.Errorf(
+			"list Harbor project %s immutability rules: %w",
+			projectName,
+			err,
+		)
 	}
 	if response.XTotalCount > pageSize {
-		return false, errors.New("Harbor charts project has more than 100 immutability rules")
+		return false, fmt.Errorf(
+			"Harbor project %s has more than %d immutability rules",
+			projectName,
+			pageSize,
+		)
 	}
 	for _, rule := range response.Payload {
 		if immutableAllTags(rule) {

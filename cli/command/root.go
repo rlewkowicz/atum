@@ -51,6 +51,7 @@ type app struct {
 	raw           bool
 	projectUnlock func()
 	preflight     preflight.Report
+	publication   *delivery.Publication
 	sops          atumsecrets.SOPSAdapter
 	secretLoader  func(
 		context.Context,
@@ -182,7 +183,7 @@ func (a *app) ensureCommandAllowed(command *cobra.Command) error {
 func (a *app) imagesCommand() *cobra.Command {
 	images := &cobra.Command{
 		Use:   "images",
-		Short: "Publish locked images and deterministic deployment bundles",
+		Short: "Publish locked images to Harbor",
 	}
 	var publishOptions delivery.PublishOptions
 	publish := &cobra.Command{
@@ -215,37 +216,7 @@ func (a *app) imagesCommand() *cobra.Command {
 	}
 	bindPublishFlags(publish, &publishOptions)
 
-	var bundleOptions delivery.BundleOptions
-	bundle := &cobra.Command{
-		Use:         "bundle",
-		Short:       "Create the content-addressed deployment bundle",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{"atum.dev/allow-stale": "true"},
-		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
-			return a.withDashboard(cmd.Context(), "deployment bundle", tui.ScopePlatform, func(ctx context.Context) error {
-				if a.dryRun {
-					a.logger.InfoContext(ctx, "deployment bundle would be created", "locked", bundleOptions.Locked)
-					return nil
-				}
-				service, err := a.deliveryService(ctx)
-				if err != nil {
-					return err
-				}
-				result, err := service.Bundle(ctx, bundleOptions)
-				if err != nil {
-					return err
-				}
-				_, err = fmt.Fprintln(a.out, result.Path)
-				return err
-			})
-		}),
-	}
-	bundle.Flags().StringVar(&bundleOptions.Publish.Profile, "profile", "", "delivery profile (defaults to atum.json)")
-	bundle.Flags().BoolVar(&bundleOptions.Publish.Force, "force", false, "rebuild local compatibility outputs")
-	bundle.Flags().IntVar(&bundleOptions.Publish.Parallelism, "parallelism", 0, "maximum concurrent transfers (defaults to atum.json)")
-	bundle.Flags().BoolVar(&bundleOptions.Locked, "locked", false, "use the current exact image lock and target registry content")
-	bundle.Flags().BoolVar(&bundleOptions.Push, "push", false, "publish images and the content-addressed bundle to Harbor")
-	images.AddCommand(publish, bundle)
+	images.AddCommand(publish)
 	return images
 }
 
@@ -265,7 +236,12 @@ func (a *app) deliveryService(ctx context.Context) (*delivery.Service, error) {
 
 func bindPublishFlags(command *cobra.Command, options *delivery.PublishOptions) {
 	command.Flags().StringVar(&options.Profile, "profile", "", "delivery profile (defaults to atum.json)")
-	command.Flags().StringVar(&options.Group, "group", defaultImageGroup, "image scope: platform, prep, bigbang, or build-system")
+	command.Flags().StringVar(
+		&options.Group,
+		"group",
+		defaultImageGroup,
+		"image scope: platform, prep, bigbang, build-system, or kubespray",
+	)
 	command.Flags().StringSliceVar(&options.Targets, "targets", nil, "specific image ids to publish")
 	command.Flags().BoolVar(&options.Force, "force", false, "replace matching build and mirror results")
 	command.Flags().IntVar(&options.Parallelism, "parallelism", 0, "maximum concurrent registry transfers (defaults to atum.json)")
@@ -467,18 +443,7 @@ func (a *app) runInfrastructureAction(ctx context.Context, action string, args [
 				return err
 			}
 		}
-		if managedApply {
-			if err := a.ensureLocalDNS(ctx); err != nil {
-				return err
-			}
-		}
-		if err := a.runTerraformAction(ctx, action, args...); err != nil {
-			return err
-		}
-		if managedApply {
-			return a.verifyLocalDNSLookups(ctx)
-		}
-		return nil
+		return a.runTerraformAction(ctx, action, args...)
 	})
 }
 
@@ -598,10 +563,7 @@ func (a *app) applyCommand() *cobra.Command {
 			return a.withDashboardCompletion(
 				cmd.Context(), "full deployment", tui.ScopeAll,
 				func(ctx context.Context) (tui.Completion, error) {
-					if err := a.ensureLocalDNS(ctx); err != nil {
-						return tui.Completion{}, err
-					}
-					if err := a.ensureDeploymentBundle(ctx, preflight.Full); err != nil {
+					if err := a.ensurePublication(ctx, preflight.Full); err != nil {
 						return tui.Completion{}, err
 					}
 					service := a.orchestrationService()
@@ -627,21 +589,13 @@ func (a *app) applyCommand() *cobra.Command {
 					if a.dryRun {
 						return tui.Completion{}, a.printOrchestrationPlan(preflight)
 					}
-					// Terraform owns the libvirt dnsmasq records. Start the bounded
-					// lookup budget only after that state has been applied; kube-vip
-					// and the remaining platform can continue independently.
-					dns, err := a.startLocalDNSObservation(ctx)
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					defer dns.Cancel()
 					platformService, err := a.managedPlatformService()
 					if err != nil {
 						return tui.Completion{}, err
 					}
 					handoff, err := platformService.Seed(
 						ctx,
-						seed.bundle,
+						seed.publication,
 						seed.credentials,
 						platform.PrepareOptions{},
 					)
@@ -660,6 +614,17 @@ func (a *app) applyCommand() *cobra.Command {
 					); err != nil {
 						return tui.Completion{}, err
 					}
+					// Host DNS and trust are local integration, not a cluster
+					// control plane. Mutate them only after Flux reports its
+					// complete native dependency graph ready.
+					if err := a.ensureLocalDNS(ctx); err != nil {
+						return tui.Completion{}, err
+					}
+					dns, err := a.startLocalDNSObservation(ctx)
+					if err != nil {
+						return tui.Completion{}, err
+					}
+					defer dns.Cancel()
 					status, err := a.completePlatformApply(ctx, dns)
 					if err != nil {
 						return tui.Completion{}, err
@@ -724,15 +689,15 @@ func finishPlatformApply(ctx context.Context) {
 	progress.Finish(ctx, progress.Platform, progress.Complete, "platform healthy")
 }
 
-func (a *app) ensureDeploymentBundle(ctx context.Context, scope preflight.Scope) error {
-	progress.Start(ctx, progress.Platform, "bundle", "Deployment bundle", "verifying local execution artifact")
+func (a *app) ensurePublication(ctx context.Context, scope preflight.Scope) error {
+	progress.Start(ctx, progress.Platform, "publication", "Publication inputs", "resolving canonical local inputs")
 	deliveryPending := a.project.Lock.Delivery.Pending()
 	if a.dryRun {
-		a.logger.InfoContext(ctx, "deployment bundle would be resolved into ignored local state", "deliveryPending", deliveryPending)
-		progress.Done(ctx, progress.Platform, "bundle", "Deployment bundle", "resolution planned")
+		a.logger.InfoContext(ctx, "publication inputs would be resolved into ignored local state", "deliveryPending", deliveryPending)
+		progress.Done(ctx, progress.Platform, "publication", "Publication inputs", "resolution planned")
 		return nil
 	}
-	progress.Update(ctx, progress.Platform, "bundle", "Deployment bundle", "resolving exact local artifact", 0, 0)
+	progress.Update(ctx, progress.Platform, "publication", "Publication inputs", "resolving exact local inputs", 0, 0)
 	root := a.project.Root
 	service, err := delivery.NewService(
 		root,
@@ -746,30 +711,25 @@ func (a *app) ensureDeploymentBundle(ctx context.Context, scope preflight.Scope)
 	}
 	a.preflight = preflight.Report{}
 	a.unlockProject()
-	_, result, err := service.ResolveForApply(ctx)
+	runtimeProject, publication, err := service.Prepare(ctx, delivery.PublishOptions{})
 	if err != nil {
-		err = fmt.Errorf("resolve local deployment bundle: %w", err)
-		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
+		err = fmt.Errorf("resolve local publication inputs: %w", err)
+		progress.Fail(ctx, progress.Platform, "publication", "Publication inputs", err)
 		return err
 	}
 	if err := a.loadProject(ctx, false, false); err != nil {
-		err = fmt.Errorf("reload declarative state after local bundle resolution: %w", err)
-		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
-		return err
-	}
-	runtimeProject, err := delivery.LoadExecutionProject(a.project)
-	if err != nil {
-		err = fmt.Errorf("reload local deployment state: %w", err)
-		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
+		err = fmt.Errorf("reload declarative state after local publication resolution: %w", err)
+		progress.Fail(ctx, progress.Platform, "publication", "Publication inputs", err)
 		return err
 	}
 	a.project = runtimeProject
+	a.publication = publication
 	a.preflight = preflight.Report{}
 	if err := a.checkPreflight(ctx, scope); err != nil {
 		return err
 	}
-	a.logger.InfoContext(ctx, "deployment bundle ready", "path", filepath.Clean(result.Path), "deliveryPending", deliveryPending)
-	progress.Done(ctx, progress.Platform, "bundle", "Deployment bundle", "resolved and verified")
+	a.logger.InfoContext(ctx, "publication inputs ready", "source", publication.SourceSHA256, "deliveryPending", deliveryPending)
+	progress.Done(ctx, progress.Platform, "publication", "Publication inputs", "resolved and verified")
 	return nil
 }
 

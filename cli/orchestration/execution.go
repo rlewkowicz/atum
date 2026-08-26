@@ -259,7 +259,7 @@ func (service Service) runKubespray(
 	toolchain Toolchain,
 	inventoryPath, playbook string,
 	rawArgs []string,
-) error {
+) (resultErr error) {
 	id := "kubernetes:" + toolchain.Release.Kubernetes
 	label := "Kubernetes " + toolchain.Release.Kubernetes
 	detail := "installing cluster"
@@ -271,11 +271,19 @@ func (service Service) runKubespray(
 	if err != nil {
 		return fmt.Errorf("derive initial Kubernetes OIDC configuration: %w", err)
 	}
-	extraVars, err := json.Marshal(struct {
-		Serial         int                      `json:"serial"`
-		KubeVersion    string                   `json:"kube_version"`
-		KubernetesOIDC *kubesprayOIDCProjection `json:"atum_kubernetes_oidc,omitempty"`
-	}{Serial: 1, KubeVersion: toolchain.Release.Kubernetes, KubernetesOIDC: oidc})
+	managed, offlineServer, err := service.kubesprayOfflineInputs(ctx, toolchain)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		resultErr = errors.Join(resultErr, offlineServer.Close())
+	}()
+	managed["serial"] = 1
+	managed["kube_version"] = toolchain.Release.Kubernetes
+	if oidc != nil {
+		managed["atum_kubernetes_oidc"] = oidc
+	}
+	extraVars, err := json.Marshal(managed)
 	if err != nil {
 		return fmt.Errorf("encode managed Kubespray variables: %w", err)
 	}

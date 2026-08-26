@@ -30,7 +30,7 @@ import (
 
 // FetchBootstrapChart materializes one exact chart archive in the shared
 // content-addressed cache. Delivery uses the same verified fetch path as the
-// updater so chart resolution and bundle assembly cannot diverge.
+// updater so chart resolution and publication cannot diverge.
 func FetchBootstrapChart(ctx context.Context, root string, chart config.Chart) (string, error) {
 	return fetchLockedChart(ctx, root, chart.ID, chart.Version, chart.Source, chart.ArchiveSHA256)
 }

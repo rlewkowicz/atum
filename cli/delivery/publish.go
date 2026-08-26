@@ -148,15 +148,7 @@ func (service *Service) publishLocked(ctx context.Context, project *config.Proje
 	if err != nil {
 		return PublishResult{}, err
 	}
-	bundle, err := reusableBundle(project, imageLock)
-	if err != nil {
-		return PublishResult{}, fmt.Errorf("identify reusable deployment bundle: %w", err)
-	}
 	project.Lock.Delivery = imageLock
-	project.ExecutionBundle = bundle
-	if err := persistExecutionProject(project); err != nil {
-		return PublishResult{}, err
-	}
 	return PublishResult{Lock: imageLock, Published: published, Reused: reused}, nil
 }
 

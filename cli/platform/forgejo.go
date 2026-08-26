@@ -54,7 +54,7 @@ func (control *forgejoControl) clear() {
 
 func (service Service) configureForgejo(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	credentials atumsecrets.Document,
 ) (*forgejoControl, error) {
 	sources := service.Project.Desired.Platform.Sources
@@ -92,7 +92,7 @@ func (service Service) configureForgejo(
 	); err != nil {
 		return nil, err
 	}
-	if err := control.publishAtumSource(ctx, bundle, sources.Organization, sources.Repository); err != nil {
+	if err := control.publishAtumSource(ctx, publication, sources.Organization, sources.Repository); err != nil {
 		return nil, err
 	}
 	progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
@@ -234,27 +234,27 @@ func (control *forgejoControl) ensureRepository(
 
 func (control *forgejoControl) publishAtumSource(
 	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	owner, name string,
 ) error {
-	return control.withAtumRepository(bundle, func(repository *git.Repository, commit plumbing.Hash) error {
+	return control.withAtumRepository(publication, func(repository *git.Repository, commit plumbing.Hash) error {
 		for _, reference := range []plumbing.ReferenceName{
 			plumbing.NewBranchReferenceName("main"),
-			plumbing.NewTagReferenceName(bundle.SourceTag),
+			plumbing.NewTagReferenceName(publication.SourceTag),
 		} {
 			if err := repository.Storer.SetReference(plumbing.NewHashReference(reference, commit)); err != nil {
 				return err
 			}
 		}
-		if err := control.pushImmutable(ctx, repository, owner, name, bundle.SourceTag, bundle.SourceCommit); err != nil {
+		if err := control.pushImmutable(ctx, repository, owner, name, publication.SourceTag, publication.SourceCommit); err != nil {
 			return err
 		}
-		return control.advanceBranch(ctx, repository, owner, name, "main", bundle.SourceCommit)
+		return control.advanceBranch(ctx, repository, owner, name, "main", publication.SourceCommit)
 	})
 }
 
 func (control *forgejoControl) withAtumRepository(
-	bundle *delivery.DeploymentBundle,
+	publication *delivery.Publication,
 	operation func(*git.Repository, plumbing.Hash) error,
 ) error {
 	stageParent, err := fssecure.EnsureDirectory(control.root, filepath.Join(".atum", "state", "forgejo-stage"), 0o700)
@@ -266,7 +266,7 @@ func (control *forgejoControl) withAtumRepository(
 		return err
 	}
 	defer os.RemoveAll(stage)
-	if err := copyVerifiedTree(bundle.SourceRoot, stage); err != nil {
+	if err := copyVerifiedTree(publication.SourceRoot, stage); err != nil {
 		return err
 	}
 	repository, err := git.PlainInit(stage, false)
@@ -290,8 +290,8 @@ func (control *forgejoControl) withAtumRepository(
 	if err != nil {
 		return fmt.Errorf("commit Atum source repository: %w", err)
 	}
-	if commit.String() != bundle.SourceCommit {
-		return fmt.Errorf("materialized Atum source commit is %s, want %s", commit, bundle.SourceCommit)
+	if commit.String() != publication.SourceCommit {
+		return fmt.Errorf("materialized Atum source commit is %s, want %s", commit, publication.SourceCommit)
 	}
 	return operation(repository, commit)
 }

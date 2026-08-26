@@ -6,7 +6,7 @@ import (
 	"atum/cli/config"
 )
 
-func TestMatchesCommittedDeliverySeparatesBuildExecutionDigest(t *testing.T) {
+func TestMatchesCommittedDeliverySeparatesBuildPublicationDigest(t *testing.T) {
 	t.Parallel()
 
 	committed := config.ImageLock{
@@ -39,7 +39,7 @@ func TestMatchesCommittedDeliverySeparatesBuildExecutionDigest(t *testing.T) {
 	reproduced.Images = append([]config.LockedImage(nil), committed.Images...)
 	reproduced.Images[0].Digest = "sha256:build-output"
 	if !matchesCommittedDelivery(reproduced, committed) {
-		t.Fatal("execution-owned build digest changed immutable delivery comparison")
+		t.Fatal("publication-owned build digest changed immutable delivery comparison")
 	}
 
 	reproduced.Images[1].Digest = "sha256:other-mirror"
@@ -56,6 +56,6 @@ func TestMatchesCommittedDeliveryRejectsBuildDigestInRootLock(t *testing.T) {
 		Delivery: config.LockedDelivery{Type: "build"},
 	}}}
 	if matchesCommittedDelivery(committed, committed) {
-		t.Fatal("execution-owned build digest was accepted in the committed lock")
+		t.Fatal("publication-owned build digest was accepted in the committed lock")
 	}
 }
