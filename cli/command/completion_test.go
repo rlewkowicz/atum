@@ -1,6 +1,9 @@
 package command
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -8,6 +11,8 @@ import (
 
 	"atum/cli/config"
 	"atum/cli/platform"
+	atumsecrets "atum/cli/secrets"
+	"atum/cli/secretvalue"
 )
 
 func TestPlatformCompletionUsesCanonicalCategoriesAndPreservesUnknownRoutes(t *testing.T) {
@@ -17,20 +22,37 @@ func TestPlatformCompletionUsesCanonicalCategoriesAndPreservesUnknownRoutes(t *t
 	if err != nil {
 		t.Fatalf("resolve repository root: %v", err)
 	}
-	a := &app{project: &config.Project{
-		Root: root,
-		Desired: config.Document{
-			Infrastructure: config.Infrastructure{
-				Active: "local",
-				Targets: map[string]config.InfrastructureTarget{
-					"local": {PlatformProfile: "local"},
+	a := &app{
+		project: &config.Project{
+			Root: root,
+			Desired: config.Document{
+				Project: config.ProjectConfig{Cluster: "atum"},
+				Infrastructure: config.Infrastructure{
+					Active: "local",
+					Targets: map[string]config.InfrastructureTarget{
+						"local": {
+							PlatformProfile: "local",
+							LocalAccess:     &config.LocalAccess{Domain: "atum.test"},
+						},
+					},
 				},
+				Platform: config.Platform{Directory: "platform"},
 			},
-			Platform: config.Platform{Directory: "platform"},
 		},
-	}}
+		secretLoader: func(
+			context.Context,
+			*config.Project,
+			atumsecrets.SOPSAdapter,
+		) (atumsecrets.Document, error) {
+			return atumsecrets.Document{Identity: atumsecrets.IdentitySecrets{
+				Seed: secretvalue.New([]byte(base64.RawStdEncoding.EncodeToString(
+					bytes.Repeat([]byte{0x5a}, 32),
+				))),
+			}}, nil
+		},
+	}
 	status := exactCompletionStatus()
-	completion, err := a.platformCompletion(status)
+	completion, err := a.platformCompletion(t.Context(), status)
 	if err != nil {
 		t.Fatalf("construct platform completion: %v", err)
 	}
@@ -44,7 +66,7 @@ func TestPlatformCompletionUsesCanonicalCategoriesAndPreservesUnknownRoutes(t *t
 		groups[2].Name != "Observability services" {
 		t.Fatalf("completion groups = %#v", groups)
 	}
-	for index, wanted := range []string{"OpenBao", "Headlamp", "OpenSearch Dashboards"} {
+	for index, wanted := range []string{"Vault", "Headlamp", "OpenSearch Dashboards"} {
 		found := false
 		for _, endpoint := range groups[index].Endpoints {
 			found = found || endpoint.Name == wanted
@@ -80,21 +102,27 @@ func exactCompletionStatus() platform.Status {
 		"https://unknown.atum.test",
 	}
 	slices.Sort(urls)
+	kustomizations := make([]platform.ResourceStatus, 6)
+	for index := range kustomizations {
+		kustomizations[index] = platform.ResourceStatus{Name: "ready", Ready: true}
+	}
 	return platform.Status{
-		BundleReady: true, FluxReady: true, PrepReady: true,
-		ProfilePrepReady: true, BigBangReady: true, ProfileAccessReady: true,
-		ProfileIdentityRequired: true, ProfileIdentityReady: true,
-		ClusterOIDCRequired: true, ClusterOIDCReady: true,
-		LoadBalancerRequired: true, LoadBalancerReady: true,
-		CertificatesRequired: true, CertificatesReady: true, RoutesReady: true,
-		HostAccessObserved: true, LocalDNSReady: true, CATrustReady: true,
-		RootCAFingerprint: strings.Repeat("a", 64),
-		CAFingerprint:     strings.Repeat("a", 64),
-		ResolverPath:      "/resolver", CAPath: "/ca",
-		PublicIngressVIP: "10.77.0.20", PassthroughIngressVIP: "10.77.0.21",
-		AccessURLs:         urls,
-		ActiveHelmReleases: 1, ReadyHelmReleases: 1,
-		ActiveWorkloads: 1, ReadyWorkloads: 1,
-		InternalImageOnly: true, InternalSourcesOnly: true,
+		Reconciliation: platform.ReconciliationStatus{
+			Kustomizations: kustomizations,
+			BigBangSource: platform.ResourceStatus{Name: "source", Ready: true},
+			BigBangRelease: platform.ResourceStatus{Name: "release", Ready: true},
+		},
+		Delivery: platform.DeliveryComplianceStatus{
+			SourcesInternal: true, RuntimeImagesExact: true,
+		},
+		Local: platform.LocalIntegrationStatus{
+			Required: true, LoadBalancerReady: true,
+			HostAccessObserved: true, LocalDNSReady: true, CATrustReady: true,
+			RootCAFingerprint: strings.Repeat("a", 64),
+			CAFingerprint:     strings.Repeat("a", 64),
+			ResolverPath:      "/resolver", CAPath: "/ca",
+			PublicIngressVIP: "10.77.0.20", PassthroughIngressVIP: "10.77.0.21",
+			AccessURLs: urls,
+		},
 	}
 }

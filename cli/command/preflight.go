@@ -6,6 +6,7 @@ import (
 
 	"atum/cli/infra"
 	"atum/cli/preflight"
+	atumsecrets "atum/cli/secrets"
 )
 
 func (a *app) checkPreflight(ctx context.Context, scope preflight.Scope) error {
@@ -29,7 +30,25 @@ func (a *app) checkPreflightWithForwarding(
 		ForwardingPlan: plan,
 	}).Check(ctx, scope)
 	a.preflight = report
-	return err
+	_, sopsSelected := report.Result(preflight.SOPS)
+	if sopsSelected {
+		a.sops = atumsecrets.SOPSAdapter{}
+	}
+	if err != nil {
+		return err
+	}
+	if !sopsSelected {
+		return nil
+	}
+	sops, err := atumsecrets.NewSOPSAdapter(
+		report.Binary(preflight.SOPS),
+		a.runner,
+	)
+	if err != nil {
+		return err
+	}
+	a.sops = sops
+	return nil
 }
 
 func (a *app) checkAccessPreflight(

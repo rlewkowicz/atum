@@ -3,7 +3,6 @@ package update
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -14,10 +13,8 @@ import (
 )
 
 type resolvedTrackedChart struct {
-	Chart                  config.TrackedChart
-	ArchivePath            string
-	InvocationBaselinePath string
-	InvocationRepositories []string
+	Chart       config.TrackedChart
+	ArchivePath string
 }
 
 type resolvedBootstrapChart struct {
@@ -32,10 +29,16 @@ type chartCatalog struct {
 	CurrentArchiveSHA string
 	Source            config.ChartSource
 	Releases          []chartRelease
-	ApplicationPaired bool
+	mu                sync.Mutex
+	fetched           map[string]chartRelease
+	compatibilityMu   sync.Mutex
+	compatibility     map[string]*chartCompatibilityState
+}
 
-	mu      sync.Mutex
-	fetched map[string]chartRelease
+type chartCompatibilityState struct {
+	scanned  int
+	matches  []chartRelease
+	failures []string
 }
 
 func resolveTrackedChartCatalogs(
@@ -43,13 +46,11 @@ func resolveTrackedChartCatalogs(
 	client *chartClient,
 	parallelism int,
 	configured []config.TrackedChart,
-	applicationRepositories map[string][]string,
 ) ([]*chartCatalog, error) {
 	return resolveChartCatalogs(ctx, client, parallelism, configured,
 		func(ctx context.Context, client *chartClient, chart config.TrackedChart) (*chartCatalog, error) {
 			return resolveChartCatalog(
 				ctx, client, chart.ID, chart.Name, chart.Version, chart.ArchiveSHA256, chart.Source,
-				len(applicationRepositories[chart.ID]) != 0,
 			)
 		})
 }
@@ -62,7 +63,7 @@ func resolveBootstrapChartCatalogs(
 ) ([]*chartCatalog, error) {
 	return resolveChartCatalogs(ctx, client, parallelism, configured,
 		func(ctx context.Context, client *chartClient, chart config.Chart) (*chartCatalog, error) {
-			return resolveChartCatalog(ctx, client, chart.ID, chart.Name, chart.Version, chart.ArchiveSHA256, chart.Source, false)
+			return resolveChartCatalog(ctx, client, chart.ID, chart.Name, chart.Version, chart.ArchiveSHA256, chart.Source)
 		})
 }
 
@@ -98,7 +99,6 @@ func resolveChartCatalog(
 	client *chartClient,
 	id, name, current, currentArchiveSHA string,
 	source config.ChartSource,
-	applicationPaired bool,
 ) (*chartCatalog, error) {
 	releases, err := releasesForSource(ctx, client, source, name)
 	if err != nil {
@@ -125,8 +125,8 @@ func resolveChartCatalog(
 		CurrentArchiveSHA: currentArchiveSHA,
 		Source:            source,
 		Releases:          releases[:currentIndex+1],
-		ApplicationPaired: applicationPaired,
 		fetched:           make(map[string]chartRelease),
+		compatibility:     make(map[string]*chartCompatibilityState),
 	}
 	currentRelease, err := catalog.fetch(ctx, client, catalog.Releases[len(catalog.Releases)-1])
 	if err != nil {
@@ -135,61 +135,8 @@ func resolveChartCatalog(
 	if err := catalog.verifyCurrent(currentRelease); err != nil {
 		return nil, err
 	}
-	_, semanticApplication := stableSemanticApplication(currentRelease.AppVersion)
-	catalog.ApplicationPaired = applicationPaired && semanticApplication
-	if catalog.ApplicationPaired {
-		catalog.Releases, err = catalog.applicationPairedCandidates(ctx, client, releases, currentIndex, currentRelease)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		catalog.Releases = chartReleaseCandidates(releases, currentIndex, currentRelease.AppVersion)
-	}
+	catalog.Releases = chartReleaseCandidates(releases, currentIndex, currentRelease.AppVersion)
 	return catalog, nil
-}
-
-func (catalog *chartCatalog) applicationPairedCandidates(
-	ctx context.Context,
-	client *chartClient,
-	releases []chartRelease,
-	currentIndex int,
-	current chartRelease,
-) ([]chartRelease, error) {
-	currentApplication, currentSemantic := stableSemanticApplication(current.AppVersion)
-	if !currentSemantic {
-		return chartReleaseCandidates(releases, currentIndex, current.AppVersion), nil
-	}
-	candidates := make([]chartRelease, 0, currentIndex+2)
-	for i := 0; i < len(releases); i++ {
-		fetched, err := catalog.fetch(ctx, client, releases[i])
-		if err != nil {
-			return nil, err
-		}
-		if i > currentIndex {
-			// Only the contiguous set of older charts for the current
-			// application belongs to the bounded repair window.
-			application, stable := stableSemanticApplication(fetched.AppVersion)
-			if !stable || !application.Equal(currentApplication) {
-				break
-			}
-			candidates = append(candidates, fetched)
-			continue
-		}
-		if _, stable := stableSemanticApplication(fetched.AppVersion); stable {
-			candidates = append(candidates, fetched)
-		}
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		left, _ := stableSemanticApplication(candidates[i].AppVersion)
-		right, _ := stableSemanticApplication(candidates[j].AppVersion)
-		if !left.Equal(right) {
-			return left.GreaterThan(right)
-		}
-		leftChart, _ := semver.NewVersion(strings.TrimPrefix(candidates[i].Version, "v"))
-		rightChart, _ := semver.NewVersion(strings.TrimPrefix(candidates[j].Version, "v"))
-		return leftChart.GreaterThan(rightChart)
-	})
-	return candidates, nil
 }
 
 func stableSemanticApplication(value string) (*semver.Version, bool) {
@@ -273,11 +220,15 @@ func (catalog *chartCatalog) compatibleAt(
 	if err != nil {
 		return chartRelease{}, fmt.Errorf("parse Kubernetes version %s: %w", kubernetesVersion, err)
 	}
-	var failures []string
-	compatibleIndex := 0
-	var selectedApplication *semver.Version
-	selectedApplicationSpelling := ""
-	for releaseIndex, release := range catalog.Releases {
+	catalog.compatibilityMu.Lock()
+	defer catalog.compatibilityMu.Unlock()
+	state := catalog.compatibility[kubernetesVersion]
+	if state == nil {
+		state = &chartCompatibilityState{}
+		catalog.compatibility[kubernetesVersion] = state
+	}
+	for len(state.matches) <= offset && state.scanned < len(catalog.Releases) {
+		release := catalog.Releases[state.scanned]
 		fetched, err := catalog.fetch(ctx, client, release)
 		if err != nil {
 			return chartRelease{}, err
@@ -288,7 +239,8 @@ func (catalog *chartCatalog) compatibleAt(
 			}
 		}
 		if eligible, reason := eligibleChartAppVersion(fetched.AppVersion); !eligible {
-			failures = append(failures, fetched.Version+" "+reason)
+			state.failures = append(state.failures, fetched.Version+" "+reason)
+			state.scanned++
 			continue
 		}
 		compatible, err := chartSupportsKubernetes(catalog.ID, fetched.KubeVersion, version)
@@ -296,48 +248,24 @@ func (catalog *chartCatalog) compatibleAt(
 			return chartRelease{}, err
 		}
 		if compatible {
-			if catalog.ApplicationPaired {
-				application, stable := stableSemanticApplication(fetched.AppVersion)
-				if !stable {
-					return chartRelease{}, fmt.Errorf(
-						"chart %s release %s lost its stable semantic application identity %q",
-						catalog.ID, fetched.Version, fetched.AppVersion,
-					)
-				}
-				if selectedApplication == nil {
-					selectedApplication = application
-					selectedApplicationSpelling = fetched.AppVersion
-				} else if !application.Equal(selectedApplication) {
-					return chartRelease{}, fmt.Errorf(
-						"chart %s newest stable application %s has no remaining chart preserving its mapped container invocation",
-						catalog.ID, selectedApplicationSpelling,
-					)
-				}
-			}
-			if compatibleIndex == offset {
-				if catalog.ApplicationPaired {
-					fetched.BaselinePath, err = catalog.invocationBaselinePath(
-						ctx, client, version, releaseIndex, fetched.AppVersion,
-					)
-					if err != nil {
-						return chartRelease{}, err
-					}
-				}
-				return fetched, nil
-			}
-			compatibleIndex++
-			continue
+			state.matches = append(state.matches, fetched)
+		} else {
+			state.failures = append(
+				state.failures,
+				fetched.Version+" requires "+fetched.KubeVersion,
+			)
 		}
-		failures = append(failures, fetched.Version+" requires "+fetched.KubeVersion)
+		state.scanned++
 	}
-	if catalog.ApplicationPaired && selectedApplication != nil {
-		return chartRelease{}, fmt.Errorf(
-			"chart %s newest stable application %s has no remaining chart preserving its mapped container invocation",
-			catalog.ID, selectedApplicationSpelling,
-		)
+	if offset < len(state.matches) {
+		return state.matches[offset], nil
 	}
 	return chartRelease{}, fmt.Errorf("%w: chart %s has no release compatible with Kubernetes %s (%s)",
-		errNoCompatibleKubernetes, catalog.ID, kubernetesVersion, strings.Join(failures, "; "))
+		errNoCompatibleKubernetes,
+		catalog.ID,
+		kubernetesVersion,
+		strings.Join(state.failures, "; "),
+	)
 }
 
 func chartSupportsKubernetes(id, constraint string, version *semver.Version) (bool, error) {
@@ -350,47 +278,6 @@ func chartSupportsKubernetes(id, constraint string, version *semver.Version) (bo
 		return false, fmt.Errorf("parse chart %s Kubernetes constraint %s: %w", id, constraint, err)
 	}
 	return parsed.Check(version), nil
-}
-
-func (catalog *chartCatalog) invocationBaselinePath(
-	ctx context.Context,
-	client *chartClient,
-	kubernetesVersion *semver.Version,
-	selectedIndex int,
-	appVersion string,
-) (string, error) {
-	application, stable := stableSemanticApplication(appVersion)
-	if !stable {
-		return "", fmt.Errorf(
-			"chart %s application %q has no stable semantic invocation identity",
-			catalog.ID, appVersion,
-		)
-	}
-	baseline := ""
-	for i := selectedIndex; i < len(catalog.Releases); i++ {
-		fetched, err := catalog.fetch(ctx, client, catalog.Releases[i])
-		if err != nil {
-			return "", err
-		}
-		fetchedApplication, fetchedStable := stableSemanticApplication(fetched.AppVersion)
-		if !fetchedStable || !fetchedApplication.Equal(application) {
-			continue
-		}
-		compatible, err := chartSupportsKubernetes(catalog.ID, fetched.KubeVersion, kubernetesVersion)
-		if err != nil {
-			return "", err
-		}
-		if compatible {
-			baseline = fetched.ArchivePath
-		}
-	}
-	if baseline == "" {
-		return "", fmt.Errorf(
-			"chart %s application %s has no Kubernetes-compatible invocation baseline",
-			catalog.ID, appVersion,
-		)
-	}
-	return baseline, nil
 }
 
 func (catalog *chartCatalog) verifyCurrent(fetched chartRelease) error {
@@ -417,7 +304,6 @@ func resolveTrackedChartsForKubernetes(
 	catalogs []*chartCatalog,
 	kubernetesVersion string,
 	offsets map[string]int,
-	applicationRepositories map[string][]string,
 ) ([]resolvedTrackedChart, error) {
 	return resolveChartsForKubernetes(
 		ctx, client, parallelism, configured, catalogs, kubernetesVersion, offsets, "tracked",
@@ -429,10 +315,8 @@ func resolveTrackedChartsForKubernetes(
 			chart.ArchiveSHA256 = fetched.ArchiveSHA
 			chart.Source = resolvedChartSource(chart.Source, fetched)
 			return resolvedTrackedChart{
-				Chart:                  chart,
-				ArchivePath:            fetched.ArchivePath,
-				InvocationBaselinePath: fetched.BaselinePath,
-				InvocationRepositories: applicationRepositories[chart.ID],
+				Chart:       chart,
+				ArchivePath: fetched.ArchivePath,
 			}, nil
 		},
 	)
@@ -590,11 +474,11 @@ func resolvedChartSource(original config.ChartSource, release chartRelease) conf
 }
 
 func requireNonDowngrade(id, current, candidate string) error {
-	currentVersion, err := semver.NewVersion(strings.TrimPrefix(current, "v"))
+	currentVersion, err := semanticReleaseVersion(current)
 	if err != nil {
 		return fmt.Errorf("parse current release version %s for %s: %w", current, id, err)
 	}
-	candidateVersion, err := semver.NewVersion(strings.TrimPrefix(candidate, "v"))
+	candidateVersion, err := semanticReleaseVersion(candidate)
 	if err != nil {
 		return fmt.Errorf("parse candidate release version %s for %s: %w", candidate, id, err)
 	}
@@ -602,4 +486,12 @@ func requireNonDowngrade(id, current, candidate string) error {
 		return fmt.Errorf("%s latest upstream release %s is older than locked release %s", id, candidate, current)
 	}
 	return nil
+}
+
+func semanticReleaseVersion(tag string) (*semver.Version, error) {
+	version := strings.TrimPrefix(tag, "v")
+	if separator := strings.LastIndex(version, "-v"); separator >= 0 {
+		version = version[separator+2:]
+	}
+	return semver.NewVersion(version)
 }

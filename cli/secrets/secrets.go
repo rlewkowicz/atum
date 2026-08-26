@@ -5,8 +5,13 @@ package secrets
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -14,13 +19,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"os"
+	"encoding/pem"
 	"regexp"
 	"strings"
 	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
+	"atum/cli/infra"
 	"atum/cli/progress"
 	"atum/cli/secretvalue"
 
@@ -28,7 +36,7 @@ import (
 )
 
 const (
-	SchemaVersion    = "atum.dev/secrets/v3"
+	SchemaVersion    = "atum.dev/secrets/v4"
 	fileLimit        = 1 << 20
 	localSecretsLock = ".atum/state/secrets.lock"
 )
@@ -47,6 +55,7 @@ type Document struct {
 	Harbor        HarborSecrets   `json:"harbor" yaml:"harbor"`
 	Identity      IdentitySecrets `json:"identity" yaml:"identity"`
 	Stateful      StatefulSecrets `json:"stateful" yaml:"stateful"`
+	RootCA        RootCASecrets    `json:"rootCA" yaml:"rootCA"`
 }
 
 type ForgejoSecrets struct {
@@ -67,6 +76,11 @@ type StatefulSecrets struct {
 	Seed secretvalue.Value `json:"seed"`
 }
 
+type RootCASecrets struct {
+	Certificate secretvalue.Value `json:"certificate"`
+	PrivateKey  secretvalue.Value `json:"privateKey"`
+}
+
 // Clear overwrites every owned secret byte before releasing the document.
 func (document *Document) Clear() {
 	if document == nil {
@@ -79,6 +93,8 @@ func (document *Document) Clear() {
 	document.Harbor.SecretKey.Clear()
 	document.Identity.Seed.Clear()
 	document.Stateful.Seed.Clear()
+	document.RootCA.Certificate.Clear()
+	document.RootCA.PrivateKey.Clear()
 }
 
 const (
@@ -552,6 +568,17 @@ func (document Document) Validate() error {
 		problems = append(problems, "identity.seed must encode exactly 32 bytes using raw base64")
 	}
 	clear(seed)
+	certificate := document.RootCA.Certificate.Bytes()
+	privateKey := document.RootCA.PrivateKey.Bytes()
+	if _, err := tls.X509KeyPair(certificate, privateKey); err != nil {
+		problems = append(problems, "rootCA certificate and privateKey must be a matching PEM keypair")
+	}
+	validated, err := infra.ValidateRootCA(certificate, time.Now())
+	if err != nil {
+		problems = append(problems, "rootCA.certificate: "+err.Error())
+	} else {
+		validated.Clear()
+	}
 	seed = make([]byte, base64.RawStdEncoding.DecodedLen(len(document.Stateful.Seed)))
 	size, err = base64.RawStdEncoding.Decode(seed, document.Stateful.Seed.Bytes())
 	if err != nil || size != 32 {
@@ -570,6 +597,7 @@ type partialDocument struct {
 	Harbor        partialHarborSecrets   `json:"harbor"`
 	Identity      partialIdentitySecrets `json:"identity"`
 	Stateful      partialStatefulSecrets `json:"stateful"`
+	RootCA        partialRootCASecrets   `json:"rootCA"`
 }
 
 type partialIdentitySecrets struct {
@@ -578,6 +606,11 @@ type partialIdentitySecrets struct {
 
 type partialStatefulSecrets struct {
 	Seed *secretvalue.Value `json:"seed,omitempty"`
+}
+
+type partialRootCASecrets struct {
+	Certificate *secretvalue.Value `json:"certificate,omitempty"`
+	PrivateKey  *secretvalue.Value `json:"privateKey,omitempty"`
 }
 
 type partialForgejoSecrets struct {
@@ -600,6 +633,8 @@ func (document *partialDocument) Clear() {
 	clearSecretPointer(&document.Harbor.SecretKey)
 	clearSecretPointer(&document.Identity.Seed)
 	clearSecretPointer(&document.Stateful.Seed)
+	clearSecretPointer(&document.RootCA.Certificate)
+	clearSecretPointer(&document.RootCA.PrivateKey)
 	document.SchemaVersion = ""
 }
 
@@ -638,6 +673,14 @@ func applyOverride(document *Document, override partialDocument) {
 		document.Stateful.Seed.Clear()
 		document.Stateful.Seed = override.Stateful.Seed.Clone()
 	}
+	if override.RootCA.Certificate != nil {
+		document.RootCA.Certificate.Clear()
+		document.RootCA.Certificate = override.RootCA.Certificate.Clone()
+	}
+	if override.RootCA.PrivateKey != nil {
+		document.RootCA.PrivateKey.Clear()
+		document.RootCA.PrivateKey = override.RootCA.PrivateKey.Clone()
+	}
 }
 
 func generate() (Document, error) {
@@ -668,6 +711,12 @@ func generate() (Document, error) {
 		return Document{}, err
 	}
 	defer clear(statefulSeed)
+	rootCertificate, rootPrivateKey, err := generateRootCA()
+	if err != nil {
+		return Document{}, err
+	}
+	defer clear(rootCertificate)
+	defer clear(rootPrivateKey)
 
 	document := Document{
 		SchemaVersion: SchemaVersion,
@@ -681,12 +730,58 @@ func generate() (Document, error) {
 		},
 		Identity: IdentitySecrets{Seed: secretvalue.New(identitySeed)},
 		Stateful: StatefulSecrets{Seed: secretvalue.New(statefulSeed)},
+		RootCA: RootCASecrets{
+			Certificate: secretvalue.New(rootCertificate),
+			PrivateKey:  secretvalue.New(rootPrivateKey),
+		},
 	}
 	if err := document.Validate(); err != nil {
 		document.Clear()
 		return Document{}, err
 	}
 	return document, nil
+}
+
+func generateRootCA() ([]byte, []byte, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate root CA private key: %w", err)
+	}
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serial, err := rand.Int(rand.Reader, serialLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate root CA serial: %w", err)
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{CommonName: "atum-test"},
+		NotBefore: now.Add(-time.Hour),
+		NotAfter: now.AddDate(10, 0, 0),
+		IsCA: true,
+		BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	der, err := x509.CreateCertificate(
+		rand.Reader,
+		template,
+		template,
+		&key.PublicKey,
+		key,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate root CA certificate: %w", err)
+	}
+	privateDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		clear(der)
+		return nil, nil, fmt.Errorf("marshal root CA private key: %w", err)
+	}
+	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	privateKey := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})
+	clear(der)
+	clear(privateDER)
+	return certificate, privateKey, nil
 }
 
 func randomSeed(owner string) ([]byte, error) {

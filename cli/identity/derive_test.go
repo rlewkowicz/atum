@@ -3,7 +3,6 @@ package identity
 import (
 	"bytes"
 	"encoding/base64"
-	"strings"
 	"testing"
 )
 
@@ -12,7 +11,11 @@ func TestDeriveIsStableAndSeparated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed := base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{0x5a}, 32))
+	rawSeed := bytes.Repeat([]byte{0x5a}, 32)
+	seed := make([]byte, base64.RawStdEncoding.EncodedLen(len(rawSeed)))
+	base64.RawStdEncoding.Encode(seed, rawSeed)
+	clear(rawSeed)
+	defer clear(seed)
 	first, err := Derive(contract, seed, "atum", "atum.test")
 	if err != nil {
 		t.Fatal(err)
@@ -21,13 +24,16 @@ func TestDeriveIsStableAndSeparated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.digest != second.digest ||
-		first.values[clientSecretKey("atum-grafana")] != second.values[clientSecretKey("atum-grafana")] {
+	if !bytes.Equal(first.digest, second.digest) ||
+		!bytes.Equal(first.values["ATUM_IDENTITY_ADMIN_PASSWORD"], second.values["ATUM_IDENTITY_ADMIN_PASSWORD"]) ||
+		!bytes.Equal(first.values[clientSecretKey("atum-grafana")], second.values[clientSecretKey("atum-grafana")]) {
 		t.Fatal("identical derivation inputs were unstable")
 	}
-	if first.values["ATUM_IDENTITY_BOOTSTRAP_PASSWORD"] == first.values[clientSecretKey("atum-grafana")] ||
-		first.values[clientSecretKey("atum-grafana")] == first.values[clientSecretKey("atum-gitlab")] {
-		t.Fatal("bootstrap/client derivation purposes were not separated")
+	if bytes.Equal(first.values["ATUM_IDENTITY_ADMIN_PASSWORD"], []byte("atum")) ||
+		bytes.Equal(first.values["ATUM_IDENTITY_ADMIN_PASSWORD"], first.values["ATUM_IDENTITY_BOOTSTRAP_PASSWORD"]) ||
+		bytes.Equal(first.values["ATUM_IDENTITY_BOOTSTRAP_PASSWORD"], first.values[clientSecretKey("atum-grafana")]) ||
+		bytes.Equal(first.values[clientSecretKey("atum-grafana")], first.values[clientSecretKey("atum-gitlab")]) {
+		t.Fatal("administrator/bootstrap/client derivation purposes were not separated")
 	}
 	if _, exists := first.values[clientSecretKey("atum-headlamp")]; exists {
 		t.Fatal("public PKCE client received a secret")
@@ -36,11 +42,11 @@ func TestDeriveIsStableAndSeparated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(serialized), seed) {
+	if bytes.Contains(serialized, seed) {
 		t.Fatal("serialized projection retained the raw identity seed")
 	}
 	first.Clear()
-	if first.digest != "" || len(first.values) != 0 {
+	if len(first.digest) != 0 || len(first.values) != 0 {
 		t.Fatal("projection clear retained credentials")
 	}
 }

@@ -4,7 +4,7 @@
   "title": "Atum resolved state",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "desiredSha256", "resolved", "compatibility", "delivery", "bundle"],
+  "required": ["$schema", "schemaVersion", "desiredSha256", "resolved", "compatibility", "delivery"],
   "properties": {
     "$schema": {"const": "./atum.lock.schema.json"},
     "schemaVersion": {"const": "atum.dev/lock/v1"},
@@ -73,13 +73,7 @@
         }
       }
     },
-    "delivery": {"$ref": "#/$defs/imageLock"},
-    "bundle": {
-      "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/bundle"}
-      ]
-    }
+    "delivery": {"$ref": "#/$defs/imageLock"}
   },
   "$defs": {
     "nonEmpty": {"type": "string", "minLength": 1},
@@ -96,27 +90,16 @@
     },
     "hexSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "counts": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["total", "mirrored", "built"],
-      "properties": {
-        "total": {"type": "integer", "minimum": 0},
-        "mirrored": {"type": "integer", "minimum": 0},
-        "built": {"type": "integer", "minimum": 0}
-      }
-    },
     "imageLock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "profile", "platform", "inventorySha256", "graphSha256", "counts", "images"],
+      "required": ["schemaVersion", "profile", "platform", "inventorySha256", "graphSha256", "images"],
       "properties": {
         "schemaVersion": {"const": "atum.dev/image-lock/v3"},
         "profile": {"$ref": "#/$defs/nonEmpty"},
         "platform": {"const": "linux/amd64"},
         "inventorySha256": {"$ref": "#/$defs/hexSha256"},
         "graphSha256": {"$ref": "#/$defs/hexSha256"},
-        "counts": {"$ref": "#/$defs/counts"},
         "images": {
           "type": "array",
           "items": {"$ref": "#/$defs/lockedImage"}
@@ -130,7 +113,12 @@
       "properties": {
         "id": {"$ref": "#/$defs/nonEmpty"},
         "target": {"$ref": "#/$defs/nonEmpty"},
-        "digest": {"$ref": "#/$defs/sha256"},
+        "digest": {
+          "oneOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"const": ""}
+          ]
+        },
         "inputSha256": {"$ref": "#/$defs/hexSha256"},
         "delivery": {
           "oneOf": [
@@ -158,19 +146,6 @@
             }
           ]
         }
-      }
-    },
-    "bundle": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["file", "sha256", "size", "atumSourceSha256"],
-      "properties": {
-        "file": {"$ref": "#/$defs/nonEmpty"},
-        "sha256": {"$ref": "#/$defs/hexSha256"},
-        "size": {"type": "integer", "minimum": 1},
-        "atumSourceSha256": {"$ref": "#/$defs/hexSha256"},
-        "ociReference": {"$ref": "#/$defs/nonEmpty"},
-        "ociDigest": {"$ref": "#/$defs/sha256"}
       }
     }
   }

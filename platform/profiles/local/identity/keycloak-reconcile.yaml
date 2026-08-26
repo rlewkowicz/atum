@@ -446,22 +446,22 @@ spec:
                 grep -F '"name" : "atum-groups"' >/dev/null
               printf '%s' "$verified" | grep -F 'https://harbor.atum.test/c/oidc/callback' >/dev/null
               printf '%s' "$verified" | grep -F 'https://harbor.atum.test' >/dev/null
-              client_id=$("$KCADM" get clients -r master -q clientId=atum-openbao --fields id --config "$CONFIG" |
+              client_id=$("$KCADM" get clients -r master -q clientId=atum-vault --fields id --config "$CONFIG" |
                 sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
               if [ -z "$client_id" ]; then
-                "$KCADM" create clients -r master -s clientId=atum-openbao -s enabled=true -s protocol=openid-connect \
+                "$KCADM" create clients -r master -s clientId=atum-vault -s enabled=true -s protocol=openid-connect \
                   -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
-                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_OPENBAO_CLIENT_SECRET" --config "$CONFIG" >/dev/null
-                client_id=$("$KCADM" get clients -r master -q clientId=atum-openbao --fields id --config "$CONFIG" |
+                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_VAULT_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                client_id=$("$KCADM" get clients -r master -q clientId=atum-vault --fields id --config "$CONFIG" |
                   sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
               else
                 "$KCADM" update clients/"$client_id" -r master -s enabled=true -s protocol=openid-connect \
                   -s publicClient=false -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
-                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_OPENBAO_CLIENT_SECRET" --config "$CONFIG" >/dev/null
+                  -s 'redirectUris=["https://vault.atum.test/ui/vault/auth/oidc/oidc/callback"]' -s 'webOrigins=["https://vault.atum.test"]' -s secret="$ATUM_VAULT_CLIENT_SECRET" --config "$CONFIG" >/dev/null
               fi
               actual_secret=$("$KCADM" get clients/"$client_id"/client-secret -r master \
                 --fields value --config "$CONFIG" | sed -n 's/.*"value" : "\([^"]*\)".*/\1/p' | head -1)
-              [ "$actual_secret" = "$ATUM_OPENBAO_CLIENT_SECRET" ]
+              [ "$actual_secret" = "$ATUM_VAULT_CLIENT_SECRET" ]
               "$KCADM" update clients/"$client_id"/default-client-scopes/"$scope_id" \
                 -r master --config "$CONFIG" >/dev/null
               builtin_scope_id=$("$KCADM" get client-scopes -r master --fields id,name \
@@ -490,7 +490,7 @@ spec:
                 --fields id,name --format csv --noquotes --config "$CONFIG" |
                 grep -c ',atum-audience$' || true)" -eq 0 ]
               verified=$("$KCADM" get clients/"$client_id" -r master --fields clientId,publicClient,redirectUris,webOrigins,attributes --config "$CONFIG")
-              printf '%s' "$verified" | grep -F '"clientId" : "atum-openbao"' >/dev/null
+              printf '%s' "$verified" | grep -F '"clientId" : "atum-vault"' >/dev/null
               printf '%s' "$verified" | grep -F '"publicClient" : false' >/dev/null
               "$KCADM" get clients/"$client_id"/default-client-scopes -r master --fields name --config "$CONFIG" |
                 grep -F '"name" : "atum-groups"' >/dev/null
@@ -709,11 +709,11 @@ spec:
                 secretKeyRef:
                   name: atum-keycloak-reconcile
                   key: atum-harbor
-            - name: ATUM_OPENBAO_CLIENT_SECRET
+            - name: ATUM_VAULT_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: atum-keycloak-reconcile
-                  key: atum-openbao
+                  key: atum-vault
             - name: ATUM_PROMETHEUS_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

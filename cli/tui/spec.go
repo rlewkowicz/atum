@@ -38,14 +38,12 @@ var displayNames = map[string]string{
 	"kyverno": "Kyverno", "kyverno-policies": "Kyverno policies",
 	"kyverno-reporter": "Kyverno reporter", "local-path-provisioner": "Local-path storage",
 	"local-certificates": "Local certificates", "local-dns": "Local DNS",
-	"monitoring": "Monitoring", "openbao": "OpenBao", "openssh": "OpenSSH client", "opensearch": "OpenSearch",
+	"monitoring": "Monitoring", "openssh": "OpenSSH client", "opensearch": "OpenSearch",
 	"opensearch-dashboards": "OpenSearch Dashboards", "opensearch-operator": "OpenSearch operator",
 	"platform-profile-access": "Platform profile access", "platform-profile-prep": "Platform profile prerequisites",
-	"platform-profile-identity": "Platform profile identity",
-	"cluster-oidc":              "Cluster OIDC",
 	"prometheus-operator-crds":  "Prometheus operator CRDs", "python": "Python",
 	"systemd-resolved": "systemd-resolved", "terraform-cli": "Terraform CLI",
-	"tempo": "Tempo", "vault": "OpenBao", "velero": "Velero", "virsh": "virsh",
+	"tempo": "Tempo", "vault": "Vault", "velero": "Velero", "virsh": "virsh",
 }
 
 func projectPhases(project *config.Project, scope Scope) []phaseSpec {
@@ -92,16 +90,10 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 			{id: "bigbang", label: "Big Bang"},
 			{id: "platform-profile-access", label: "Platform profile access"},
 		}
-		if _, required := project.Desired.ActiveIdentityContractPath(); required {
-			items = append(items,
-				itemSpec{id: "platform-profile-identity", label: "Platform profile identity"},
-				itemSpec{id: "cluster-oidc", label: "Cluster OIDC"})
-		}
 		seen := map[string]struct{}{
 			"bundle": {}, "bundle-materialization": {}, "compatibility-builds": {}, "harbor-seed": {}, "forgejo": {}, "flux": {}, "prep": {},
 			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {},
-			"platform-profile-access": {}, "platform-profile-identity": {},
-			"cluster-oidc": {},
+			"platform-profile-access": {},
 		}
 		appendItem := func(id string) {
 			if id == "" {

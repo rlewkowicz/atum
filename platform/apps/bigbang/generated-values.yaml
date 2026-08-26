@@ -2,368 +2,154 @@ addons:
     authservice:
         git:
             branch: main
-            commit: a5e8736bbb8219c7d66e066bb844626b38e35434
+            commit: 5fd08540ea1b83d1e697e2f5507b6f04c5cc5c53
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/authservice.git
-            semver: 1.1.5-bb.5
+            semver: 1.1.5-bb.7
             tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             image:
                 repository: 10.77.0.9:32443/atum/authservice
                 tag: 1.1.5
-            waitJob:
-                image: 10.77.0.9:32443/atum/kubectl:1.35.0
     gitlab:
         git:
             branch: main
-            commit: e1afa3518e4c3e7a329369a73158a14224593192
+            commit: f8e82e63650b1783f720fb868eb9ade4f0df3eb3
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/gitlab.git
-            semver: 9.11.8-bb.0
+            semver: 10.2.4-bb.0
             tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             global:
                 certificates:
                     image:
-                        repository: 10.77.0.9:32443/atum/gitlab-certificates
-                        tag: v18.11.7
+                        repository: 10.77.0.9:32443/atum/certificates
+                        tag: v19.2.4
                 gitlabBase:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-base
-                        tag: v18.11.7
+                        tag: v19.2.4
                 kubectl:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-kubectl
-                        tag: v18.11.7
+                        tag: v19.2.4
             upstream:
                 gitlab:
                     gitaly:
                         image:
                             repository: 10.77.0.9:32443/atum/gitaly
-                            tag: v18.11.7
+                            tag: v19.2.4
+                    gitlab-exporter:
+                        image:
+                            repository: 10.77.0.9:32443/atum/gitlab-exporter
+                            tag: 16.9.0
                     gitlab-shell:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-shell
-                            tag: v18.11.7
-                    kas:
-                        image:
-                            repository: 10.77.0.9:32443/atum/gitlab-kas
-                            tag: v18.11.7
+                            tag: v14.56.1
                     migrations:
                         image:
-                            repository: 10.77.0.9:32443/atum/gitlab-toolbox-ce
-                            tag: v18.11.7
+                            repository: 10.77.0.9:32443/atum/gitlab-toolbox
+                            tag: v19.2.4
                     praefect:
                         image:
                             repository: 10.77.0.9:32443/atum/gitaly
-                            tag: v18.11.7
+                            tag: v19.2.4
                     sidekiq:
                         image:
-                            repository: 10.77.0.9:32443/atum/gitlab-sidekiq-ce
-                            tag: v18.11.7
+                            repository: 10.77.0.9:32443/atum/gitlab-sidekiq
+                            tag: v19.2.4
                     toolbox:
                         image:
-                            repository: 10.77.0.9:32443/atum/gitlab-toolbox-ce
-                            tag: v18.11.7
+                            repository: 10.77.0.9:32443/atum/gitlab-toolbox
+                            tag: v19.2.4
                     webservice:
                         image:
-                            repository: 10.77.0.9:32443/atum/gitlab-webservice-ce
-                            tag: v18.11.7
+                            repository: 10.77.0.9:32443/atum/gitlab-webservice
+                            tag: v19.2.4
                         workhorse:
-                            image: 10.77.0.9:32443/atum/gitlab-workhorse-ce
-                            tag: v18.11.7
-                minio:
-                    image: 10.77.0.9:32443/atum/minio
-                    imageTag: RELEASE.2024-06-04T19-20-08Z
-                    minioMc:
-                        image: 10.77.0.9:32443/atum/minio-client
-                        tag: RELEASE.2024-10-02T08-27-28Z
-                postgresql:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/postgresql
-                        tag: 17.4
-                redis:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/redis
-                        tag: 8.4.0-atum1
-                    metrics:
-                        image:
-                            registry: 10.77.0.9:32443
-                            repository: atum/redis-exporter
-                            tag: v1.86.0
+                            image: 10.77.0.9:32443/atum/gitlab-workhorse
+                            tag: v19.2.4
                 registry:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-container-registry
-                        tag: v18.11.7
+                        tag: v4.40.2-gitlab
                 shared-secrets:
                     selfsign:
                         image:
                             repository: 10.77.0.9:32443/atum/cfssl-self-sign
-                            tag: 1.6.1
-                upgradeCheck:
-                    image:
-                        repository: 10.77.0.9:32443/atum/ubi9
-                        tag: "9.8"
-            waitJob:
-                image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                            tag: v19.2.4
     harbor:
         git:
             branch: main
-            commit: a0bb9f16e81dd7f4b44ce6e23ece1336883af676
+            commit: d9c43a3ee00b593f308939d6730be8d73773f54f
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/harbor.git
-            semver: 1.19.1-bb.2
+            semver: 1.19.2-bb.0
             tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             postgresql:
                 image:
                     registry: 10.77.0.9:32443
-                    repository: atum/postgresql
-                    tag: 18.4
+                    repository: atum/postgresql-18
+                    tag: "18.4"
             redis-bb:
                 upstream:
                     image:
                         registry: 10.77.0.9:32443
-                        repository: atum/redis
-                        tag: 8.8.1-atum1
+                        repository: atum/redis-8-10-0
+                        tag: 8.10.0
             upstream:
                 core:
                     image:
-                        repository: 10.77.0.9:32443/atum/harbor-core
+                        repository: 10.77.0.9:32443/atum/harbor-harbor-core
                         tag: v2.15.2
                 exporter:
                     image:
-                        repository: 10.77.0.9:32443/atum/harbor-exporter
+                        repository: 10.77.0.9:32443/atum/harbor-harbor-exporter
                         tag: v2.15.2
                 jobservice:
                     image:
-                        repository: 10.77.0.9:32443/atum/harbor-jobservice
-                        tag: v2.15.2
-                nginx:
-                    image:
-                        repository: 10.77.0.9:32443/atum/harbor-nginx
+                        repository: 10.77.0.9:32443/atum/harbor-harbor-jobservice
                         tag: v2.15.2
                 portal:
                     image:
-                        repository: 10.77.0.9:32443/atum/harbor-portal
+                        repository: 10.77.0.9:32443/atum/harbor-harbor-portal
                         tag: v2.15.2
                 registry:
                     controller:
                         image:
-                            repository: 10.77.0.9:32443/atum/harbor-registryctl
+                            repository: 10.77.0.9:32443/atum/harbor-harbor-registryctl
                             tag: v2.15.2
                     registry:
                         image:
                             repository: 10.77.0.9:32443/atum/harbor-registry
                             tag: v2.15.2
+                trivy:
+                    image:
+                        repository: 10.77.0.9:32443/atum/harbor-trivy-adapter
+                        tag: v2.15.2
     headlamp:
         git:
             branch: main
-            commit: 376b0d52d5397c01a33434de11d9dd97d8d8d0bd
+            commit: bdee331b4cba0ddece5b9b2e2b5b72a32f6e5ebd
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/headlamp.git
-            semver: 0.40.0-bb.2
+            semver: 0.44.0-bb.0
             tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             upstream:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/headlamp
-                    tag: v0.40.0
+                    tag: v0.44.0
+            waitJob:
+                image: 10.77.0.9:32443/atum/kubectl:v1.35.4
     keycloak:
         git:
             branch: main
             commit: 63f3f02f4b5d32f970bb9d4525331cc8e96cd832
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/keycloak.git
             semver: 7.2.2-bb.1
             tag: ""
@@ -371,435 +157,109 @@ addons:
             postgresql:
                 image:
                     registry: 10.77.0.9:32443
-                    repository: atum/postgresql
-                    tag: 18.4
+                    repository: atum/postgresql-18
+                    tag: "18.4"
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
                     tag: 26.7.0
-                podAnnotations:
-                    atum.dev/istio-version: 1.30.3
-                    sidecar.istio.io/proxyImage: 10.77.0.9:32443/atum/proxyv2:1.30.3
+    metricsServer:
+        git:
+            branch: main
+            commit: ac71d009703207024e92f30bb5e38eba7b45043d
+            path: chart
+            repo: http://10.77.0.9:3000/atum-upstreams/metrics-server.git
+            semver: 3.13.1-bb.1
+            tag: ""
+        values:
+            upstream:
+                image:
+                    repository: 10.77.0.9:32443/atum/metrics-server
+                    tag: v0.8.1
     vault:
         git:
             branch: main
-            commit: 59a5a25b1e0490a746da65f441d5ce9620b1c38f
+            commit: 51721eb137561b518f22cba0e2e28a7610c03043
+            path: chart
             repo: http://10.77.0.9:3000/atum-upstreams/vault.git
-            semver: 0.33.0-bb.4
+            semver: 0.34.0-bb.0
             tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
-            autoInit:
-                image:
-                    repository: 10.77.0.9:32443/atum/kubectl
-                    tag: 1.35.0
             upstream:
                 injector:
                     agentImage:
-                        repository: 10.77.0.9:32443/atum/openbao
-                        tag: 2.5.3
+                        repository: 10.77.0.9:32443/atum/vault
+                        tag: 1.21.4
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
                         tag: 1.7.5
                 server:
                     image:
-                        repository: 10.77.0.9:32443/atum/openbao
-                        tag: 2.5.3
-    velero:
-        git:
-            branch: main
-            commit: b6948838ee216bfe2fa854ec2322d116c8853c3d
-            repo: http://10.77.0.9:3000/atum-upstreams/velero.git
-            semver: 12.1.0-bb.2
-            tag: ""
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
-        values:
-            kubectl:
-                image:
-                    repository: 10.77.0.9:32443/atum/kubectl
-                    tag: 1.35.0
-            upstream:
-                image:
-                    repository: 10.77.0.9:32443/atum/velero
-                    tag: v1.18.2
-                initContainers:
-                    - image: 10.77.0.9:32443/atum/velero-plugin-for-aws:v1.14.2
-                      imagePullPolicy: IfNotPresent
-                      name: velero-plugin-for-aws
-                      volumeMounts:
-                        - mountPath: /target
-                          name: plugins
-            waitJob:
-                image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                        repository: 10.77.0.9:32443/atum/vault
+                        tag: 1.21.4
 fluentbit:
     git:
         branch: main
         commit: c85d4ca665b9a59645c68f1246ff653d68e5d82b
-        repo: http://10.77.0.9:3000/atum-upstreams/fluent-bit.git
+        path: chart
+        repo: http://10.77.0.9:3000/atum-upstreams/fluentbit.git
         semver: 0.57.9-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         upstream:
             image:
                 repository: 10.77.0.9:32443/atum/fluent-bit
                 tag: 5.0.9
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
 grafana:
     git:
         branch: main
         commit: 70293e4da4fbbfda8ee8676ca70cce67f1b8b381
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/grafana.git
         semver: 10.5.15-bb.6
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
-        autoRollingUpgrade:
-            image:
-                repository: 10.77.0.9:32443/atum/kubectl
-                tag: 1.35.0
         global:
             imageRegistry: 10.77.0.9:32443
         upstream:
-            downloadDashboardsImage:
-                registry: 10.77.0.9:32443
-                repository: atum/busybox
-                tag: 1.37.0
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: 13.0.1-atum1
-            initChownData:
-                image:
-                    registry: 10.77.0.9:32443
-                    repository: atum/busybox
-                    tag: 1.37.0
+                tag: 13.0.1
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/k8s-sidecar
                     tag: 2.8.1
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
 istioCRDs:
     git:
         branch: main
         commit: bf478aca88cbeaaa9a6b74579d339333e0e17bb6
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/istio-crds.git
         semver: 1.30.3-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
 istioGateway:
     git:
         branch: main
         commit: 4e0520ebbed7b8be114602a8f7e9993b4a75a9b2
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/istio-gateway.git
         semver: 1.30.3-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         gateways:
             passthrough:
-                upstream:
-                    global:
-                        hub: 10.77.0.9:32443/atum
-                        tag: 1.30.3
                 waitJob:
-                    image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                    image: 10.77.0.9:32443/atum/kubectl:v1.35.4
             public:
-                upstream:
-                    global:
-                        hub: 10.77.0.9:32443/atum
-                        tag: 1.30.3
                 waitJob:
-                    image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                    image: 10.77.0.9:32443/atum/kubectl:v1.35.4
 istiod:
     git:
         branch: main
         commit: 31fe272d29c84e3c88b586891bde1e00322090a9
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/istiod.git
         semver: 1.30.3-bb.0
         tag: ""
@@ -811,125 +271,30 @@ istiod:
 kiali:
     git:
         branch: main
-        commit: 118b3c8c677aaae7cf77d09ca3d3ff563711e7a6
+        commit: 1febcc0edd7d866441674625e8eb69d1c01ed4dc
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/kiali.git
-        semver: 2.28.0-bb.1
+        semver: 2.30.0-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         upstream:
             cr:
                 spec:
                     deployment:
-                        image_name: 10.77.0.9:32443/atum/kiali-server
-                        image_version: v2.28.0
+                        image_name: 10.77.0.9:32443/atum/kiali:v2.30.0
             image:
                 repo: 10.77.0.9:32443/atum/kiali-operator
-                tag: v2.28.0
+                tag: v2.30.0
         waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
+            image: 10.77.0.9:32443/atum/kubectl-helper-1-35-7:v1.35.7
 kyverno:
     git:
         branch: main
-        commit: b447db7750b8151631adb50c030ee8eec7d068f8
+        commit: bef758d5cb05fd4d9a65785354395ed424d5fe3a
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/kyverno.git
-        semver: 3.8.2-bb.0
+        semver: 3.8.2-bb.2
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         global:
             image:
@@ -939,155 +304,46 @@ kyverno:
                 container:
                     image:
                         defaultRegistry: 10.77.0.9:32443
-                        registry: 10.77.0.9:32443
                         repository: atum/kyverno-admission-controller
                         tag: v1.18.2
                 initContainer:
                     image:
                         defaultRegistry: 10.77.0.9:32443
-                        registry: 10.77.0.9:32443
                         repository: atum/kyverno-preflight
                         tag: v1.18.2
             backgroundController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
-                    registry: 10.77.0.9:32443
                     repository: atum/kyverno-background-controller
                     tag: v1.18.2
             cleanupController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
-                    registry: 10.77.0.9:32443
                     repository: atum/kyverno-cleanup-controller
                     tag: v1.18.2
-            cleanupJobs:
-                admissionReports:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/kubectl
-                        tag: 1.35.0
-                clusterAdmissionReports:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/kubectl
-                        tag: 1.35.0
-                clusterEphemeralReports:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/kubectl
-                        tag: 1.35.0
-                ephemeralReports:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/kubectl
-                        tag: 1.35.0
-                updateRequests:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/kubectl
-                        tag: 1.35.0
-            config:
-                defaultRegistry: 10.77.0.9:32443
-            crds:
-                groups:
-                    image:
-                        defaultRegistry: 10.77.0.9:32443
-                        registry: 10.77.0.9:32443
-                        repository: atum/kyverno-cli
-                        tag: v1.18.2
-                migration:
-                    image:
-                        defaultRegistry: 10.77.0.9:32443
-                        registry: 10.77.0.9:32443
-                        repository: atum/kyverno-cli
-                        tag: v1.18.2
-            policyReportsCleanup:
-                image:
-                    registry: 10.77.0.9:32443
-                    repository: atum/kubectl
-                    tag: 1.35.0
             reportsController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
-                    registry: 10.77.0.9:32443
                     repository: atum/kyverno-reports-controller
                     tag: v1.18.2
-            test:
-                image:
-                    registry: 10.77.0.9:32443
-                    repository: atum/kyverno-readiness-checker
-                    tag: v1.18.2
-            webhooksCleanup:
-                image:
-                    registry: 10.77.0.9:32443
-                    repository: atum/kubectl
-                    tag: 1.35.0
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
 kyvernoPolicies:
     git:
         branch: main
         commit: 4a5b32d4b3dda100b661ca04a9f4608705c9224e
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/kyverno-policies.git
         semver: 3.3.4-bb.87
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
+            image: 10.77.0.9:32443/atum/kubectl-helper-1-34-11:v1.34.11
 kyvernoReporter:
     git:
         branch: main
-        commit: da6a9440e6e236b3eb75ade632852aa5f1045c5f
+        commit: 9f0d6c810035b09b8e232c305a1ca413ff354347
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/kyverno-reporter.git
-        semver: 3.9.0-bb.0
+        semver: 3.9.0-bb.1
         tag: ""
     values:
         upstream:
@@ -1101,77 +357,19 @@ kyvernoReporter:
                         registry: 10.77.0.9:32443
                         repository: atum/policy-reporter-kyverno-plugin
                         tag: 0.6.2
-                    podAnnotations:
-                        atum.dev/istio-version: 1.30.3
-                        sidecar.istio.io/proxyImage: 10.77.0.9:32443/atum/proxyv2:1.30.3
-            podAnnotations:
-                atum.dev/istio-version: 1.30.3
-                sidecar.istio.io/proxyImage: 10.77.0.9:32443/atum/proxyv2:1.30.3
             ui:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/policy-reporter-ui
-                    tag: 2.7.0
-                podAnnotations:
-                    atum.dev/istio-version: 1.30.3
-                    sidecar.istio.io/proxyImage: 10.77.0.9:32443/atum/proxyv2:1.30.3
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                    tag: 2.7.1
 monitoring:
     git:
         branch: main
-        commit: f80a08770eac2d6f7928965b25987fc15b96a2bd
+        commit: f6c4fad5f5a89f2b33c5fdadc557f7f7a8d3117a
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/monitoring.git
-        semver: 87.10.1-bb.3
+        semver: 88.3.0-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
         upstream:
             alertmanager:
@@ -1190,12 +388,12 @@ monitoring:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/prometheus
-                        tag: v3.13.0
+                        tag: v3.13.2
             prometheus-node-exporter:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/node-exporter
-                    tag: v1.11.1
+                    tag: v1.12.1
             prometheusOperator:
                 admissionWebhooks:
                     patch:
@@ -1203,329 +401,122 @@ monitoring:
                             registry: 10.77.0.9:32443
                             repository: atum/kube-webhook-certgen
                             tag: v1.6.9
-                cleanupProxy:
-                    image:
-                        registry: 10.77.0.9:32443
-                        repository: atum/busybox
-                        tag: 1.37.0
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/prometheus-operator
-                    tag: v0.92.1
-                kubectlImage:
-                    registry: 10.77.0.9:32443
-                    repository: atum/kubectl
-                    tag: 1.35.0
+                    tag: v0.93.1
                 prometheusConfigReloader:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/prometheus-config-reloader
-                        tag: v0.92.1
+                        tag: v0.93.1
                 thanosImage:
                     registry: 10.77.0.9:32443
                     repository: atum/thanos
-                    tag: v0.41.0
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
+                    tag: v0.42.4
 packages:
+    cloudnative-pg:
+        git:
+            branch: main
+            commit: 8067614001663dba175f5d229c9e6bb5cb23ccf8
+            path: chart
+            repo: http://10.77.0.9:3000/atum-upstreams/cloudnative-pg.git
+            semver: 0.29.0-bb.0
+            tag: ""
+        values:
+            upstream:
+                image:
+                    repository: 10.77.0.9:32443/atum/cloudnative-pg
+                    tag: 1.30.0
+    garage:
+        git:
+            branch: main
+            commit: fb39e54e3d4d4263161e53e78f209739346882b2
+            path: chart
+            repo: http://10.77.0.9:3000/atum-upstreams/garage.git
+            semver: 0.9.3-bb.2
+            tag: ""
+        values:
+            garageInit:
+                image:
+                    repository: 10.77.0.9:32443/atum/garage-init-helper
+                    tag: 2.1.0
+            upstream:
+                image:
+                    repository: 10.77.0.9:32443/atum/garage
+                    tag: v2.3.0
+                initImage:
+                    repository: 10.77.0.9:32443/atum/busybox
+                    tag: 1.37.0
     opensearch:
         helmRepo:
             tag: 3.8.0
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch
                 tag: 3.8.0
-            persistence:
-                image: 10.77.0.9:32443/atum/busybox
-                imageTag: 1.37.0
-            sysctlInit:
-                image: 10.77.0.9:32443/atum/busybox
-                imageTag: 1.37.0
     opensearch-dashboards:
         helmRepo:
             tag: 3.8.0
-        postRenderers:
-            - kustomize:
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch-dashboards
                 tag: 3.8.0
     opensearch-operator:
         helmRepo:
-            tag: 2.8.0
-        postRenderers:
-            - kustomize:
-                images:
-                    - name: gcr.io/kubebuilder/kube-rbac-proxy
-                      newName: 10.77.0.9:32443/atum/kube-rbac-proxy
-                      newTag: v0.15.0
-                patches:
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: Deployment
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: Deployment
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: StatefulSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: StatefulSet
-                        version: v1
-                    - patch: |
-                        apiVersion: apps/v1
-                        kind: DaemonSet
-                        metadata:
-                          name: atum-istio-rollout
-                        spec:
-                          template:
-                            metadata:
-                              annotations:
-                                atum.dev/istio-version: "1.30.3"
-                                sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                      target:
-                        group: apps
-                        kind: DaemonSet
-                        version: v1
+            tag: 2.8.2
         values:
             manager:
                 image:
                     repository: 10.77.0.9:32443/atum/opensearch-operator
                     tag: 2.8.0
+    postgresql:
+        git:
+            branch: main
+            commit: e5fd7c192b39d7d03d7183c73784cc27f1f0bc79
+            path: charts/cluster
+            repo: http://10.77.0.9:3000/atum-upstreams/postgresql.git
+            semver: cluster-v0.8.1
+            tag: ""
+        values:
+            cluster:
+                imageName: 10.77.0.9:32443/atum/postgresql-17:17
+    redis:
+        git:
+            branch: main
+            commit: ce97559691d4b493a44c7f95b5f04f0a19fdebbd
+            path: chart
+            repo: http://10.77.0.9:3000/atum-upstreams/redis.git
+            semver: 27.0.14-bb.0
+            tag: ""
+        values:
+            upstream:
+                image:
+                    registry: 10.77.0.9:32443
+                    repository: atum/redis-8-8-0
+                    tag: 8.8.0
 prometheusOperatorCRDs:
     git:
         branch: main
-        commit: 52443c44cd5f5eabc8932f8823d90ce9544833ce
+        commit: f595b0e3a23e7558895796d9ec810aa7ca3400fa
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/prometheus-operator-crds.git
-        semver: 30.0.1-bb.0
+        semver: 31.0.1-bb.0
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
 tempo:
     git:
         branch: main
         commit: 00e3261d933da31330be94e44a36c19dafaaa865
+        path: chart
         repo: http://10.77.0.9:3000/atum-upstreams/tempo.git
         semver: 2.1.0-bb.2
         tag: ""
-    postRenderers:
-        - kustomize:
-            patches:
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: Deployment
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: Deployment
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: StatefulSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: StatefulSet
-                    version: v1
-                - patch: |
-                    apiVersion: apps/v1
-                    kind: DaemonSet
-                    metadata:
-                      name: atum-istio-rollout
-                    spec:
-                      template:
-                        metadata:
-                          annotations:
-                            atum.dev/istio-version: "1.30.3"
-                            sidecar.istio.io/proxyImage: "10.77.0.9:32443/atum/proxyv2:1.30.3"
-                  target:
-                    group: apps
-                    kind: DaemonSet
-                    version: v1
     values:
-        upgradeJob:
-            image:
-                repository: 10.77.0.9:32443/atum/kubectl
-                tag: 1.35.0
         upstream:
             tempo:
                 registry: 10.77.0.9:32443
                 repository: atum/tempo
                 tag: 2.10.5
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl:1.35.0
 wrapper:
     git:
         branch: main
@@ -1534,3 +525,4 @@ wrapper:
         repo: http://10.77.0.9:3000/atum-upstreams/wrapper.git
         semver: 0.4.15
         tag: ""
+    sourceType: git

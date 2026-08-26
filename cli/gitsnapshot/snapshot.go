@@ -18,6 +18,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -33,7 +34,200 @@ var identityBufferPool = sync.Pool{New: func() any {
 // from the working tree. This includes pull-generated and user-reviewed tracked
 // changes without ever admitting ignored credentials or cache artifacts.
 type Snapshot struct {
-	Files []File
+	Files   []File
+	root    string
+	ignored gitignore.Matcher
+}
+
+type SourceRootKind uint8
+
+const (
+	TerraformConfiguration SourceRootKind = iota + 1
+	SourceAssets
+	AnsibleYAML
+)
+
+// SourceRoot declares one bounded native-tool source boundary. The caller
+// owns which roots are authoritative; Snapshot owns read-only index,
+// worktree, and ignore observation within them.
+type SourceRoot struct {
+	Path string
+	Kind SourceRootKind
+}
+
+// RequireMembers verifies exact Git-index membership before a source snapshot
+// is hashed or used for delivery. A trailing slash denotes a required tracked
+// subtree; every other path is an exact required member.
+func (snapshot *Snapshot) RequireMembers(paths []string) error {
+	if snapshot == nil {
+		return errors.New("Git snapshot is unavailable")
+	}
+	indexed := make(map[string]struct{}, len(snapshot.Files))
+	for _, file := range snapshot.Files {
+		indexed[filepath.ToSlash(file.Name)] = struct{}{}
+	}
+	missing := make([]string, 0)
+	for _, raw := range paths {
+		prefix := strings.HasSuffix(filepath.ToSlash(raw), "/")
+		clean := filepath.ToSlash(filepath.Clean(raw))
+		if clean == "." || clean == "" || filepath.IsAbs(raw) ||
+			clean == ".." || strings.HasPrefix(clean, "../") {
+			return fmt.Errorf("required Git snapshot path %q is invalid", raw)
+		}
+		if !prefix {
+			if _, exists := indexed[clean]; !exists {
+				missing = append(missing, clean)
+			}
+			continue
+		}
+		found := false
+		withSeparator := clean + "/"
+		for name := range indexed {
+			if strings.HasPrefix(name, withSeparator) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, withSeparator)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf(
+		"required source paths are absent from the Git-index snapshot: %s",
+		strings.Join(missing, ", "),
+	)
+}
+
+// RequireSourceRoots rejects eligible, nonignored worktree inputs that are
+// absent from the Git index. It is deliberately not a general cleanliness
+// check: unrelated files, ignored runtime state, and tracked working-tree
+// edits remain valid.
+func (snapshot *Snapshot) RequireSourceRoots(roots []SourceRoot) error {
+	if snapshot == nil {
+		return errors.New("Git snapshot is unavailable")
+	}
+	if len(roots) == 0 {
+		return nil
+	}
+	if snapshot.root == "" || snapshot.ignored == nil {
+		return errors.New("Git snapshot has no worktree observation")
+	}
+	indexed := make(map[string]struct{}, len(snapshot.Files))
+	for _, file := range snapshot.Files {
+		indexed[filepath.ToSlash(file.Name)] = struct{}{}
+	}
+	untracked := make(map[string]struct{})
+	for _, requirement := range roots {
+		clean, err := sourceRootPath(requirement)
+		if err != nil {
+			return err
+		}
+		root, err := fssecure.Resolve(snapshot.root, filepath.FromSlash(clean), false)
+		if err != nil {
+			return fmt.Errorf("resolve required native source root %s: %w", clean, err)
+		}
+		info, err := os.Lstat(root)
+		if err != nil {
+			return fmt.Errorf("inspect required native source root %s: %w", clean, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("required native source root %s is not a directory", clean)
+		}
+		err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if relative == "." {
+				return nil
+			}
+			candidate := filepath.ToSlash(filepath.Join(clean, relative))
+			parts := strings.Split(candidate, "/")
+			if entry.IsDir() {
+				if snapshot.ignored.Match(parts, true) {
+					return filepath.SkipDir
+				}
+				if requirement.Kind == TerraformConfiguration {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			mode := entry.Type()
+			if !mode.IsRegular() && mode&os.ModeSymlink == 0 {
+				return nil
+			}
+			if !eligibleSourceCandidate(requirement.Kind, relative) {
+				return nil
+			}
+			if _, exists := indexed[candidate]; exists {
+				return nil
+			}
+			if snapshot.ignored.Match(parts, false) {
+				return nil
+			}
+			untracked[candidate] = struct{}{}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("inspect required native source root %s: %w", clean, err)
+		}
+	}
+	if len(untracked) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(untracked))
+	for path := range untracked {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return fmt.Errorf(
+		"native source inputs are absent from the Git-index snapshot: %s",
+		strings.Join(paths, ", "),
+	)
+}
+
+func sourceRootPath(requirement SourceRoot) (string, error) {
+	clean := filepath.ToSlash(filepath.Clean(requirement.Path))
+	if clean == "." || clean == "" || filepath.IsAbs(requirement.Path) ||
+		clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", fmt.Errorf("required native source root %q is invalid", requirement.Path)
+	}
+	switch requirement.Kind {
+	case TerraformConfiguration, SourceAssets, AnsibleYAML:
+	default:
+		return "", fmt.Errorf(
+			"required native source root %s has unsupported kind %d",
+			clean,
+			requirement.Kind,
+		)
+	}
+	return clean, nil
+}
+
+func eligibleSourceCandidate(kind SourceRootKind, relative string) bool {
+	name := filepath.ToSlash(relative)
+	switch kind {
+	case TerraformConfiguration:
+		if strings.Contains(name, "/") {
+			return false
+		}
+		return name == ".terraform.lock.hcl" ||
+			strings.HasSuffix(name, ".tf") ||
+			strings.HasSuffix(name, ".tf.json")
+	case SourceAssets:
+		return true
+	case AnsibleYAML:
+		return strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")
+	default:
+		return false
+	}
 }
 
 // File is one bounded, project-contained source entry. Regular contents are
@@ -124,7 +318,18 @@ func Load(root string) (*Snapshot, error) {
 		files = append(files, entry)
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	return &Snapshot{Files: files}, nil
+	worktree, err := repository.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("open Git worktree %s: %w", root, err)
+	}
+	patterns, err := gitignore.ReadPatterns(worktree.Filesystem, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read Git ignore rules %s: %w", root, err)
+	}
+	patterns = append(patterns, worktree.Excludes...)
+	return &Snapshot{
+		Files: files, root: root, ignored: gitignore.NewMatcher(patterns),
+	}, nil
 }
 
 func trackedPath(root, relative string) (string, error) {

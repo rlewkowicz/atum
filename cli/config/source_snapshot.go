@@ -52,9 +52,6 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 		filepath.Join(desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "addons.yml"),
 		filepath.Join(desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "k8s-cluster.yml"),
 		filepath.Join(desired.Orchestration.Inventory, "hooks", "wait-admin-rbac.yml"),
-		filepath.Join(desired.Orchestration.Directory, "playbooks", "bundle-import.yml"),
-		filepath.Join(desired.Orchestration.Directory, "playbooks", "identity.yml"),
-		filepath.Join(desired.Orchestration.Directory, "playbooks", "platform-oidc.yml"),
 		filepath.Join(desired.Orchestration.Directory, "playbooks", "platform-secrets.yml"),
 		desired.Platform.Values.Operational,
 		desired.Platform.Values.Generated,
@@ -64,10 +61,10 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "bigbang.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "kustomization.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-profile-access.yaml"),
+		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-certificates.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-profile-prep.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "platform-secrets.yaml"),
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "flux-system", "platform-profile.yaml"),
-		filepath.Join(desired.Platform.Directory, "templates", "identity", "vault-reconcile.yaml.tmpl"),
 		filepath.Join(desired.Platform.Directory, "templates", "secrets", "stateful-values.yaml.tmpl"),
 	}
 	members = append(members, fluxSecretRequiredFiles(desired)...)
@@ -88,9 +85,6 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 	}
 	for _, chart := range desired.Platform.Bootstrap.Charts {
 		members = append(members, chart.Values, chart.FluxSource)
-	}
-	for _, chart := range desired.Platform.Charts {
-		members = append(members, chart.FluxSource)
 	}
 	for _, source := range projectGitSources(&desired) {
 		members = append(members, source.Patches...)
@@ -136,11 +130,25 @@ func fluxSecretRequiredFiles(desired Document) []string {
 	root := filepath.Join(
 		desired.Platform.Directory, "secrets", desired.Project.Cluster,
 	)
+	names := FluxSecretSourceNames()
+	result := make([]string, len(names))
+	for index, name := range names {
+		result[index] = filepath.Join(root, filepath.FromSlash(name))
+	}
+	return result
+}
+
+// FluxSecretSourceNames is the canonical relative inventory rendered,
+// validated, tracked, and published as the Flux SOPS source.
+func FluxSecretSourceNames() []string {
 	return []string{
-		filepath.Join(root, ".sops.yaml"),
-		filepath.Join(root, "kustomization.yaml"),
-		filepath.Join(root, "stateful.json"),
-		filepath.Join(root, "identity.json"),
+		".sops.yaml",
+		"kustomization.yaml",
+		"stateful.json",
+		"identity.json",
+		"pki/kustomization.yaml",
+		"pki/cert-manager-namespace.yaml",
+		"pki/root-ca.json",
 	}
 }
 

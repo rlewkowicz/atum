@@ -21,10 +21,10 @@ import (
 const bundleManifestLimit = 16 << 20
 
 func reuseExistingBundle(project *config.Project) (BundleResult, bool, error) {
-	if project.Lock.Bundle == nil {
+	if project.ExecutionBundle == nil {
 		return BundleResult{}, false, nil
 	}
-	bundle := *project.Lock.Bundle
+	bundle := *project.ExecutionBundle
 	sourceSHA, err := config.AtumSourceSHA256(project)
 	if err != nil {
 		return BundleResult{}, false, err
@@ -167,7 +167,6 @@ func inspectBundleArchive(file *os.File, expected config.Bundle) (bundleManifest
 
 func validateBundleManifest(project *config.Project, manifest bundleManifest) error {
 	snapshot := project.Lock
-	snapshot.Bundle = nil
 	lockData, err := config.MarshalJSON(snapshot)
 	if err != nil {
 		return err
@@ -198,75 +197,19 @@ func validateBundleManifest(project *config.Project, manifest bundleManifest) er
 			return fmt.Errorf("existing deployment bundle image %d does not match %s", index, expected.ID)
 		}
 	}
-	expectedRepositories, err := expectedRepositorySources(project)
-	if err != nil {
-		return err
-	}
-	if len(manifest.Source.Repositories) != len(expectedRepositories) {
-		return errors.New("existing deployment bundle source inventory is incomplete")
-	}
-	for _, repository := range manifest.Source.Repositories {
-		expected, exists := expectedRepositories[repository.ID]
-		if !exists || repository.URL != expected.URL || repository.Version != sourceVersion(expected) ||
-			repository.Commit != expected.Commit || !validArchive(repository.archiveIdentity, "sources/"+repository.ID+".tar") {
-			return fmt.Errorf("existing deployment bundle source %s does not match desired state", repository.ID)
-		}
-		delete(expectedRepositories, repository.ID)
-	}
-	if len(expectedRepositories) != 0 {
-		return errors.New("existing deployment bundle omits desired sources")
-	}
-	if len(manifest.FluxAssets) != len(project.Desired.Platform.Flux.Assets) {
-		return errors.New("existing deployment bundle Flux asset inventory is incomplete")
-	}
-	for index, asset := range manifest.FluxAssets {
-		expected := project.Desired.Platform.Flux.Assets[index]
-		if asset.SHA256 != expected.SHA256 || !validArchive(asset, "flux/"+filepath.Base(expected.File)) {
-			return fmt.Errorf("existing deployment bundle Flux asset %d does not match %s", index, expected.ID)
-		}
-	}
-	if len(manifest.Charts) != len(project.Desired.Platform.Bootstrap.Charts)+len(project.Desired.Platform.Charts) {
+	if len(manifest.Charts) != len(project.Lock.Resolved.Artifacts) {
 		return errors.New("existing deployment bundle chart inventory is incomplete")
 	}
-	for index, chart := range manifest.Charts[:len(project.Desired.Platform.Bootstrap.Charts)] {
-		expected := project.Desired.Platform.Bootstrap.Charts[index]
+	for index, chart := range manifest.Charts {
+		expected := project.Lock.Resolved.Artifacts[index]
 		if chart.ID != expected.ID || chart.Name != expected.Name || chart.Version != expected.Version ||
 			chart.Target != expected.Target || chart.ArchiveSHA256 != expected.ArchiveSHA256 ||
-			chart.Size <= 0 || chart.Size > config.ChartArchiveLimit || chart.File != "charts/"+expected.File {
+			chart.Size != expected.Size || chart.Size > config.ChartArchiveLimit ||
+			chart.File != "charts/"+filepath.Base(expected.File) {
 			return fmt.Errorf("existing deployment bundle chart %d does not match %s", index, expected.ID)
 		}
 	}
-	registry := project.Desired.Platform.Bootstrap.Registry
-	for offset, chart := range manifest.Charts[len(project.Desired.Platform.Bootstrap.Charts):] {
-		expected := project.Desired.Platform.Charts[offset]
-		filename := expected.Name + "-" + expected.Version + ".tgz"
-		target := registry.Host + "/" + registry.Project + "/" + expected.Name + ":" + expected.Version
-		if chart.ID != expected.ID || chart.Name != expected.Name || chart.Version != expected.Version ||
-			chart.Target != target || chart.ArchiveSHA256 != expected.ArchiveSHA256 ||
-			chart.Size <= 0 || chart.Size > config.ChartArchiveLimit || chart.File != "charts/"+filename {
-			return fmt.Errorf("existing deployment bundle tracked chart %d does not match %s", offset, expected.ID)
-		}
-	}
 	return nil
-}
-
-func expectedRepositorySources(project *config.Project) (map[string]config.GitSource, error) {
-	inventory, err := config.RepositoryInventory(project.Desired, project.Lock.Resolved)
-	if err != nil {
-		return nil, err
-	}
-	expected := make(map[string]config.GitSource, len(inventory))
-	for _, repository := range inventory {
-		expected[repository.ID] = repository.Source
-	}
-	return expected, nil
-}
-
-func sourceVersion(source config.GitSource) string {
-	if source.Ref != "" {
-		return source.Ref
-	}
-	return source.Version
 }
 
 func validArchive(identity archiveIdentity, expectedFile string) bool {

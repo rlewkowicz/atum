@@ -138,11 +138,14 @@ func (tree *candidateTree) Delete(relative string) error {
 	return nil
 }
 
-func (tree *candidateTree) Files() map[string][]byte {
+// filesView returns a point-in-time map over immutable candidate byte slices.
+// Update code treats these slices as read-only, avoiding repeated full-tree
+// copies while retaining map snapshot semantics as candidates are replaced.
+func (tree *candidateTree) filesView() map[string][]byte {
 	files := make(map[string][]byte, len(tree.candidates))
 	for relative, candidate := range tree.candidates {
 		if candidate.exists {
-			files[relative] = append([]byte(nil), candidate.data...)
+			files[relative] = candidate.data
 		}
 	}
 	return files
@@ -318,11 +321,14 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		"platform/apps/bigbang/helmrelease.yaml",
 		"platform/apps/bigbang/kustomization.yaml",
 		"platform/apps/bigbang/source-bigbang.yaml",
+		"platform/apps/bigbang/source-opensearch.yaml",
+		"platform/apps/bigbang/source-opensearch-operator.yaml",
 		"platform/apps/prep/kustomization.yaml",
 		"platform/apps/prep/namespace.yaml",
 		filepath.Join(clusterRoot, "bigbang.yaml"),
 		filepath.Join(clusterRoot, "kustomization.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-access.yaml"),
+		filepath.Join(clusterRoot, "platform-certificates.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-identity.yaml"),
 		filepath.Join(clusterRoot, "platform-profile-prep.yaml"),
 		filepath.Join(clusterRoot, "platform-secrets.yaml"),
@@ -340,16 +346,19 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 			filepath.Join(filepath.Dir(valuesPath), "kustomization.yaml"),
 			filepath.Join(filepath.Dir(valuesPath), "stateful-values.yaml"),
 			filepath.Join(profileRoot, "access", "kustomization.yaml"),
-			filepath.Join(profileRoot, "identity", "kustomization.yaml"),
 		)
 		if profile == "local" {
 			paths = append(paths,
 				filepath.Join(profileRoot, "identity", "contract.yaml"),
+				filepath.Join(profileRoot, "identity", "kustomization.yaml"),
 				filepath.Join(profileRoot, "identity", "credentials.yaml"),
 				filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
 				filepath.Join(profileRoot, "identity", "vault-reconcile.yaml"),
 				filepath.Join(profileRoot, "identity", "receipt.yaml"),
 				filepath.Join(profileRoot, "prep", "identity-values.yaml"),
+				filepath.Join(profileRoot, "prep", "certificates", "kustomization.yaml"),
+				filepath.Join(profileRoot, "prep", "certificates", "ca-issuer.yaml"),
+				filepath.Join(profileRoot, "prep", "certificates", "identity-certificate.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),
@@ -382,14 +391,13 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 	for _, asset := range desired.Platform.Flux.Assets {
 		paths = append(paths, asset.File, filepath.Join(filepath.Dir(asset.File), "kustomization.yaml"))
 	}
-	for _, chart := range desired.Platform.Charts {
-		paths = append(paths, chart.FluxSource)
-	}
 	for _, chart := range desired.Platform.Bootstrap.Charts {
 		paths = append(paths,
 			chart.Values,
 			chart.FluxSource,
 			filepath.Join(filepath.Dir(chart.Values), "helmrelease.yaml"),
+			filepath.Join(filepath.Dir(chart.Values), "kustomization.yaml"),
+			filepath.Join(filepath.Dir(chart.Values), "namespace.yaml"),
 		)
 	}
 	for _, source := range projectGitSourcesForUpdate(desired) {

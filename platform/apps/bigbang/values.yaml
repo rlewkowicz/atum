@@ -1,239 +1,23 @@
-domain: atum.test
-registryCredentials: null
-imagePullPolicy: IfNotPresent
-openshift: false
-flux:
-  interval: 2m
-  timeout: 30m
-  install:
-    crds: CreateReplace
-    disableWait: true
-    disableWaitForJobs: true
-    strategy:
-      name: RetryOnFailure
-      retryInterval: 5m
-  upgrade:
-    crds: CreateReplace
-    disableWait: true
-    disableWaitForJobs: true
-    strategy:
-      name: RetryOnFailure
-      retryInterval: 5m
-  driftDetection:
-    mode: enabled
-wrapper:
-  sourceType: git
-networkPolicies:
-  enabled: true
-  controlPlaneCidr: 0.0.0.0/0
-istio:
-  ambient:
-    enabled: false
-istioCNI:
+# Target-independent site intent for the selected Big Bang release. Package
+# coordinates and image projections are generated separately by
+# `atum pull updates`; target facts live in the active profile.
+
+alloy:
   enabled: false
-gatewayAPI:
+
+loki:
   enabled: false
-istioCRDs:
-  enabled: true
-  sourceType: git
-  atum: {id: istio-crds, fluxName: istio-crds, license: Apache-2.0, integration: integrated}
-  git: {}
-istiod:
-  enabled: true
-  sourceType: git
-  atum: {id: istiod, fluxName: istiod, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    networkPolicies:
-      egress:
-        defaults:
-          allowInNamespace:
-            enabled: true
-      ingress:
-        to:
-          "istiod:[443,15017]":
-            from:
-              cidr:
-                0.0.0.0/0: false
-              definition:
-                kubeAPI: true
-    upstream:
-      global: {}
-      pilot:
-        autoscaleEnabled: false
-        replicaCount: 1
-istioGateway:
-  enabled: true
-  sourceType: git
-  atum: {id: istio-gateway, fluxName: istio-gateway, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    gateways:
-      public:
-        waitJob:
-          enabled: false
-        upstream:
-          replicaCount: 1
-          autoscaling:
-            enabled: false
-          global: {}
-      passthrough:
-        waitJob:
-          enabled: false
-        upstream:
-          replicaCount: 1
-          autoscaling:
-            enabled: false
-          global: {}
-ztunnel:
+
+neuvector:
   enabled: false
-kiali:
-  enabled: true
-  sourceType: git
-  atum: {id: kiali, fluxName: kiali, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    waitJob:
-      enabled: false
-    upstream:
-      image: {}
-      cr:
-        spec:
-          deployment:
-            replicas: 1
-gatekeeper:
+
+bbctl:
   enabled: false
-kyverno:
-  enabled: true
-  sourceType: git
-  atum: {id: kyverno, fluxName: kyverno, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    global:
-      image: {}
-    waitJob:
-      enabled: false
-    upstream:
-      features:
-        forceFailurePolicyIgnore:
-          enabled: true
-        logging:
-          verbosity: 0
-      config: {}
-      crds:
-        groups:
-          image: {}
-        migration:
-          image: {}
-      webhooksCleanup:
-        image: {}
-      policyReportsCleanup:
-        image: {}
-      cleanupJobs:
-        admissionReports:
-          image: {}
-        clusterAdmissionReports:
-          image: {}
-        updateRequests:
-          image: {}
-        ephemeralReports:
-          image: {}
-        clusterEphemeralReports:
-          image: {}
-      admissionController:
-        replicas: 1
-        apiPriorityAndFairness: true
-        initContainer:
-          image: {}
-        container:
-          image: {}
-      backgroundController:
-        replicas: 1
-        image: {}
-      cleanupController:
-        replicas: 1
-        image: {}
-      reportsController:
-        replicas: 1
-        image: {}
-      test:
-        image: {}
-kyvernoPolicies:
-  enabled: true
-  sourceType: git
-  atum: {id: kyverno-policies, fluxName: kyverno-policies, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    bbtests:
-      enabled: false
-    validationFailureAction: Audit
-    waitJob:
-      enabled: false
-    policies:
-      add-default-securitycontext:
-        exclude:
-          any:
-            - resources:
-                namespaces:
-                  - local-path-storage
-      update-automountserviceaccounttokens:
-        enabled: false
-      restrict-image-registries:
-        skipOverlayMerge: true
-        parameters:
-          allow:
-            - 10.77.0.9:32443
-kyvernoReporter:
-  enabled: true
-  sourceType: git
-  atum: {id: kyverno-reporter, fluxName: kyverno-reporter, license: MIT, integration: integrated}
-  git: {}
-  values:
-    waitJob:
-      enabled: false
-    upstream:
-      replicaCount: 1
-      image: {}
-      ui:
-        enabled: true
-        replicaCount: 1
-        image: {}
-      plugin:
-        kyverno:
-          enabled: true
-          replicaCount: 1
-          image: {}
-elasticsearchKibana:
-  enabled: false
-eckOperator:
-  enabled: false
+
 fluentbit:
   enabled: true
-  sourceType: git
-  atum: {id: fluent-bit, fluxName: fluentbit, license: Apache-2.0, integration: integrated}
-  git: {}
-  istio:
-    injection: enabled
   values:
-    waitJob:
-      enabled: false
-    bbtests:
-      enabled: false
-    networkPolicies:
-      egress:
-        from:
-          fluent-bit:
-            to:
-              k8s:
-                "opensearch/opensearch-cluster-master:9200":
-                  enabled: true
-                  podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: opensearch
     upstream:
-      image: {}
-      hotReload:
-        enabled: false
       config:
         outputs: |
           [OUTPUT]
@@ -254,518 +38,241 @@ fluentbit:
               Logstash_Prefix     node
               Retry_Limit         False
               tls                 Off
-alloy:
-  enabled: false
-loki:
-  enabled: false
-neuvector:
-  enabled: false
-tempo:
-  enabled: true
-  sourceType: git
-  atum: {id: tempo, fluxName: tempo, license: AGPL-3.0-only, integration: integrated}
-  git: {}
-  values:
-    waitJob:
-      enabled: false
-    upgradeJob:
-      image:
-        imagePullPolicy: IfNotPresent
-    bbtests:
-      enabled: false
-    upstream:
-      replicas: 1
-      tempo: {}
-      tempoQuery:
-        enabled: false
-prometheusOperatorCRDs:
-  enabled: true
-  sourceType: git
-  atum: {id: prometheus-operator-crds, fluxName: prometheus-operator-crds, license: Apache-2.0, integration: integrated}
-  git: {}
-monitoring:
-  enabled: true
-  sourceType: git
-  atum: {id: monitoring, fluxName: monitoring, license: Apache-2.0, integration: integrated}
-  git: {}
-  values:
-    waitJob:
-      enabled: false
-    bbtests:
-      enabled: false
-    blackboxExporter:
-      enabled: false
-    snmpExporter:
-      enabled: false
-    upstream:
-      alertmanager:
-        alertmanagerSpec:
-          replicas: 1
-          image: {}
-      prometheus:
-        prometheusSpec:
-          replicas: 1
-          image: {}
-          podMetadata:
-            annotations:
-              traffic.sidecar.istio.io/includeOutboundIPRanges: "*"
-              vault.hashicorp.com/agent-init-first: "false"
-              vault.hashicorp.com/service: "http://vault-vault.vault.svc:8200"
-      prometheusOperator:
-        admissionWebhooks:
-          deployment:
-            replicas: 1
-          patch:
-            image: {}
-        image: {}
-        prometheusConfigReloader:
-          image: {}
-        thanosImage: {}
-        kubectlImage: {}
-        cleanupProxy:
-          image: {}
-      kube-state-metrics:
-        image: {}
-      prometheus-node-exporter:
-        image: {}
+
 grafana:
-  enabled: true
-  sourceType: git
-  atum: {id: grafana, fluxName: grafana, license: AGPL-3.0-only, integration: integrated}
-  git: {}
   values:
-    global: {}
-    waitJob:
-      enabled: false
-    autoRollingUpgrade:
-      image: {}
     upstream:
-      replicas: 1
-      autoscaling:
-        enabled: false
-      image: {}
-      livenessProbe:
-        initialDelaySeconds: 600
-      securityContext:
-        runAsUser: 472
-        runAsGroup: 472
-        fsGroup: 472
-      downloadDashboardsImage: {}
-      initChownData:
-        image: {}
-      testFramework:
-        enabled: false
-      sidecar:
-        image: {}
-      imageRenderer:
-        enabled: false
-twistlock:
-  enabled: false
-bbctl:
-  enabled: false
-renovate:
-  enabled: false
+      grafana.ini:
+        # The legacy Angular piechart plugin is unsupported by the selected
+        # Grafana release. Use Grafana's native pie visualization instead.
+        plugin.grafana-piechart-panel: null
+
 addons:
-  argocd:
-    enabled: false
-  anchoreEnterprise:
-    enabled: false
   authservice:
     enabled: true
-    sourceType: git
-    atum: {id: authservice, fluxName: authservice, license: Apache-2.0, integration: integrated}
-    git: {}
-    chains:
-      local:
-        callback_uri: https://localhost/login
-        client_id: local_id
-        client_secret: local_secret
-        logout_path: /local
-        match:
-          header: :authority
-          prefix: localhost
-    values:
-      waitJob:
-        enabled: false
-      replicaCount: 1
-      autoscaling:
-        enabled: false
-      image: {}
-  externalSecrets:
-    enabled: false
-  fortify:
-    enabled: false
+
   gitlab:
     enabled: true
-    sourceType: git
-    atum: {id: gitlab, fluxName: gitlab, license: MIT, integration: integrated}
-    git: {}
-    flux:
-      upgrade:
-        disableHooks: true
+    dependsOn:
+      - name: postgresql
+        namespace: postgresql
+      - name: redis
+        namespace: redis
+      - name: garage
+        namespace: garage
+    database:
+      host: postgresql-rw.postgresql.svc.cluster.local
+      port: 5432
+      database: gitlabhq_production
+      username: gitlab
+    objectStorage:
+      type: minio
+      endpoint: http://garage.garage.svc.cluster.local:3900
+      regionendpoint: http://garage.garage.svc.cluster.local:3900
+      region: garage
     values:
-      waitJob:
-        enabled: false
       global:
-        hosts:
-          domain: atum.test
-        kas:
-          enabled: true
-        certificates:
-          image: {}
-        kubectl:
-          image: {}
-        gitlabBase:
-          image: {}
-      upstream:
-        global:
-          hosts:
-            domain: atum.test
-          appConfig:
-            incomingEmail:
-              enabled: false
-          kas:
-            enabled: true
-          pages:
-            enabled: false
-        nginx-ingress:
-          enabled: false
-        upgradeCheck:
-          image: {}
         redis:
-          global:
-            security:
-              allowInsecureImages: true
-          image: {}
-          metrics:
-            image: {}
-        postgresql:
-          global:
-            security:
-              allowInsecureImages: true
-          image: {}
-          postgresqlSharedPreloadLibraries: ""
-        registry:
-          hpa:
-            minReplicas: 1
-            maxReplicas: 1
-          image: {}
-        gitlab:
-          toolbox:
-            replicas: 1
-            image: {}
-          migrations:
-            image: {}
-          webservice:
-            minReplicas: 1
-            maxReplicas: 1
-            image: {}
-            workhorse: {}
-          sidekiq:
-            minReplicas: 1
-            maxReplicas: 1
-            image: {}
-          gitlab-shell:
-            minReplicas: 1
-            maxReplicas: 1
-            image: {}
-          gitaly:
-            image: {}
-          gitlab-exporter:
-            enabled: false
-          mailroom:
-            enabled: false
-          gitlab-pages:
-            enabled: false
-          kas:
-            image: {}
-          praefect:
-            image: {}
-        minio:
-          minioMc: {}
-        shared-secrets:
-          annotations:
-            sidecar.istio.io/inject: "false"
-          selfsign:
-            keySize: "2048"
-            image: {}
-        bbtests:
-          enabled: false
-  gitlabRunner:
-    enabled: false
+          host: redis-master.redis.svc.cluster.local
+          port: 6379
+      networkPolicies:
+        egress:
+          definitions:
+            database-subnets:
+              to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: postgresql
+              ports:
+                - port: 5432
+                  protocol: TCP
+            redis-subnets:
+              to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: redis
+              ports:
+                - port: 6379
+                  protocol: TCP
+            storage-subnets:
+              to:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: garage
+              ports:
+                - port: 3900
+                  protocol: TCP
+
   harbor:
     enabled: true
-    sourceType: git
-    atum: {id: harbor, fluxName: harbor, license: Apache-2.0, integration: integrated}
-    git: {}
     values:
-      bbtests:
-        enabled: false
       postgresql:
         global:
-          security:
-            allowInsecureImages: true
-        image: {}
-        postgresqlSharedPreloadLibraries: ""
-      redis-bb:
-        upstream:
-          global:
-            security:
-              allowInsecureImages: true
-          image: {}
-          metrics:
-            enabled: false
-      upstream:
-        nginx:
-          image: {}
-        portal:
-          image: {}
-        core:
-          image: {}
-        jobservice:
-          image: {}
-        registry:
-          registry:
-            image: {}
-          controller:
-            image: {}
-        trivy:
-          enabled: false
-        exporter:
-          image: {}
+          # The selected Bitnami subchart defaults to an Iron Bank-specific
+          # restricted OpenSSL provider. Atum delivers the official upstream
+          # PostgreSQL image and its minimal chart-compatibility layer instead.
+          defaultFips: off
+
   headlamp:
     enabled: true
-    sourceType: git
-    atum: {id: headlamp, fluxName: headlamp, license: Apache-2.0, integration: integrated}
-    git: {}
-    sso:
-      enabled: false
-    values:
-      waitJob:
-        enabled: false
-      upstream:
-        image: {}
+
   keycloak:
     enabled: true
-    sourceType: git
-    atum: {id: keycloak, fluxName: keycloak, license: Apache-2.0, integration: integrated}
-    git: {}
     values:
-      upstream:
-        global:
-          security:
-            allowInsecureImages: true
-        replicas: 1
-        image: {}
       postgresql:
         global:
-          security:
-            allowInsecureImages: true
-        image: {}
-        postgresqlSharedPreloadLibraries: ""
-      bbtests:
-        enabled: false
-  mattermost:
-    enabled: false
-  mattermostOperator:
-    enabled: false
-  metricsServer:
-    enabled: false
-  minio:
-    enabled: false
-  minioOperator:
-    enabled: false
-  sonarqube:
-    enabled: false
+          # Match the standard official PostgreSQL distribution rather than
+          # claiming an unavailable Iron Bank FIPS provider.
+          defaultFips: off
+
   vault:
     enabled: true
-    sourceType: git
-    atum: {id: vault, fluxName: vault, license: MPL-2.0, integration: integrated}
-    git: {}
     values:
       autoInit:
         enabled: true
-        image: {}
-      bbtests:
-        enabled: false
-      upstream:
-        global:
-          tlsDisable: true
-        injector:
-          replicas: 1
-          image: {}
-          agentImage: {}
-        server:
-          image: {}
-          updateStrategyType: RollingUpdate
-          auditStorage:
-            enabled: false
-        csi:
-          enabled: false
-  velero:
-    enabled: true
-    sourceType: git
-    atum: {id: velero, fluxName: velero, license: Apache-2.0, integration: integrated}
-    git: {}
-    values:
-      waitJob:
-        enabled: false
-      upstream:
-        image: {}
-        credentials:
-          useSecret: true
-          secretContents:
-            cloud: |
-              [default]
-              aws_access_key_id=atum-placeholder
-              aws_secret_access_key=atum-placeholder
-        configuration:
-          backupStorageLocation:
-            - name: default
-              provider: aws
-              bucket: atum-velero
-              default: true
-              credential:
-                name: velero
-                key: cloud
-              config:
-                region: auto
-                s3ForcePathStyle: "true"
-                s3Url: https://ewr1.vultrobjects.com
-          volumeSnapshotLocation:
-            - name: default
-              provider: aws
-              credential:
-                name: velero
-                key: cloud
-              config:
-                region: auto
-          deployNodeAgent: true
-      kubectl:
-        image: {}
-      bbtests:
-        enabled: false
+
 packages:
   cloudnative-pg:
     enabled: true
     sourceType: git
-    atum:
-      id: cloudnative-pg
-      fluxName: cloudnative-pg
-      license: Apache-2.0
-      integration: generic
-      source:
-        repo: https://repo1.dso.mil/big-bang/product/maintained/cloudnative-pg.git
-        path: chart
-        tag: 0.29.0-bb.0
-    git: {}
+    git:
+      repo: https://repo1.dso.mil/big-bang/product/maintained/cloudnative-pg.git
+      path: chart
+      tag: 0.29.0-bb.0
     namespace:
-      create: true
       name: cloudnative-pg
+    istio:
+      injection: disabled
 
   postgresql:
     enabled: true
     sourceType: git
-    atum:
-      id: postgresql
-      fluxName: postgresql
-      license: Apache-2.0
-      integration: generic
-      source:
-        repo: https://repo1.dso.mil/big-bang/product/packages/wrapper.git
-        path: chart
-        tag: 0.4.15
-    git: {}
+    git:
+      repo: https://github.com/cloudnative-pg/charts.git
+      path: charts/cluster
+      tag: cluster-v0.8.1
     namespace:
-      create: true
       name: postgresql
+    istio:
+      injection: disabled
+    bbCommonValues: false
+    dependsOn:
+      - name: cloudnative-pg
+        namespace: cloudnative-pg
     values:
-      package:
-        name: postgresql
-        namespace:
-          name: postgresql
-        configMaps:
-          - name: postgresql
-            data:
-              placeholder: replaced-by-flux-post-renderer
+      fullnameOverride: postgresql
+      type: postgresql
+      version:
+        postgresql: "17"
+      cluster:
+        initdb:
+          database: gitlabhq_production
+          owner: gitlab
+          secret:
+            name: postgresql-app
+          postInitApplicationSQL:
+            - CREATE EXTENSION IF NOT EXISTS pg_trgm;
+            - CREATE EXTENSION IF NOT EXISTS btree_gist;
+            - CREATE EXTENSION IF NOT EXISTS plpgsql;
+            - CREATE EXTENSION IF NOT EXISTS amcheck;
+            - CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+        postgresql:
+          parameters:
+            max_connections: "200"
+          shared_preload_libraries:
+            - pg_stat_statements
 
   redis:
     enabled: true
     sourceType: git
-    atum:
-      id: redis
-      fluxName: redis
-      license: BSD-3-Clause
-      integration: generic
-      source:
-        repo: https://repo1.dso.mil/big-bang/product/maintained/redis.git
-        path: chart
-        tag: 27.0.14-bb.0
-    git: {}
+    git:
+      repo: https://repo1.dso.mil/big-bang/product/maintained/redis.git
+      path: chart
+      tag: 27.0.14-bb.0
     namespace:
-      create: true
       name: redis
+    istio:
+      injection: disabled
+    bbCommonValues: false
+    values:
+      networkPolicies:
+        enabled: true
+      upstream:
+        nameOverride: redis
+        fullnameOverride: redis
+        architecture: standalone
+        auth:
+          enabled: true
+          usePasswordFiles: true
+        metrics:
+          enabled: false
+        networkPolicy:
+          enabled: true
+          allowExternal: false
+          allowExternalEgress: false
+          ingressNSMatchLabels:
+            kubernetes.io/metadata.name: gitlab
+        replica:
+          replicaCount: 0
 
   garage:
     enabled: true
     sourceType: git
-    atum:
-      id: garage
-      fluxName: garage
-      license: AGPL-3.0-only
-      integration: generic
-      source:
-        repo: https://repo1.dso.mil/big-bang/product/maintained/garage.git
-        path: chart
-        tag: 0.9.3-bb.2
-    git: {}
+    git:
+      repo: https://repo1.dso.mil/big-bang/product/maintained/garage.git
+      path: chart
+      tag: 0.9.3-bb.2
     namespace:
-      create: true
       name: garage
+    istio:
+      injection: disabled
+    values:
+      fullnameOverride: garage
+      garageInit:
+        enabled: true
+        zone: gitlab
+        region: garage
+        consumers:
+          - name: gitlab
+            buckets:
+              - gitlab-agent-plan-content
+              - gitlab-artifacts
+              - gitlab-backup
+              - gitlab-backup-tmp
+              - gitlab-ci-secure-files
+              - gitlab-dependency-proxy
+              - gitlab-lfs
+              - gitlab-mr-diffs
+              - gitlab-packages
+              - gitlab-pages
+              - gitlab-pseudo
+              - gitlab-registry
+              - gitlab-terraform-state
+              - gitlab-uploads
+      upstream:
+        fullnameOverride: garage
+        environment:
+          - name: GARAGE_ADMIN_TOKEN
 
   opensearch-operator:
     enabled: true
-    sourceType: helmRepo
     namespace:
-      create: true
       name: opensearch-operator
-    helmRepo:
-      repoName: opensearch-operator
-      chartName: opensearch-operator
-    includeDefaultDependsOn: true
     wrapper:
       enabled: true
     istio:
       injection: enabled
-      hardened:
-        enabled: true
-        matchLabels: {}
-    network:
-      allowControlPlaneEgress: true
-    dependsOn:
-      - name: opensearch-operator-wrapper
-        namespace: opensearch-operator
-    values:
-      manager:
-        image:
-          pullPolicy: IfNotPresent
+
   opensearch:
     enabled: true
-    sourceType: helmRepo
     namespace:
-      create: true
       name: opensearch
-    helmRepo:
-      repoName: opensearch
-      chartName: opensearch
-    includeDefaultDependsOn: true
     wrapper:
       enabled: true
     istio:
       injection: enabled
       hardened:
         enabled: true
-        matchLabels: {}
         customAuthorizationPolicies:
           - name: allow-fluentbit-opensearch
             enabled: true
@@ -806,12 +313,9 @@ packages:
     dependsOn:
       - name: opensearch-operator
         namespace: opensearch-operator
-      - name: opensearch-wrapper
-        namespace: opensearch
     values:
       singleNode: true
       replicas: 1
-      image: {}
       extraEnvs:
         - name: DISABLE_INSTALL_DEMO_CONFIG
           value: "true"
@@ -821,18 +325,14 @@ packages:
         enableInitChown: false
       sysctlInit:
         enabled: false
+
   opensearch-dashboards:
     enabled: true
-    sourceType: helmRepo
     namespace:
       create: false
       name: opensearch
     helmRelease:
       namespace: opensearch
-    helmRepo:
-      repoName: opensearch
-      chartName: opensearch-dashboards
-    includeDefaultDependsOn: true
     dependsOn:
       - name: opensearch
         namespace: opensearch
@@ -841,4 +341,3 @@ packages:
       replicaCount: 1
       autoscaling:
         enabled: false
-      image: {}

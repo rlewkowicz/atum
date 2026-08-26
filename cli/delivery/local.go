@@ -50,13 +50,12 @@ func (service *Service) resolveLocalDelivery(
 	if err != nil {
 		return localDelivery{}, err
 	}
-	parallelism := options.Parallelism
-	if parallelism <= 0 {
-		parallelism = project.Desired.Updates.Parallelism
-	}
-	if parallelism <= 0 {
-		parallelism = defaultParallelism
-	}
+	defer registry.Clear()
+	parallelism := effectiveParallelism(
+		options.Parallelism, project.Desired.Updates.Parallelism,
+	)
+	options.Parallelism = parallelism
+	ctx = withDeliveryBudget(ctx, parallelism)
 	mirrors, builds, err := partitionSelectedImages(selected)
 	if err != nil {
 		return localDelivery{}, err
@@ -87,25 +86,25 @@ func (service *Service) resolveLocalDelivery(
 	for _, image := range mirrors {
 		image := image
 		group.Go(func() error {
-			output, err := service.prepareMirrorOutput(groupContext, project, registry, image)
-			if err != nil {
-				return err
-			}
-			entry := config.LockedImage{
-				ID:          image.Image.ID,
-				Target:      image.Image.Target,
-				Digest:      image.Delivery.Digest,
-				InputSHA256: image.InputSHA,
-				Delivery:    image.Delivery,
-			}
-			resultMu.Lock()
-			results[entry.ID] = entry
-			mirrorOutputs[entry.ID] = output
-			resultMu.Unlock()
-			current := int(resolved.Add(1))
-			progress.Update(groupContext, progress.Platform, "bundle", "Deployment bundle",
-				"verified upstream image "+entry.ID, current, len(selected))
-			return nil
+			return runDeliveryWorker(groupContext, func() error {
+				output, err := service.prepareMirrorOutput(groupContext, project, registry, image)
+				if err != nil {
+					return err
+				}
+				entry := config.LockedImage{
+					ID: image.Image.ID, Target: image.Image.Target,
+					Digest: image.Delivery.Digest, InputSHA256: image.InputSHA,
+					Delivery: image.Delivery,
+				}
+				resultMu.Lock()
+				results[entry.ID] = entry
+				mirrorOutputs[entry.ID] = output
+				resultMu.Unlock()
+				current := int(resolved.Add(1))
+				progress.Update(groupContext, progress.Platform, "bundle", "Deployment bundle",
+					"verified upstream image "+entry.ID, current, len(selected))
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {

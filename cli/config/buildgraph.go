@@ -39,12 +39,12 @@ func validateBuildGraph(problems *[]string, project *Project, files map[string][
 	}
 	graph.validate(problems, project.Desired.Delivery.Policy, deliveryTargetNames(project.Desired.Delivery.Images))
 	for _, image := range project.Desired.Delivery.Images {
-		for _, target := range []string{image.Delivery.Default.BakeTarget, image.Delivery.FullBuildTarget} {
-			if target == "" {
-				continue
-			}
+		target := image.Delivery.Default.BakeTarget
+		if target != "" {
 			if _, exists := graph.targets[target]; !exists {
-				*problems = append(*problems, fmt.Sprintf("delivery image %s references missing Bake target %s", image.ID, target))
+				*problems = append(*problems, fmt.Sprintf(
+					"delivery image %s references missing Bake target %s", image.ID, target,
+				))
 			}
 		}
 	}
@@ -62,11 +62,10 @@ func (graph *bakeGraph) validateVersionMappedTargets(problems *[]string, images 
 	for i := range images {
 		image := &images[i]
 		mapping := image.VersionMapping
-		if mapping == nil || mapping.Build == nil ||
+		if mapping == nil ||
 			(mapping.Source != "upstreamImageTag" && mapping.Source != "chartAppVersion") {
 			continue
 		}
-		build := mapping.Build
 		expectedTargetTag := mapping.TagPrefix + image.Version + mapping.TagSuffix
 		if imageReferenceTag(image.Target) != expectedTargetTag {
 			*problems = append(*problems, fmt.Sprintf(
@@ -74,54 +73,6 @@ func (graph *bakeGraph) validateVersionMappedTargets(problems *[]string, images 
 			))
 		}
 
-		full, exists := graph.targets[image.Delivery.FullBuildTarget]
-		if !exists {
-			continue
-		}
-		revision := full.args["ATUM_IMAGE_REVISION"]
-		expectedGitContext := build.GitURL + "?tag=" + build.GitTagPrefix + image.Version + "&checksum=" + revision
-		expectedFullTarget := imageReferenceRepository(image.Target) + ":" +
-			mapping.TagPrefix + image.Version + build.FullTagSuffix
-		if len(full.tags) != 1 || full.tags[0] != expectedFullTarget {
-			*problems = append(*problems, fmt.Sprintf(
-				"delivery image %s full-build target %s does not publish %s",
-				image.ID, image.Delivery.FullBuildTarget, expectedFullTarget,
-			))
-		}
-		if full.args["ATUM_IMAGE_VERSION"] != image.Version ||
-			len(revision) != 40 || !lowerHex(revision) ||
-			full.contexts[build.GitContext] != expectedGitContext {
-			*problems = append(*problems, fmt.Sprintf(
-				"delivery image %s full-build source does not match version %s",
-				image.ID, image.Version,
-			))
-		}
-
-		switch image.Delivery.Default.Type {
-		case "mirror":
-			if (mapping.Source == "chartAppVersion" &&
-				normalizedImageReferenceRepository(image.Delivery.Default.Source) != build.ImageRepository) ||
-				imageReferenceTag(image.Delivery.Default.Source) != build.ImageTagPrefix+image.Version {
-				*problems = append(*problems, fmt.Sprintf(
-					"delivery image %s mirror source does not match version %s",
-					image.ID, image.Version,
-				))
-			}
-		case "build":
-			compatibility, exists := graph.targets[image.Delivery.Default.BakeTarget]
-			if !exists {
-				continue
-			}
-			material := mappedImageMaterial(image.Delivery.Default.Materials, build.ImageRepository)
-			if len(compatibility.tags) != 1 || compatibility.tags[0] != image.Target ||
-				compatibility.args["ATUM_IMAGE_VERSION"] != expectedTargetTag ||
-				material == "" || compatibility.contexts[build.BakeContext] != "docker-image://"+material {
-				*problems = append(*problems, fmt.Sprintf(
-					"delivery image %s compatibility target %s does not match its declared source",
-					image.ID, image.Delivery.Default.BakeTarget,
-				))
-			}
-		}
 	}
 }
 
@@ -149,21 +100,6 @@ func imageReferenceRepository(reference string) string {
 		return reference[:colon]
 	}
 	return reference
-}
-
-func mappedImageMaterial(materials []string, repository string) string {
-	prefix := repository + "@sha256:"
-	result := ""
-	for _, material := range materials {
-		if !strings.HasPrefix(material, prefix) {
-			continue
-		}
-		if result != "" {
-			return ""
-		}
-		result = material
-	}
-	return result
 }
 
 // DeliveryGraphSHA256 returns the content identity for all inputs reachable by
@@ -205,7 +141,7 @@ func ReachableBakeTargets(project *Project, roots []string) ([]string, error) {
 }
 
 func deliveryGraphSHA256(project *Project, profile string, files map[string][]byte) (string, error) {
-	if profile != "platform" && profile != "full-build" {
+	if profile != "platform" {
 		return "", fmt.Errorf("unsupported delivery profile %q", profile)
 	}
 	hash := sha256.New()
@@ -221,49 +157,21 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	}
 	graphFiles := []string{
 		"docker/Dockerfile.delivery",
-		"compat/debian/debian.sources",
-		"compat/lib/atum.sh",
-		"compat/postgresql/entrypoint.sh",
-		"compat/redis/entrypoint.sh",
-		"compat/redis/libfile.sh",
-		"compat/redis/liblog.sh",
-		"compat/redis/libos.sh",
-		"compat/redis/libvalidations.sh",
-		"compat/redis/run.sh",
-		"compat/redis/sentinel-run.sh",
 	}
-	if profile == "full-build" {
-		graphFiles = graphFiles[:0]
-		base := filepath.Dir(buildGraphPath)
-		for _, directory := range []string{"docker", "compat"} {
-			root, err := fssecure.Resolve(project.Root, filepath.ToSlash(filepath.Join(base, directory)), false)
-			if err != nil {
-				return "", err
-			}
-			err = fssecure.WalkRegularFiles(root, func(_ string, relative string, _ os.FileInfo) error {
-				graphFiles = append(graphFiles, filepath.ToSlash(filepath.Join(directory, relative)))
-				return nil
-			})
-			if err != nil {
-				return "", err
-			}
+	for _, image := range project.Desired.Delivery.Images {
+		if image.Delivery.Default.Type != "build" {
+			continue
 		}
-	} else {
-		for _, image := range project.Desired.Delivery.Images {
-			if image.Delivery.Default.Type != "build" {
+		for _, material := range image.Delivery.Default.Materials {
+			local, exists := strings.CutPrefix(material, filepath.ToSlash(filepath.Dir(buildGraphPath))+"/")
+			if !exists {
 				continue
 			}
-			for _, material := range image.Delivery.Default.Materials {
-				local, exists := strings.CutPrefix(material, filepath.ToSlash(filepath.Dir(buildGraphPath))+"/")
-				if !exists {
-					continue
-				}
-				files, err := localGraphMaterialFiles(project, local)
-				if err != nil {
-					return "", fmt.Errorf("resolve build material %s: %w", material, err)
-				}
-				graphFiles = append(graphFiles, files...)
+			files, err := localGraphMaterialFiles(project, local)
+			if err != nil {
+				return "", fmt.Errorf("resolve build material %s: %w", material, err)
 			}
+			graphFiles = append(graphFiles, files...)
 		}
 	}
 	graphFiles = compactStrings(graphFiles)
@@ -314,13 +222,10 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 }
 
 func deliveryTargetNames(images []Image) []string {
-	targets := make([]string, 0, len(images)*2)
+	targets := make([]string, 0, len(images))
 	for _, image := range images {
 		if image.Delivery.Default.BakeTarget != "" {
 			targets = append(targets, image.Delivery.Default.BakeTarget)
-		}
-		if image.Delivery.FullBuildTarget != "" {
-			targets = append(targets, image.Delivery.FullBuildTarget)
 		}
 	}
 	return compactStrings(targets)

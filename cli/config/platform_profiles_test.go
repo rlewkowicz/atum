@@ -2,7 +2,6 @@ package config
 
 import (
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -15,7 +14,6 @@ func TestPlatformProfileSelection(t *testing.T) {
 			Active: "local",
 			Targets: map[string]InfrastructureTarget{
 				"local": {PlatformProfile: "local"},
-				"cloud": {PlatformProfile: "cloud"},
 			},
 		},
 		Platform: Platform{
@@ -23,22 +21,19 @@ func TestPlatformProfileSelection(t *testing.T) {
 			Values: PlatformValues{
 				Profiles: map[string]string{
 					"local": "platform/profiles/local/prep/values.yaml",
-					"cloud": "platform/profiles/cloud/prep/values.yaml",
 				},
 			},
 			Bootstrap: BootstrapCharts{Charts: []Chart{
 				{ID: "global"},
 				{ID: "local-only", Profiles: []string{"local"}},
-				{ID: "cloud-only", Profiles: []string{"cloud"}},
-				{ID: "both", Profiles: []string{"cloud", "local"}},
 			}},
 		},
 	}
 
-	if got, want := document.Platform.Values.SortedProfileNames(), []string{"cloud", "local"}; !reflect.DeepEqual(got, want) {
+	if got, want := document.Platform.Values.SortedProfileNames(), []string{"local"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("sorted profiles = %v, want %v", got, want)
 	}
-	if got, want := chartIDs(document.ActiveBootstrapCharts()), []string{"global", "local-only", "both"}; !reflect.DeepEqual(got, want) {
+	if got, want := chartIDs(document.ActiveBootstrapCharts()), []string{"global", "local-only"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("local bootstrap charts = %v, want %v", got, want)
 	}
 	if got, ok := document.ActiveProfileValuesPath(); !ok || got != "platform/profiles/local/prep/values.yaml" {
@@ -49,51 +44,6 @@ func TestPlatformProfileSelection(t *testing.T) {
 		t.Fatalf("local identity contract = %q, %t", got, ok)
 	}
 
-	document.Infrastructure.Active = "cloud"
-	if got, ok := document.ActiveIdentityContractPath(); ok || got != "" {
-		t.Fatalf("cloud identity contract = %q, %t", got, ok)
-	}
-	if got, want := chartIDs(document.ActiveBootstrapCharts()), []string{"global", "cloud-only", "both"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("cloud bootstrap charts = %v, want %v", got, want)
-	}
-}
-
-func TestGeneratedIdentityInputsAreRequiredForSourceAdmission(t *testing.T) {
-	t.Parallel()
-
-	project, err := LoadWithOptions("../..", LoadOptions{
-		AllowStale: true, AllowMissingGeneratedIdentity: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	required := generatedIdentityRequiredFiles(
-		project.Desired, project.Desired.Platform.Values.SortedProfileNames())
-	for _, expected := range []string{
-		"platform/clusters/atum/platform-profile-identity.yaml",
-		"platform/profiles/cloud/identity/kustomization.yaml",
-		"platform/profiles/local/identity/kustomization.yaml",
-		"platform/profiles/local/prep/identity-values.yaml",
-		"platform/profiles/local/access/certificates/kustomization.yaml",
-		"platform/profiles/local/access/certificates/harbor-sso-ca.yaml",
-		"platform/profiles/local/access/certificates/keycloak-sso-ca.yaml",
-		"platform/profiles/local/access/certificates/vault-sso-ca.yaml",
-		"platform/profiles/local/identity/credentials.yaml",
-		"platform/profiles/local/identity/keycloak-reconcile.yaml",
-		"platform/profiles/local/identity/openbao-reconcile.yaml",
-		"platform/profiles/local/identity/receipt.yaml",
-	} {
-		if !slices.Contains(required, expected) {
-			t.Errorf("required generated identity inputs omit %s", expected)
-		}
-	}
-	for _, missing := range required {
-		err := project.validate(false, false, map[string][]byte{missing: nil})
-		wanted := "required tracked file " + missing + " is missing"
-		if err == nil || !strings.Contains(err.Error(), wanted) {
-			t.Errorf("omitting %s produced %v, want %q", missing, err, wanted)
-		}
-	}
 }
 
 func TestValidateLocalAccess(t *testing.T) {

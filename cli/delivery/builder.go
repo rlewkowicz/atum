@@ -42,6 +42,7 @@ func (service *Service) prepareBuilder(
 	ctx context.Context,
 	project *config.Project,
 	session dockerSession,
+	maxParallelism int,
 ) (string, error) {
 	commandEnv := session.environment()
 	buildkit, err := buildkitReference(project)
@@ -55,7 +56,7 @@ func (service *Service) prepareBuilder(
 		Registry:       project.Desired.Delivery.Registry.Host,
 		TLSVerify:      project.Desired.Delivery.Registry.TLSVerify,
 		CA256:          hex.EncodeToString(caHash[:]),
-		MaxParallelism: project.Desired.Delivery.Policy.BuildParallelism,
+		MaxParallelism: maxParallelism,
 	}
 	identityData, err := config.CanonicalJSON(identity)
 	if err != nil {

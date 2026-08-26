@@ -32,11 +32,13 @@ import (
 const (
 	outputLimit    = 4 << 10
 	defaultTimeout = 10 * time.Second
+	sopsSupported  = ">= 3.9.0, < 4.0.0"
 )
 
 const (
 	terraformInstall  = "https://developer.hashicorp.com/terraform/install"
 	fluxInstall       = "https://fluxcd.io/flux/installation/"
+	sopsInstall       = "https://github.com/getsops/sops/releases"
 	veleroInstall     = "https://velero.io/docs/main/basic-install/"
 	dockerInstall     = "https://docs.docker.com/engine/install/"
 	buildxInstall     = "https://docs.docker.com/build/install-buildx/"
@@ -45,6 +47,7 @@ const (
 	libvirtInstall    = "https://libvirt.org/downloads.html"
 	firewalldInstall  = "https://firewalld.org/documentation/installation.html"
 	restoreconInstall = "https://github.com/SELinuxProject/selinux"
+	aclInstall        = "https://savannah.nongnu.org/projects/acl/"
 	resolverInstall   = "https://www.freedesktop.org/software/systemd/man/latest/systemd-resolved.service.html"
 	sudoInstall       = "https://www.sudo.ws/getting-started/"
 	fedoraTrust       = "https://docs.fedoraproject.org/en-US/quick-docs/using-shared-system-certificates/"
@@ -140,7 +143,11 @@ func (service Service) Check(ctx context.Context, scope Scope) (Report, error) {
 	if parallelism <= 0 {
 		parallelism = service.Project.Desired.Updates.Parallelism
 	}
-	group.SetLimit(max(1, min(parallelism, len(specifications))))
+	group.SetLimit(min(config.EffectiveWorkLimit(
+		parallelism,
+		service.Project.Desired.Updates.Parallelism,
+		config.DefaultWorkLimit,
+	), max(1, len(specifications))))
 	for index := range specifications {
 		index := index
 		group.Go(func() error {
@@ -297,6 +304,16 @@ func (service Service) specifications(scope Scope) ([]Specification, error) {
 			},
 		))
 	}
+	if requirements.sops {
+		specifications = append(specifications, service.commandSpec(
+			SOPS, "SOPS", "ATUM_SOPS_BIN", "sops",
+			"official SOPS "+sopsSupported, sopsInstall, []string{"--version"},
+			func(output string) (string, string, error) {
+				version, err := checkSOPSVersion(output)
+				return version, "sops " + version, err
+			},
+		))
+	}
 	if requirements.velero {
 		specifications = append(specifications, service.commandSpec(
 			Velero, "Velero CLI", "ATUM_VELERO_BIN", "velero",
@@ -315,6 +332,18 @@ func (service Service) specifications(scope Scope) ([]Specification, error) {
 		if restorecon, selected := service.restoreconSpec(); selected {
 			specifications = append(specifications, restorecon)
 		}
+	}
+	if requirements.acl {
+		specifications = append(specifications,
+			service.commandSpec(
+				Getfacl, "POSIX ACL reader", "ATUM_GETFACL_BIN", "getfacl",
+				"usable getfacl", aclInstall, []string{"--version"}, identityParser,
+			),
+			service.commandSpec(
+				Setfacl, "POSIX ACL writer", "ATUM_SETFACL_BIN", "setfacl",
+				"usable setfacl", aclInstall, []string{"--version"}, identityParser,
+			),
+		)
 	}
 	if requirements.firewall {
 		specifications = append(specifications, service.firewallSpec())
@@ -359,9 +388,11 @@ type requirementSet struct {
 	python         bool
 	ssh            bool
 	flux           bool
+	sops           bool
 	velero         bool
 	localTarget    bool
 	restorecon     bool
+	acl            bool
 	firewall       bool
 	forwarding     bool
 	resolver       bool
@@ -385,9 +416,9 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 	case Delivery:
 		return requirementSet{docker: true}, nil
 	case LibvirtPermissionsInstall:
-		return requirementSet{restorecon: true}, nil
+		return requirementSet{restorecon: true, acl: true}, nil
 	case LibvirtPermissionsFile:
-		return requirementSet{}, nil
+		return requirementSet{acl: true}, nil
 	case LibvirtForwarding:
 		return requirementSet{firewall: true, forwarding: true}, nil
 	case TerraformDirect:
@@ -396,12 +427,14 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 		return requirementSet{flux: true}, nil
 	case VeleroDirect:
 		return requirementSet{velero: true}, nil
+	case CommittedSecrets:
+		return requirementSet{sops: true}, nil
 	case Platform:
-		return requirementSet{docker: true, python: true, ssh: true, flux: true}, nil
+		return requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}, nil
 	case Full:
 		return requirementSet{
 			terraform: true, docker: true, python: true, ssh: true, flux: true,
-			localTarget: true,
+			sops: true, localTarget: true,
 		}, nil
 	case AccessDNS:
 		return requirementSet{resolver: true, serviceManager: true, sudo: true}, nil
@@ -740,6 +773,29 @@ func identityParser(output string) (string, string, error) {
 		return "", "", errors.New("returned an empty version identity")
 	}
 	return output, output, nil
+}
+
+func checkSOPSVersion(output string) (string, error) {
+	fields := strings.Fields(output)
+	if len(fields) < 2 || fields[0] != "sops" {
+		return "", errors.New("returned an invalid official SOPS version signature")
+	}
+	version, err := semver.NewVersion(strings.TrimPrefix(fields[1], "v"))
+	if err != nil || version.Prerelease() != "" || version.Metadata() != "" {
+		return "", fmt.Errorf("returned an invalid stable SOPS version %q", fields[1])
+	}
+	constraint, err := semver.NewConstraint(sopsSupported)
+	if err != nil {
+		return "", fmt.Errorf("parse supported SOPS range: %w", err)
+	}
+	if !constraint.Check(version) {
+		return version.String(), fmt.Errorf(
+			"SOPS %s does not satisfy supported range %s",
+			version,
+			sopsSupported,
+		)
+	}
+	return version.String(), nil
 }
 
 func commandProblem(ctx context.Context, err error, output string) string {

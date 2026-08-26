@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"atum/cli/config"
+	"atum/cli/kube"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -18,15 +19,8 @@ func (service Service) Plan(ctx context.Context) (UpgradePlan, error) {
 	if err != nil {
 		return UpgradePlan{}, err
 	}
-	intent, installPending, err := service.readInstallIntent()
-	if err != nil {
-		return UpgradePlan{}, err
-	}
 	client, err := service.clusterClient()
 	if errors.Is(err, ErrClusterAbsent) {
-		if installPending {
-			return service.resumableInstallPlan(intent, target, "")
-		}
 		return UpgradePlan{Target: target.Kubernetes, Order: InstallTarget, Steps: []config.ClusterRelease{target}}, nil
 	}
 	if err != nil {
@@ -34,24 +28,19 @@ func (service Service) Plan(ctx context.Context) (UpgradePlan, error) {
 	}
 	state, err := service.discoverState(ctx, client)
 	if err != nil {
-		if installPending && errors.Is(err, ErrClusterUnavailable) {
-			return service.resumableInstallPlan(intent, target, "")
-		}
 		return UpgradePlan{}, err
 	}
 	if state.RecordedKubernetes == "" {
-		if !installPending {
-			return UpgradePlan{}, errors.New("live cluster has no Atum identity or durable install checkpoint; refusing to adopt it")
-		}
-		return service.resumableInstallPlan(intent, target, state.Kubernetes)
-	}
-	if installPending {
-		if err := service.validateCompletedInstallIntent(intent, state); err != nil {
-			return UpgradePlan{}, fmt.Errorf("finalize interrupted cluster install: %w", err)
+		if state.Kubernetes != target.Kubernetes {
+			return UpgradePlan{}, fmt.Errorf(
+				"live Kubernetes %s has no local orchestration receipt and does not match committed target %s; refusing to adopt it",
+				state.Kubernetes,
+				target.Kubernetes,
+			)
 		}
 		return UpgradePlan{Current: state.Kubernetes, Target: target.Kubernetes, Order: FinalizeInstall}, nil
 	}
-	if state.Phase == "ready" &&
+	if state.TargetKubernetes == "" &&
 		state.Kubernetes == target.Kubernetes &&
 		state.KubesprayVersion == target.Kubespray.Version &&
 		state.KubesprayCommit == target.Kubespray.Commit {
@@ -67,13 +56,13 @@ func (service Service) Plan(ctx context.Context) (UpgradePlan, error) {
 			}, nil
 		}
 	}
-	pendingPlatform, err := service.bigBangTransition(ctx, client, state)
+	root, err := service.bigBangObservation(ctx, client)
 	if err != nil {
 		return UpgradePlan{}, err
 	}
-	if pendingPlatform {
+	if !root.Complete() {
 		if err := service.validatePlatformState(state); err != nil {
-			return UpgradePlan{}, fmt.Errorf("recover interrupted platform handoff: %w", err)
+			return service.upgradePlan(state, root)
 		}
 		return UpgradePlan{
 			Current: state.Kubernetes,
@@ -81,7 +70,7 @@ func (service Service) Plan(ctx context.Context) (UpgradePlan, error) {
 			Order:   PlatformFirst,
 		}, nil
 	}
-	return service.upgradePlan(state)
+	return service.upgradePlan(state, root)
 }
 
 func (service Service) ConvergePlanned(
@@ -106,28 +95,18 @@ func (service Service) ConvergePlanned(
 		if err != nil {
 			return UpgradePlan{}, err
 		}
-		intent, exists, err := service.readInstallIntent()
-		if err != nil {
-			return UpgradePlan{}, err
-		}
-		if !exists {
-			return UpgradePlan{}, errors.New("orchestration install checkpoint disappeared before finalization")
-		}
-		if err := service.validateCompletedInstallIntent(intent, state); err != nil {
-			return UpgradePlan{}, err
-		}
 		if _, err := service.convergeCurrentConfiguration(
 			ctx,
 			client,
 			state,
-			intent.Release,
+			func() config.ClusterRelease {
+				target, _ := service.Project.Desired.Orchestration.TargetRelease()
+				return target
+			}(),
 			inventoryPath,
 			rawArgs,
 		); err != nil {
 			return UpgradePlan{}, fmt.Errorf("finalize installed cluster configuration: %w", err)
-		}
-		if err := service.clearInstallIntent(); err != nil {
-			return UpgradePlan{}, err
 		}
 		return plan, nil
 	}
@@ -165,9 +144,6 @@ func (service Service) ConvergePlanned(
 	}
 	if plan.Order == InstallTarget {
 		toolchain := toolchains[0]
-		if err := service.ensureInstallIntent(plan.Steps[0], inventoryPath, toolchain); err != nil {
-			return UpgradePlan{}, err
-		}
 		inputSHA, err := service.orchestrationInputSHA256(inventoryPath)
 		if err != nil {
 			return UpgradePlan{}, err
@@ -188,26 +164,16 @@ func (service Service) ConvergePlanned(
 		if err := service.requireOrchestrationInput(inventoryPath, inputSHA); err != nil {
 			return UpgradePlan{}, err
 		}
-		state := service.identityForRelease(plan.Steps[0], ClusterState{})
+	state := service.receiptForRelease(plan.Steps[0], ClusterState{})
 		state.OrchestrationSHA256 = inputSHA
-		if err := service.writeIdentity(ctx, state, &toolchain); err != nil {
+		if err := service.writeOrchestrationReceipt(state); err != nil {
 			return UpgradePlan{}, err
 		}
 		verified, err := service.discoverState(ctx, client)
 		if err != nil {
-			return UpgradePlan{}, fmt.Errorf("verify installed cluster identity: %w", err)
+			return UpgradePlan{}, fmt.Errorf("verify installed orchestration receipt: %w", err)
 		}
-		intent, exists, err := service.readInstallIntent()
-		if err != nil {
-			return UpgradePlan{}, err
-		}
-		if !exists {
-			return UpgradePlan{}, errors.New("orchestration install checkpoint disappeared before identity verification")
-		}
-		if err := service.validateCompletedInstallIntent(intent, verified); err != nil {
-			return UpgradePlan{}, err
-		}
-		if err := service.clearInstallIntent(); err != nil {
+		if err := service.validateClusterIdentity(verified); err != nil {
 			return UpgradePlan{}, err
 		}
 		return plan, nil
@@ -232,9 +198,8 @@ func (service Service) ConvergePlanned(
 				return UpgradePlan{}, fmt.Errorf("pre-upgrade health gate: %w", err)
 			}
 			inProgress := state
-			inProgress.Phase = "upgrading"
 			inProgress.TargetKubernetes = release.Kubernetes
-			if err := service.writeIdentity(ctx, inProgress, &toolchain); err != nil {
+			if err := service.writeOrchestrationReceipt(inProgress); err != nil {
 				return UpgradePlan{}, err
 			}
 		}
@@ -250,14 +215,14 @@ func (service Service) ConvergePlanned(
 				"converge existing cluster at Kubernetes %s: %w",
 				release.Kubernetes, err)
 		}
-		state = service.identityForRelease(release, state)
+		state = service.receiptForRelease(release, state)
 		if index == len(plan.Steps)-1 {
 			if err := service.requireOrchestrationInput(inventoryPath, inputSHA); err != nil {
 				return UpgradePlan{}, err
 			}
 			state.OrchestrationSHA256 = inputSHA
 		}
-		if err := service.writeIdentity(ctx, state, &toolchain); err != nil {
+		if err := service.writeOrchestrationReceipt(state); err != nil {
 			return UpgradePlan{}, err
 		}
 	}
@@ -298,9 +263,9 @@ func (service Service) convergeCurrentConfiguration(
 	if err := service.requireOrchestrationInput(inventoryPath, inputSHA); err != nil {
 		return ClusterState{}, err
 	}
-	state = service.identityForRelease(target, state)
+	state = service.receiptForRelease(target, state)
 	state.OrchestrationSHA256 = inputSHA
-	if err := service.writeIdentity(ctx, state, &toolchain); err != nil {
+	if err := service.writeOrchestrationReceipt(state); err != nil {
 		return ClusterState{}, err
 	}
 	return state, nil
@@ -314,34 +279,11 @@ func (service Service) convergeExistingKubespray(
 	rawArgs []string,
 	kubernetes string,
 ) error {
-	return completeExistingKubesprayHandoff(
-		func() error {
-			return service.runKubespray(ctx, toolchain, inventoryPath, playbook, rawArgs)
-		},
-		func() error {
-			if err := service.waitHealthy(ctx, client, kubernetes); err != nil {
-				return fmt.Errorf("post-Kubespray health gate: %w", err)
-			}
-			return nil
-		},
-		func() error {
-			if err := service.reconcileExistingPlatformOIDC(ctx, client, kubernetes); err != nil {
-				return fmt.Errorf("restore platform Kubernetes OIDC: %w", err)
-			}
-			return nil
-		},
-	)
-}
-
-func completeExistingKubesprayHandoff(
-	runKubespray, waitHealthy, reconcilePlatformOIDC func() error,
-) error {
-	for _, step := range [...]func() error{
-		runKubespray, waitHealthy, reconcilePlatformOIDC,
-	} {
-		if err := step(); err != nil {
-			return err
-		}
+	if err := service.runKubespray(ctx, toolchain, inventoryPath, playbook, rawArgs); err != nil {
+		return err
+	}
+	if err := service.waitHealthy(ctx, client, kubernetes); err != nil {
+		return fmt.Errorf("post-Kubespray health gate: %w", err)
 	}
 	return nil
 }
@@ -390,8 +332,7 @@ func (service Service) validateCurrentTargetState(
 	state ClusterState,
 	target config.ClusterRelease,
 ) error {
-	if state.Phase != "ready" ||
-		state.Kubernetes != target.Kubernetes ||
+	if state.TargetKubernetes != "" || state.Kubernetes != target.Kubernetes ||
 		state.RecordedKubernetes != target.Kubernetes ||
 		state.KubesprayVersion != target.Kubespray.Version ||
 		state.KubesprayCommit != target.Kubespray.Commit {
@@ -400,7 +341,10 @@ func (service Service) validateCurrentTargetState(
 	return nil
 }
 
-func (service Service) upgradePlan(state ClusterState) (UpgradePlan, error) {
+func (service Service) upgradePlan(
+	state ClusterState,
+	_ kube.FluxRootObservation,
+) (UpgradePlan, error) {
 	target, err := service.Project.Desired.Orchestration.TargetRelease()
 	if err != nil {
 		return UpgradePlan{}, err
@@ -414,7 +358,7 @@ func (service Service) upgradePlan(state ClusterState) (UpgradePlan, error) {
 		return UpgradePlan{}, fmt.Errorf("live Kubernetes %s is newer than committed target %s; refusing mutation", current, targetVersion)
 	}
 	plan := UpgradePlan{Current: current.String(), Target: targetVersion.String()}
-	if state.Phase == "upgrading" {
+	if state.TargetKubernetes != "" {
 		origin, originTracked := releaseForKubernetes(
 			service.Project.Desired.Orchestration.Releases, state.RecordedKubernetes,
 		)
@@ -429,17 +373,6 @@ func (service Service) upgradePlan(state ClusterState) (UpgradePlan, error) {
 				"interrupted upgrade from Kubernetes %s reports Kubespray %s at %s, want %s at %s",
 				state.RecordedKubernetes, state.KubesprayVersion, state.KubesprayCommit,
 				origin.Kubespray.Version, origin.Kubespray.Commit,
-			)
-		}
-		currentConstraints, err := parsePlatformConstraints(state.PlatformConstraints)
-		if err != nil {
-			return UpgradePlan{}, fmt.Errorf("parse interrupted platform Kubernetes constraints: %w", err)
-		}
-		checkpointVersion, _ := semver.NewVersion(checkpoint.Kubernetes)
-		if unsupported := firstUnsupportedConstraint(currentConstraints, checkpointVersion); unsupported != "" {
-			return UpgradePlan{}, fmt.Errorf(
-				"interrupted platform constraint %s rejects its Kubernetes checkpoint %s",
-				unsupported, checkpoint.Kubernetes,
 			)
 		}
 		plan.Order = KubernetesFirst
@@ -493,40 +426,12 @@ func (service Service) upgradePlan(state ClusterState) (UpgradePlan, error) {
 		desiredVersions = append(desiredVersions, candidate)
 	}
 	platformFirst := firstUnsupportedConstraint(desiredConstraints, desiredVersions...) == ""
-	kubernetesFirst := state.BigBangVersion == ""
-	if len(state.PlatformConstraints) != 0 {
-		currentConstraints, parseErr := parsePlatformConstraints(state.PlatformConstraints)
-		if parseErr != nil {
-			return UpgradePlan{}, fmt.Errorf("parse live platform Kubernetes constraints: %w", parseErr)
-		}
-		stepVersions := make([]*semver.Version, 0, len(plan.Steps))
-		for _, release := range plan.Steps {
-			candidate, _ := semver.NewVersion(release.Kubernetes)
-			stepVersions = append(stepVersions, candidate)
-		}
-		kubernetesFirst = firstUnsupportedConstraint(currentConstraints, stepVersions...) == ""
-	}
-	if state.BigBangVersion == "" && kubernetesFirst {
+	if !platformFirst {
 		plan.Order = KubernetesFirst
 		return plan, nil
 	}
-	if state.BigBangVersion == service.Project.Desired.Platform.BigBang.Version &&
-		state.BigBangCommit == service.Project.Desired.Platform.BigBang.Commit && kubernetesFirst {
-		plan.Order = KubernetesFirst
-		return plan, nil
-	}
-	if platformFirst {
-		plan.Order = PlatformFirst
-		return plan, nil
-	}
-	if kubernetesFirst {
-		plan.Order = KubernetesFirst
-		return plan, nil
-	}
-	return UpgradePlan{}, fmt.Errorf(
-		"neither ordering is compatible: desired platform for Big Bang %s rejects live Kubernetes %s and live platform for Big Bang %s rejects the upgrade ladder",
-		service.Project.Desired.Platform.BigBang.Version, state.Kubernetes, state.BigBangVersion,
-	)
+	plan.Order = PlatformFirst
+	return plan, nil
 }
 
 func nextMinor(version *semver.Version) string {

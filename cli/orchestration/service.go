@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -36,6 +35,7 @@ type Service struct {
 	PythonBin      string
 	PythonIdentity string
 	SSHBin         string
+	RootCAPEM      []byte
 }
 
 type Toolchain struct {
@@ -71,9 +71,7 @@ func (service Service) ClearLocalState() error {
 	inventory := service.Project.Desired.Orchestration.Inventory
 	for _, relative := range []string{
 		filepath.Join(inventory, "hosts.yaml"),
-		installIntentPath,
-		identityVariablesPath,
-		platformOIDCVariablesPath,
+		orchestrationReceiptPath,
 	} {
 		if err := fssecure.RemoveRegular(service.Project.Root, relative); err != nil {
 			return err
@@ -110,10 +108,11 @@ func (service Service) prepareReleases(ctx context.Context, releases []config.Cl
 		})
 	}
 	group, groupContext := errgroup.WithContext(ctx)
-	limit := min(service.Project.Desired.Updates.Parallelism, 2)
-	if limit < 1 {
-		limit = 1
-	}
+	limit := min(config.EffectiveWorkLimit(
+		0,
+		service.Project.Desired.Updates.Parallelism,
+		config.DefaultWorkLimit,
+	), 2)
 	group.SetLimit(limit)
 	for index := range preparations {
 		index := index

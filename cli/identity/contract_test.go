@@ -39,7 +39,7 @@ realm: master
 issuer: https://keycloak.atum.test/auth/realms/master
 scopes: [openid, profile, email, groups]
 groupClaim: groups
-administrator: {username: atum, password: atum, group: atum-admins, serverRole: admin}
+administrator: {username: atum, group: atum-admins, serverRole: admin}
 clients:
   - id: atum-one
     application: headlamp

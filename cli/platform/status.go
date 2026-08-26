@@ -14,7 +14,6 @@ import (
 	"atum/cli/identity"
 	"atum/cli/infra"
 	"atum/cli/kube"
-	"atum/cli/orchestration"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,8 +27,8 @@ var platformKustomizationGraph = [...]string{
 	"prep",
 	"platform-profile-prep",
 	"bigbang",
+	"platform-certificates",
 	"platform-profile-access",
-	identity.ProfileIdentityKustomizationName,
 }
 
 // Status reports three independent dimensions. Flux owns reconciliation
@@ -67,7 +66,7 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 
-	reconciliation, err := observeFluxReconciliation(ctx, client)
+	reconciliation, err := observeFluxReconciliation(ctx, client, service.Project)
 	if err != nil {
 		return Status{}, fmt.Errorf("observe native Flux conditions: %w", err)
 	}
@@ -92,6 +91,7 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 func observeFluxReconciliation(
 	ctx context.Context,
 	client *kube.Observer,
+	project *config.Project,
 ) (ReconciliationStatus, error) {
 	objects, err := client.Resources(ctx, kube.Kustomization, "flux-system", "")
 	if apierrors.IsNotFound(err) {
@@ -126,7 +126,59 @@ func observeFluxReconciliation(
 		}
 		result.Kustomizations = append(result.Kustomizations, condition)
 	}
+	source, release, err := observeBigBangRoot(ctx, client, project)
+	if err != nil {
+		return ReconciliationStatus{}, err
+	}
+	result.BigBangSource = source
+	result.BigBangRelease = release
 	return result, nil
+}
+
+func observeBigBangRoot(
+	ctx context.Context,
+	client *kube.Observer,
+	project *config.Project,
+) (ResourceStatus, ResourceStatus, error) {
+	artifact, err := project.BigBangArtifact()
+	if err != nil {
+		return ResourceStatus{}, ResourceStatus{}, err
+	}
+	url, tag, err := artifact.FluxOCITarget()
+	if err != nil {
+		return ResourceStatus{}, ResourceStatus{}, err
+	}
+	observation, err := client.ObserveFluxHelmRoot(
+		ctx,
+		"bigbang",
+		"bigbang",
+		kube.FluxRootTarget{URL: url, Tag: tag},
+	)
+	if err != nil {
+		return ResourceStatus{}, ResourceStatus{}, err
+	}
+	source := ResourceStatus{Name: "bigbang/bigbang OCIRepository"}
+	release := ResourceStatus{Name: "bigbang/bigbang HelmRelease"}
+	if !observation.Found {
+		source.Message = "OCIRepository is absent"
+		release.Message = "HelmRelease is absent"
+		return source, release, nil
+	}
+	if !observation.TargetCurrent {
+		message := fmt.Sprintf(
+			"observed prior tag %s; waiting for %s",
+			observation.ObservedTag,
+			tag,
+		)
+		source.Message = message
+		release.Message = message
+		return source, release, nil
+	}
+	source.Ready = observation.SourceReady
+	source.Message = observation.SourceMessage
+	release.Ready = observation.HelmReleaseReady
+	release.Message = observation.HelmMessage
+	return source, release, nil
 }
 
 func readyConditionMessage(object map[string]any) string {
@@ -163,15 +215,6 @@ func (service Service) observeDeliveryCompliance(
 	bundle *delivery.DeploymentBundle,
 ) (DeliveryComplianceStatus, error) {
 	result := DeliveryComplianceStatus{}
-	exact, issue, err := bundleReceiptStatus(ctx, client, bundle.Identity)
-	if err != nil {
-		return result, err
-	}
-	result.BundleReceiptExact = exact
-	if issue != "" {
-		result.Issues = append(result.Issues, issue)
-	}
-
 	sourceIssues, err := service.sourceComplianceIssues(ctx, client, bundle)
 	if err != nil {
 		return result, err
@@ -192,42 +235,9 @@ func (service Service) observeDeliveryCompliance(
 	return result, nil
 }
 
-func bundleReceiptStatus(
-	ctx context.Context,
-	client *kube.Observer,
-	identity delivery.VerifiedBundle,
-) (bool, string, error) {
-	current, found, err := client.ConfigMapData(ctx, "kube-system", "atum-bundle")
-	if err != nil {
-		return false, "", err
-	}
-	if !found {
-		return false, "cluster deployment-bundle receipt is absent", nil
-	}
-	want := map[string]string{
-		"schemaVersion":   identity.SchemaVersion,
-		"archiveSha256":   identity.ArchiveSHA256,
-		"desiredSha256":   identity.DesiredSHA256,
-		"inventorySha256": identity.InventorySHA256,
-		"graphSha256":     identity.GraphSHA256,
-		"lockSha256":      identity.LockSHA256,
-		"sourceCommit":    identity.SourceCommit,
-	}
-	if len(current) != len(want) {
-		return false, "cluster deployment-bundle receipt has an unexpected schema", nil
-	}
-	for key, value := range want {
-		if current[key] != value {
-			return false, "cluster deployment-bundle receipt differs at " + key, nil
-		}
-	}
-	return true, "", nil
-}
-
 type expectedGitSource struct {
 	id     string
 	commit string
-	root   bool
 }
 
 func (service Service) sourceComplianceIssues(
@@ -243,23 +253,12 @@ func (service Service) sourceComplianceIssues(
 		return nil, err
 	}
 	sources := service.Project.Desired.Platform.Sources
-	expected := make(map[string]expectedGitSource, len(bundle.Repositories)+1)
+	expected := make(map[string]expectedGitSource, 1)
 	rootURL := internalRepositoryURL(
 		sources.ClusterURL, sources.Organization, sources.Repository,
 	)
 	expected[normalizedRepositoryURL(rootURL)] = expectedGitSource{
-		id: "platform", commit: bundle.SourceCommit, root: true,
-	}
-	for _, repository := range bundle.Repositories {
-		if repository.ID == "flux" {
-			continue
-		}
-		url := internalRepositoryURL(
-			sources.ClusterURL, sources.UpstreamOrganization, repository.ID,
-		)
-		expected[normalizedRepositoryURL(url)] = expectedGitSource{
-			id: repository.ID, commit: repository.Commit,
-		}
+		id: "platform", commit: bundle.SourceCommit,
 	}
 
 	seen := make(map[string]struct{}, len(expected))
@@ -286,13 +285,11 @@ func (service Service) sourceComplianceIssues(
 		if !strings.Contains(revision, source.commit) {
 			issues = append(issues, "published source "+source.id+" has not reconciled its exact commit")
 		}
-		if source.root {
-			branch, _, _ := unstructured.NestedString(
-				objects[index].Object, "spec", "ref", "branch",
-			)
-			if branch != deployedBranch {
-				issues = append(issues, "platform source does not select the deployed branch")
-			}
+		branch, _, _ := unstructured.NestedString(
+			objects[index].Object, "spec", "ref", "branch",
+		)
+		if branch != "main" {
+			issues = append(issues, "platform source does not select main")
 		}
 	}
 	for url, source := range expected {
@@ -387,7 +384,7 @@ func (service Service) observeLocalIntegration(
 		)
 	}
 	if target.LocalAccess == nil {
-		return LocalIntegrationStatus{ClusterOIDCReady: true}, nil
+		return LocalIntegrationStatus{}, nil
 	}
 	result := LocalIntegrationStatus{
 		Required:              true,
@@ -413,9 +410,7 @@ func (service Service) observeLocalIntegration(
 	}
 	defer clear(root)
 	relative, required := service.Project.Desired.ActiveIdentityContractPath()
-	result.ClusterOIDCRequired = required
 	if !required {
-		result.ClusterOIDCReady = true
 		return result, nil
 	}
 	contract, err := identity.Load(service.Project.Root, relative)
@@ -424,47 +419,14 @@ func (service Service) observeLocalIntegration(
 	}
 	result.AccessURLs = identityAccessURLs(contract)
 	if !found {
-		result.ClusterOIDCFailure = "validated local root CA is absent"
 		return result, nil
 	}
 	validated, err := infra.ValidateRootCA(root, time.Now())
 	if err != nil {
-		result.ClusterOIDCFailure = "local root CA is invalid: " + err.Error()
 		return result, nil
 	}
 	defer validated.Clear()
 	result.RootCAFingerprint = validated.Fingerprint
-	kubernetesVersion, err := client.ServerVersion(ctx)
-	if err != nil {
-		return LocalIntegrationStatus{}, err
-	}
-	spec, err := orchestration.NewPlatformOIDCSpec(
-		contract, validated, kubernetesVersion,
-	)
-	if err != nil {
-		return LocalIntegrationStatus{}, err
-	}
-	defer spec.Clear()
-	receipt, receiptFound, err := client.ConfigMapData(
-		ctx,
-		orchestration.PlatformOIDCReceiptNamespace,
-		orchestration.PlatformOIDCReceiptName,
-	)
-	if err != nil {
-		return LocalIntegrationStatus{}, err
-	}
-	if !receiptFound {
-		result.ClusterOIDCFailure = "Kubernetes OIDC receipt is absent"
-		return result, nil
-	}
-	nodes, err := client.Nodes(ctx)
-	if err != nil {
-		return LocalIntegrationStatus{}, err
-	}
-	result.ClusterOIDCReady, result.ClusterOIDCFailure =
-		orchestration.ValidatePlatformOIDCReceipt(
-			spec, receipt, controlPlaneNodeCount(nodes),
-		)
 	return result, nil
 }
 
@@ -513,14 +475,4 @@ func observeLocalLoadBalancer(
 		allocatorFound && len(allocator) == 1 &&
 		allocator["range-global"] == access.LoadBalancerRange
 	return ready, public, passthrough, nil
-}
-
-func controlPlaneNodeCount(nodes []kube.Node) int {
-	count := 0
-	for index := range nodes {
-		if nodes[index].ControlPlane {
-			count++
-		}
-	}
-	return count
 }

@@ -34,6 +34,7 @@ type Service struct {
 	Out           io.Writer
 	Orchestration *orchestration.Service
 	FluxBin       string
+	SOPS          atumsecrets.SOPSAdapter
 }
 
 type PrepareOptions struct {
@@ -46,86 +47,80 @@ type ApplyOptions struct {
 }
 
 type ResourceStatus struct {
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Name    string `json:"name"`
+	Ready   bool   `json:"ready"`
+	Message string `json:"message,omitempty"`
+}
+
+type ReconciliationStatus struct {
+	Kustomizations []ResourceStatus `json:"kustomizations"`
+	BigBangSource  ResourceStatus   `json:"bigBangSource"`
+	BigBangRelease ResourceStatus   `json:"bigBangRelease"`
+}
+
+func (status ReconciliationStatus) Complete() bool {
+	if len(status.Kustomizations) == 0 ||
+		!status.BigBangSource.Ready ||
+		!status.BigBangRelease.Ready {
+		return false
+	}
+	for _, condition := range status.Kustomizations {
+		if !condition.Ready {
+			return false
+		}
+	}
+	return true
+}
+
+type DeliveryComplianceStatus struct {
+	SourcesInternal    bool     `json:"sourcesInternal"`
+	RuntimeImagesExact bool     `json:"runtimeImagesExact"`
+	Issues             []string `json:"issues,omitempty"`
+}
+
+func (status DeliveryComplianceStatus) Compliant() bool {
+	return status.SourcesInternal && status.RuntimeImagesExact &&
+		len(status.Issues) == 0
+}
+
+type LocalIntegrationStatus struct {
+	Required              bool     `json:"required"`
+	LoadBalancerReady     bool     `json:"loadBalancerReady"`
+	PublicIngressVIP      string   `json:"publicIngressVip,omitempty"`
+	PublicIngressIPs      []string `json:"publicIngressIps,omitempty"`
+	PassthroughIngressVIP string   `json:"passthroughIngressVip,omitempty"`
+	PassthroughIngressIPs []string `json:"passthroughIngressIps,omitempty"`
+	LoadBalancerRange     string   `json:"loadBalancerRange,omitempty"`
+	RootCAFingerprint     string   `json:"rootCaFingerprint,omitempty"`
+	AccessDomain          string   `json:"accessDomain,omitempty"`
+	AccessURLs            []string `json:"accessUrls,omitempty"`
+	HostAccessObserved    bool     `json:"hostAccessObserved,omitempty"`
+	LocalDNSReady         bool     `json:"localDnsReady"`
+	ResolverReady         bool     `json:"resolverReady"`
+	PublicDNSReady        bool     `json:"publicDnsReady"`
+	PassthroughDNSReady   bool     `json:"passthroughDnsReady"`
+	ResolverPath          string   `json:"resolverPath,omitempty"`
+	CATrustReady          bool     `json:"caTrustReady"`
+	CAPath                string   `json:"caPath,omitempty"`
+	CAFingerprint         string   `json:"caFingerprint,omitempty"`
+}
+
+func (status LocalIntegrationStatus) Exact() bool {
+	if !status.Required {
+		return true
+	}
+	return status.LoadBalancerReady &&
+		status.HostAccessObserved && status.LocalDNSReady && status.CATrustReady &&
+		status.CAFingerprint != "" && status.CAFingerprint == status.RootCAFingerprint
 }
 
 type Status struct {
-	BundleSHA256            string           `json:"bundleSha256"`
-	SourceCommit            string           `json:"sourceCommit"`
-	ActiveProfile           string           `json:"activeProfile"`
-	BundleReady             bool             `json:"bundleReady"`
-	FluxReady               bool             `json:"fluxReady"`
-	PrepReady               bool             `json:"prepReady"`
-	ProfilePrepReady        bool             `json:"profilePrepReady"`
-	BigBangReady            bool             `json:"bigBangReady"`
-	ProfileAccessReady      bool             `json:"profileAccessReady"`
-	ProfileIdentityRequired bool             `json:"profileIdentityRequired,omitempty"`
-	ProfileIdentityReady    bool             `json:"profileIdentityReady"`
-	ProfileIdentityFailure  string           `json:"profileIdentityFailure,omitempty"`
-	ClusterOIDCRequired     bool             `json:"clusterOidcRequired,omitempty"`
-	ClusterOIDCReady        bool             `json:"clusterOidcReady"`
-	ClusterOIDCFailure      string           `json:"clusterOidcFailure,omitempty"`
-	OCISources              []ResourceStatus `json:"ociSources"`
-	HelmReleases            []ResourceStatus `json:"helmReleases"`
-	LoadBalancerRequired    bool             `json:"loadBalancerRequired,omitempty"`
-	LoadBalancerReady       bool             `json:"loadBalancerReady"`
-	PublicIngressVIP        string           `json:"publicIngressVip,omitempty"`
-	PublicIngressIPs        []string         `json:"publicIngressIps,omitempty"`
-	PassthroughIngressVIP   string           `json:"passthroughIngressVip,omitempty"`
-	PassthroughIngressIPs   []string         `json:"passthroughIngressIps,omitempty"`
-	LoadBalancerRange       string           `json:"loadBalancerRange,omitempty"`
-	CertificatesRequired    bool             `json:"certificatesRequired,omitempty"`
-	CertificatesReady       bool             `json:"certificatesReady"`
-	IssuerReady             bool             `json:"issuerReady"`
-	RootCAFingerprint       string           `json:"rootCaFingerprint,omitempty"`
-	Certificates            []ResourceStatus `json:"certificates,omitempty"`
-	AccessDomain            string           `json:"accessDomain,omitempty"`
-	AccessURLs              []string         `json:"accessUrls,omitempty"`
-	RoutesReady             bool             `json:"routesReady"`
-	HostAccessObserved      bool             `json:"hostAccessObserved,omitempty"`
-	LocalDNSReady           bool             `json:"localDnsReady"`
-	ResolverReady           bool             `json:"resolverReady"`
-	PublicDNSReady          bool             `json:"publicDnsReady"`
-	PassthroughDNSReady     bool             `json:"passthroughDnsReady"`
-	ResolverPath            string           `json:"resolverPath,omitempty"`
-	CATrustReady            bool             `json:"caTrustReady"`
-	CAPath                  string           `json:"caPath,omitempty"`
-	CAFingerprint           string           `json:"caFingerprint,omitempty"`
-	ActiveHelmReleases      int              `json:"activeHelmReleases"`
-	ReadyHelmReleases       int              `json:"readyHelmReleases"`
-	ActiveWorkloads         int              `json:"activeWorkloads"`
-	ReadyWorkloads          int              `json:"readyWorkloads"`
-	NonReadyPods            int              `json:"nonReadyPods"`
-	InternalImageOnly       bool             `json:"internalImageOnly"`
-	ImageIssueCount         int              `json:"imageIssueCount,omitempty"`
-	ImageIssues             []string         `json:"imageIssues,omitempty"`
-	InternalSourcesOnly     bool             `json:"internalSourcesOnly"`
-	SourceIssueCount        int              `json:"sourceIssueCount,omitempty"`
-	SourceIssues            []string         `json:"sourceIssues,omitempty"`
-}
-
-func (status Status) Ready() bool {
-	hostReady := !status.HostAccessObserved || !status.LoadBalancerRequired ||
-		(status.LocalDNSReady && status.CATrustReady &&
-			status.CAFingerprint != "" && status.CAFingerprint == status.RootCAFingerprint)
-	return status.BundleReady && status.FluxReady && status.PrepReady && status.ProfilePrepReady &&
-		status.BigBangReady && status.ProfileAccessReady &&
-		(!status.ProfileIdentityRequired ||
-			(status.ProfileIdentityReady && status.ProfileIdentityFailure == "")) &&
-		(!status.ClusterOIDCRequired ||
-			(status.ClusterOIDCReady && status.ClusterOIDCFailure == "")) &&
-		(!status.LoadBalancerRequired || status.LoadBalancerReady) &&
-		(!status.CertificatesRequired || (status.CertificatesReady && status.RoutesReady)) &&
-		hostReady &&
-		status.ActiveHelmReleases > 0 && status.ActiveHelmReleases == status.ReadyHelmReleases &&
-		status.ActiveWorkloads == status.ReadyWorkloads &&
-		status.NonReadyPods == 0 && status.InternalImageOnly && status.InternalSourcesOnly
-}
-
-func (status Status) readyBeforeClusterOIDC() bool {
-	status.ClusterOIDCRequired = false
-	return status.Ready()
+	BundleSHA256   string                   `json:"bundleSha256"`
+	SourceCommit   string                   `json:"sourceCommit"`
+	ActiveProfile  string                   `json:"activeProfile"`
+	Reconciliation ReconciliationStatus     `json:"reconciliation"`
+	Delivery       DeliveryComplianceStatus `json:"delivery"`
+	Local          LocalIntegrationStatus   `json:"localIntegration"`
 }
 
 func (service Service) Validate() error {
@@ -182,9 +177,9 @@ func timeoutOrDefault(timeout time.Duration) time.Duration {
 
 func (service Service) credentials(ctx context.Context) (atumsecrets.Document, error) {
 	if service.DryRun {
-		return atumsecrets.Load(service.Project)
+		return atumsecrets.Load(ctx, service.Project, service.SOPS)
 	}
-	return atumsecrets.Ensure(ctx, service.Project, service.logger())
+	return atumsecrets.Ensure(ctx, service.Project, service.SOPS, service.logger())
 }
 
 func (service Service) requireReadyCluster(ctx context.Context) error {

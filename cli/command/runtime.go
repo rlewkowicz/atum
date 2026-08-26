@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"atum/cli/config"
 	"atum/cli/process"
 )
 
@@ -17,7 +18,10 @@ func (a *app) ensureMutationAllowed() error {
 	if err := a.ensureProjectLoaded(); err != nil {
 		return err
 	}
-	return a.project.Validate()
+	if err := a.project.Validate(); err != nil {
+		return err
+	}
+	return config.ValidateSourceSnapshot(a.project)
 }
 
 func (a *app) ensureProjectLoaded() error {

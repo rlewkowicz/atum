@@ -3,5 +3,5 @@ kind: Kustomization
 resources:
   - credentials.yaml
   - keycloak-reconcile.yaml
-  - openbao-reconcile.yaml
+  - vault-reconcile.yaml
   - receipt.yaml

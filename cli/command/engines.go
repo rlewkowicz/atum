@@ -12,6 +12,7 @@ import (
 
 	"atum/cli/config"
 	"atum/cli/delivery"
+	"atum/cli/fssecure"
 	"atum/cli/infra"
 	"atum/cli/orchestration"
 	"atum/cli/preflight"
@@ -42,11 +43,32 @@ func (a *app) terraformRuntime(additionalEnvironment []string) (terraformRuntime
 	if err != nil {
 		return terraformRuntime{}, err
 	}
-	environment, err := terraformTargetEnvironment(target, additionalEnvironment)
+	environment, err := a.terraformEnvironment(target, additionalEnvironment)
 	if err != nil {
 		return terraformRuntime{}, err
 	}
 	return terraformRuntime{binary: terraform, target: target, environment: environment}, nil
+}
+
+func (a *app) terraformEnvironment(
+	target config.InfrastructureTarget,
+	additional []string,
+) ([]string, error) {
+	for _, relative := range []string{
+		".atum",
+		filepath.Join(".atum", "runtime"),
+		filepath.Join(".atum", "runtime", "terraform"),
+	} {
+		if _, err := fssecure.EnsureDirectoryMode(a.root, relative, 0o711); err != nil {
+			return nil, fmt.Errorf("prepare Terraform runtime boundary: %w", err)
+		}
+	}
+	runtimeDirectory := filepath.Join(a.root, ".atum", "runtime", "terraform")
+	environment, err := terraformTargetEnvironment(target, additional)
+	if err != nil {
+		return nil, err
+	}
+	return append(environment, "TMPDIR="+runtimeDirectory), nil
 }
 
 func terraformTargetEnvironment(target config.InfrastructureTarget, additional []string) ([]string, error) {
@@ -105,6 +127,7 @@ func (a *app) runTerraformWithEnvironment(ctx context.Context, environment []str
 	if err != nil {
 		return err
 	}
+	defer clearEnvironment(runtime.environment)
 	return a.runTerraformCommand(ctx, runtime, args...)
 }
 
@@ -125,6 +148,7 @@ func (a *app) runTerraformActionWithEnvironment(
 		progress.Fail(ctx, progress.Infrastructure, "terraform", label, err)
 		return err
 	}
+	defer clearEnvironment(runtime.environment)
 	if terraformInformational(args) {
 		err := a.runTerraformCommand(ctx, runtime, append([]string{action}, args...)...)
 		if err != nil {
@@ -179,6 +203,32 @@ type terraformSeed struct {
 	credentials atumsecrets.Document
 }
 
+func (seed *terraformSeed) ClearEnvironment() {
+	if seed == nil {
+		return
+	}
+	clearEnvironment(seed.environment)
+	seed.environment = nil
+}
+
+// clearEnvironment releases the unavoidable immutable strings accepted by the
+// operating-system process environment as soon as the native tool returns.
+func clearEnvironment(environment []string) {
+	for index := range environment {
+		environment[index] = ""
+	}
+	clear(environment)
+}
+
+func (seed *terraformSeed) Clear() {
+	if seed == nil {
+		return
+	}
+	seed.ClearEnvironment()
+	seed.credentials.Clear()
+	seed.bundle = nil
+}
+
 func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, error) {
 	bundle, err := delivery.MaterializeLockedBundle(ctx, a.project)
 	if err != nil {
@@ -187,7 +237,7 @@ func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, erro
 	if bundle.SeedPayload.Path == "" || bundle.SeedPayload.SHA256 == "" {
 		return terraformSeed{}, errors.New("deployment bundle has no verified seed payload")
 	}
-	credentials, err := atumsecrets.Ensure(ctx, a.project, a.logger)
+	credentials, err := atumsecrets.Ensure(ctx, a.project, a.sops, a.logger)
 	if err != nil {
 		return terraformSeed{}, err
 	}
@@ -199,11 +249,11 @@ func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, erro
 		"TF_VAR_seed_forgejo_image="+seed.Forgejo.Image.Source,
 		"TF_VAR_seed_forgejo_url="+seed.Forgejo.URL,
 		"TF_VAR_seed_forgejo_username="+credentials.Forgejo.Username,
-		"TF_VAR_seed_forgejo_admin_password="+credentials.Forgejo.AdminPassword,
+		"TF_VAR_seed_forgejo_admin_password="+string(credentials.Forgejo.AdminPassword.Bytes()),
 		"TF_VAR_seed_harbor_version="+seed.Harbor.Version,
 		"TF_VAR_seed_harbor_url="+seed.Harbor.URL,
-		"TF_VAR_seed_harbor_admin_password="+credentials.Harbor.AdminPassword,
-		"TF_VAR_seed_harbor_secret_key="+credentials.Harbor.SecretKey,
+		"TF_VAR_seed_harbor_admin_password="+string(credentials.Harbor.AdminPassword.Bytes()),
+		"TF_VAR_seed_harbor_secret_key="+string(credentials.Harbor.SecretKey.Bytes()),
 	)
 	return terraformSeed{bundle: bundle, credentials: credentials, environment: environment}, nil
 }
@@ -264,7 +314,10 @@ func (a *app) runLibvirtPermissions(ctx context.Context, action string) error {
 		OutputRunner:  a.outputRunner,
 		Out:           a.out,
 		EUID:          effectiveUID(),
+		ProjectRoot:   a.root,
 		RestoreconBin: a.preflight.Binary(preflight.Restorecon),
+		GetfaclBin:    a.preflight.Binary(preflight.Getfacl),
+		SetfaclBin:    a.preflight.Binary(preflight.Setfacl),
 	}
 	return service.Permissions(ctx, action)
 }
@@ -327,9 +380,6 @@ func (a *app) runOrchestrationPrepare(ctx context.Context) error {
 }
 
 func (a *app) runAnsiblePlaybook(ctx context.Context, args ...string) error {
-	if err := a.ensureMutationAllowed(); err != nil {
-		return err
-	}
 	if err := a.checkPreflight(ctx, preflight.OrchestrationAnsible); err != nil {
 		return err
 	}
@@ -364,7 +414,7 @@ func (a *app) generateOrchestrationInventory(ctx context.Context, inventoryPath 
 	if err != nil {
 		return err
 	}
-	environment, err := terraformTargetEnvironment(target, nil)
+	environment, err := a.terraformEnvironment(target, nil)
 	if err != nil {
 		return err
 	}
@@ -414,9 +464,6 @@ func (a *app) printOrchestrationPlan(plan orchestration.UpgradePlan) error {
 }
 
 func (a *app) runOrchestrationConverge(ctx context.Context, mode orchestration.ConvergenceMode, args ...string) error {
-	if err := a.ensureMutationAllowed(); err != nil {
-		return err
-	}
 	service := a.orchestrationService()
 	if a.dryRun {
 		plan, err := service.Plan(ctx)
@@ -429,10 +476,20 @@ func (a *app) runOrchestrationConverge(ctx context.Context, mode orchestration.C
 		return a.printOrchestrationPlan(plan)
 	}
 	inventoryPath := a.orchestrationInventoryPath()
+	credentials, err := atumsecrets.Load(ctx, a.project, a.sops)
+	if err != nil {
+		return fmt.Errorf("load root CA for Kubespray: %w", err)
+	}
+	service.RootCAPEM = append(
+		service.RootCAPEM,
+		credentials.RootCA.Certificate.Bytes()...,
+	)
+	credentials.Clear()
+	defer clear(service.RootCAPEM)
 	if err := a.generateOrchestrationInventory(ctx, inventoryPath); err != nil {
 		return err
 	}
-	if err := a.convergeOrchestration(ctx, service, inventoryPath, args, mode, nil); err != nil {
+	if _, err := a.convergeOrchestration(ctx, service, inventoryPath, args, mode, nil); err != nil {
 		progress.Finish(ctx, progress.Orchestration, progress.Failed, err.Error())
 		return err
 	}
@@ -447,9 +504,10 @@ func (a *app) convergeOrchestration(
 	rawArgs []string,
 	mode orchestration.ConvergenceMode,
 	platformHandoff func() error,
-) error {
+) (bool, error) {
 	limit := len(a.project.Desired.Orchestration.Releases)*2 + 3
 	planning := true
+	platformApplied := false
 	progress.Start(ctx, progress.Orchestration, "plan", "Convergence plan",
 		"inspecting live cluster and durable install state")
 	for range limit {
@@ -458,13 +516,13 @@ func (a *app) convergeOrchestration(
 			if planning {
 				progress.Fail(ctx, progress.Orchestration, "plan", "Convergence plan", err)
 			}
-			return err
+			return platformApplied, err
 		}
 		if err := service.ValidatePlan(plan, mode); err != nil {
 			if planning {
 				progress.Fail(ctx, progress.Orchestration, "plan", "Convergence plan", err)
 			}
-			return err
+			return platformApplied, err
 		}
 		if planning {
 			progress.Done(ctx, progress.Orchestration, "plan", "Convergence plan", convergencePlanDetail(plan))
@@ -472,18 +530,21 @@ func (a *app) convergeOrchestration(
 		}
 		if plan.Order == orchestration.PlatformFirst && platformHandoff != nil {
 			if err := platformHandoff(); err != nil {
-				return err
+				return platformApplied, err
 			}
+			platformApplied = true
 			continue
 		}
 		if _, err := service.ConvergePlanned(ctx, plan, inventoryPath, rawArgs, mode); err != nil {
-			return err
+			return platformApplied, err
 		}
 		if plan.Order == orchestration.AlreadyCurrent {
-			return nil
+			return platformApplied, nil
 		}
 	}
-	return errors.New("orchestration convergence exceeded the committed release and platform handoff bound")
+	return platformApplied, errors.New(
+		"orchestration convergence exceeded the committed release and platform handoff bound",
+	)
 }
 
 func convergencePlanDetail(plan orchestration.UpgradePlan) string {
@@ -510,9 +571,6 @@ func (a *app) orchestrationInventoryPath() string {
 }
 
 func (a *app) runFlux(ctx context.Context, args ...string) error {
-	if err := a.ensureMutationAllowed(); err != nil {
-		return err
-	}
 	if err := a.checkPreflight(ctx, preflight.FluxDirect); err != nil {
 		return err
 	}

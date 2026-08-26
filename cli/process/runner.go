@@ -44,6 +44,7 @@ type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, command Command) error {
 	cmd := newExecCommand(ctx, command)
+	defer clearEnvironment(cmd.Env)
 	cmd.Stdin = command.Stdin
 	if cmd.Stdin == nil {
 		cmd.Stdin = os.Stdin
@@ -61,6 +62,7 @@ func (ExecRunner) Run(ctx context.Context, command Command) error {
 
 func (ExecRunner) Output(ctx context.Context, command Command) ([]byte, error) {
 	cmd := newExecCommand(ctx, command)
+	defer clearEnvironment(cmd.Env)
 	cmd.Stdin = command.Stdin
 	if cmd.Stdin == nil {
 		cmd.Stdin = os.Stdin
@@ -70,6 +72,13 @@ func (ExecRunner) Output(ctx context.Context, command Command) ([]byte, error) {
 		cmd.Stderr = os.Stderr
 	}
 	return cmd.Output()
+}
+
+func clearEnvironment(environment []string) {
+	for index := range environment {
+		environment[index] = ""
+	}
+	clear(environment)
 }
 
 func newExecCommand(ctx context.Context, command Command) *exec.Cmd {

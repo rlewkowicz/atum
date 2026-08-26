@@ -23,6 +23,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -210,7 +211,6 @@ type TrackedChart struct {
 	ID            string      `json:"id"`
 	Name          string      `json:"name"`
 	ValuesPath    string      `json:"valuesPath"`
-	FluxSource    string      `json:"fluxSource"`
 	Version       string      `json:"version"`
 	AppVersion    string      `json:"appVersion"`
 	License       string      `json:"license"`
@@ -509,8 +509,60 @@ type Resolved struct {
 	Packages        []Package        `json:"packages"`
 	SupportSources  []SupportSource  `json:"supportSources,omitempty"`
 	Charts          []TrackedChart   `json:"charts"`
+	Artifacts       []ChartArtifact  `json:"artifacts"`
 	Vendors         []Vendor         `json:"vendors"`
 	Bootstrap       BootstrapCharts  `json:"bootstrap"`
+}
+
+// ChartArtifact is the single immutable chart handoff from update selection
+// through Harbor publication to Flux reconciliation. Source fields identify
+// upstream provenance; ArchiveSHA256 and Target identify the exact normalized
+// bytes admitted to the cluster.
+type ChartArtifact struct {
+	ID                 string                 `json:"id"`
+	Kind               string                 `json:"kind"`
+	SourceURL          string                 `json:"sourceUrl"`
+	SourceCommit       string                 `json:"sourceCommit,omitempty"`
+	ChartPath          string                 `json:"chartPath"`
+	Name               string                 `json:"name"`
+	Version            string                 `json:"version"`
+	UpstreamSHA256     string                 `json:"upstreamSha256"`
+	ArchiveSHA256      string                 `json:"archiveSha256"`
+	Size               int64                  `json:"size"`
+	File               string                 `json:"file"`
+	Target             string                 `json:"target"`
+	Normalizations     []ChartNormalization   `json:"normalizations,omitempty"`
+}
+
+func (artifact ChartArtifact) FluxOCITarget() (string, string, error) {
+	separator := strings.LastIndex(artifact.Target, ":")
+	if artifact.ID == "" || artifact.Version == "" || separator <= 0 ||
+		artifact.Target[separator+1:] != artifact.Version {
+		return "", "", fmt.Errorf(
+			"locked chart artifact %q has invalid OCI target %q for version %q",
+			artifact.ID,
+			artifact.Target,
+			artifact.Version,
+		)
+	}
+	return "oci://" + artifact.Target[:separator], artifact.Version, nil
+}
+
+func (project *Project) BigBangArtifact() (ChartArtifact, error) {
+	if project == nil {
+		return ChartArtifact{}, errors.New("Atum project is not loaded")
+	}
+	artifact, found := chartArtifactByID(project.Lock.Resolved.Artifacts, "bigbang")
+	if !found {
+		return ChartArtifact{}, errors.New("locked chart inventory has no Big Bang root")
+	}
+	return artifact, nil
+}
+
+type ChartNormalization struct {
+	Path string `json:"path"`
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // SupportSource is an immutable source selected transitively by an upstream
@@ -997,27 +1049,27 @@ func (p *Project) Validate() error {
 }
 
 func generatedIdentityRequiredFiles(desired Document, profiles []string) []string {
-	result := make([]string, 0, 12+len(profiles))
+	result := make([]string, 0, 8+len(profiles))
 	result = append(result, filepath.Join(
-		desired.Platform.Directory, "clusters", desired.Project.Cluster,
-		"platform-profile-identity.yaml",
+		desired.Platform.Directory,
+		"clusters",
+		desired.Project.Cluster,
+		"platform-certificates.yaml",
 	))
 	for _, profile := range profiles {
 		profileRoot := filepath.Join(desired.Platform.Directory, "profiles", profile)
-		result = append(result, filepath.Join(profileRoot, "identity", "kustomization.yaml"))
 		if profile != "local" {
 			continue
 		}
 		result = append(result,
 			filepath.Join(profileRoot, "prep", "identity-values.yaml"),
+			filepath.Join(profileRoot, "prep", "certificates", "kustomization.yaml"),
+			filepath.Join(profileRoot, "prep", "certificates", "ca-issuer.yaml"),
+			filepath.Join(profileRoot, "prep", "certificates", "identity-certificate.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "vault-sso-ca.yaml"),
-			filepath.Join(profileRoot, "identity", "credentials.yaml"),
-			filepath.Join(profileRoot, "identity", "keycloak-reconcile.yaml"),
-			filepath.Join(profileRoot, "identity", "vault-reconcile.yaml"),
-			filepath.Join(profileRoot, "identity", "receipt.yaml"),
 		)
 	}
 	return result
@@ -1406,11 +1458,6 @@ func (p *Project) validate(
 			add("bootstrap chart Flux source %s is missing", chart.FluxSource)
 		}
 	}
-	for _, chart := range p.Desired.Platform.Charts {
-		if info, err := candidateFileInfo(p.Root, chart.FluxSource, files); err != nil || !info.Mode().IsRegular() {
-			add("platform chart Flux source %s is missing", chart.FluxSource)
-		}
-	}
 	for _, vendor := range p.Desired.Platform.Vendors {
 		path, err := fssecure.Resolve(p.Root, vendor.Directory, false)
 		if info, statErr := os.Stat(path); err != nil || statErr != nil || !info.IsDir() {
@@ -1488,6 +1535,8 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 		add("resolved bootstrap charts do not match desired state")
 	}
 	validateSupportSources(problems, p, allowStale, files)
+	validateChartArtifacts(problems, p, allowStale)
+	validateChartArtifactProjections(problems, p, allowStale, files)
 	target, targetErr := desired.Orchestration.TargetRelease()
 	if targetErr != nil {
 		add("desired orchestration target is invalid: %v", targetErr)
@@ -1588,6 +1637,307 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 	}
 }
 
+func validateChartArtifacts(problems *[]string, project *Project, allowStale bool) {
+	artifacts := project.Lock.Resolved.Artifacts
+	if allowStale && len(artifacts) == 0 {
+		return
+	}
+	expected := 1 + len(project.Desired.Platform.Packages) +
+		len(project.Lock.Resolved.SupportSources) +
+		len(project.Desired.Platform.Charts) +
+		len(project.Desired.Platform.Bootstrap.Charts)
+	if len(artifacts) != expected {
+		*problems = append(*problems, fmt.Sprintf(
+			"resolved chart artifact count is %d, want %d", len(artifacts), expected,
+		))
+	}
+	ids := make(map[string]struct{}, len(artifacts))
+	targets := make(map[string]struct{}, len(artifacts))
+	for index := range artifacts {
+		artifact := artifacts[index]
+		if index > 0 && artifacts[index-1].ID >= artifact.ID {
+			*problems = append(*problems, "resolved chart artifacts are not in canonical id order")
+		}
+		if _, duplicate := ids[artifact.ID]; duplicate {
+			*problems = append(*problems, "resolved chart artifact "+artifact.ID+" is duplicated")
+		}
+		ids[artifact.ID] = struct{}{}
+		if _, duplicate := targets[artifact.Target]; duplicate {
+			*problems = append(*problems, "resolved chart target "+artifact.Target+" is duplicated")
+		}
+		targets[artifact.Target] = struct{}{}
+		if artifact.ID == "" || artifact.Kind == "" || artifact.SourceURL == "" ||
+			artifact.ChartPath == "" || artifact.Name == "" || artifact.Version == "" ||
+			!validHexSHA256(artifact.UpstreamSHA256) ||
+			!validHexSHA256(artifact.ArchiveSHA256) ||
+			artifact.Size <= 0 || artifact.Size > ChartArchiveLimit ||
+			artifact.File == "" || artifact.Target == "" {
+			*problems = append(*problems, fmt.Sprintf(
+				"resolved chart artifact %d has invalid identity", index,
+			))
+		}
+		validateRelative(problems, "resolved chart artifact "+artifact.ID+" file", artifact.File)
+		if !allowStale {
+			path, err := fssecure.Resolve(project.Root, artifact.File, false)
+			if err != nil {
+				*problems = append(*problems, fmt.Sprintf(
+					"resolved chart artifact %s file is invalid: %v", artifact.ID, err,
+				))
+			} else if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() ||
+				info.Size() != artifact.Size {
+				*problems = append(*problems, fmt.Sprintf(
+					"resolved chart artifact %s file is missing or changed", artifact.ID,
+				))
+			} else if digest, err := fileSHA256(path); err != nil ||
+				digest != artifact.ArchiveSHA256 {
+				*problems = append(*problems, fmt.Sprintf(
+					"resolved chart artifact %s archive hash does not match its lock", artifact.ID,
+				))
+			}
+		}
+	}
+	if _, exists := ids["bigbang"]; !exists {
+		*problems = append(*problems, "resolved chart artifacts have no Big Bang root")
+	}
+}
+
+func validateChartArtifactProjections(
+	problems *[]string,
+	project *Project,
+	allowStale bool,
+	files map[string][]byte,
+) {
+	if allowStale {
+		return
+	}
+	root, exists := chartArtifactByID(project.Lock.Resolved.Artifacts, "bigbang")
+	if !exists {
+		return
+	}
+	source, err := readCandidateYAML(
+		project.Root, "platform/apps/bigbang/source-bigbang.yaml", files,
+	)
+	if err != nil {
+		*problems = append(*problems, "Big Bang OCI source projection is invalid: "+err.Error())
+		return
+	}
+	metadata, _ := source["metadata"].(map[string]any)
+	spec, _ := source["spec"].(map[string]any)
+	ref, _ := spec["ref"].(map[string]any)
+	layer, _ := spec["layerSelector"].(map[string]any)
+	if stringValue(source, "kind") != "OCIRepository" ||
+		stringValue(metadata, "name") != "bigbang" ||
+		stringValue(metadata, "namespace") != "bigbang" ||
+		stringValue(spec, "url") != "oci://"+imageRepository(root.Target) ||
+		stringValue(ref, "tag") != root.Version ||
+		stringValue(layer, "mediaType") != "application/vnd.cncf.helm.chart.content.v1.tar+gzip" ||
+		stringValue(layer, "operation") != "copy" {
+		*problems = append(*problems, "Big Bang OCI source does not exactly project the locked root chart")
+	}
+	release, err := readCandidateYAML(
+		project.Root, "platform/apps/bigbang/helmrelease.yaml", files,
+	)
+	if err != nil {
+		*problems = append(*problems, "Big Bang HelmRelease projection is invalid: "+err.Error())
+		return
+	}
+	releaseSpec, _ := release["spec"].(map[string]any)
+	chartRef, _ := releaseSpec["chartRef"].(map[string]any)
+	if _, legacy := releaseSpec["chart"]; legacy ||
+		stringValue(chartRef, "kind") != "OCIRepository" ||
+		stringValue(chartRef, "name") != "bigbang" ||
+		stringValue(chartRef, "namespace") != "bigbang" {
+		*problems = append(*problems, "Big Bang HelmRelease does not exactly bind the locked OCI root chart")
+	}
+	values, err := project.Desired.ResolvePlatformValues(
+		repositoryPlatformValueLoader(project.Root, files),
+	)
+	if err != nil {
+		return
+	}
+	if offline, _ := values.Generated["offline"].(bool); !offline {
+		*problems = append(*problems, "generated Big Bang values must enable offline chart reconciliation")
+	}
+	repositories, _ := values.Generated["helmRepositories"].([]any)
+	if len(repositories) != 1 {
+		*problems = append(*problems, "generated Big Bang values require one canonical Harbor Helm repository")
+	} else {
+		repository, _ := repositories[0].(map[string]any)
+		expected := "oci://" + project.Desired.Platform.Bootstrap.Registry.Host + "/" +
+			project.Desired.Platform.Bootstrap.Registry.Project
+		if stringValue(repository, "name") != "atum" ||
+			stringValue(repository, "repository") != expected ||
+			stringValue(repository, "type") != "oci" {
+			*problems = append(*problems, "generated Big Bang Helm repository does not bind Harbor")
+		}
+	}
+	for index := range project.Desired.Platform.Packages {
+		pkg := project.Desired.Platform.Packages[index]
+		artifact, exists := chartArtifactByID(
+			project.Lock.Resolved.Artifacts, "package/"+pkg.ID,
+		)
+		if !exists {
+			continue
+		}
+		projected, err := nestedMap(values.Generated, pkg.ValuesPath)
+		if err != nil {
+			*problems = append(*problems, "generated package "+pkg.ID+" chart projection is missing")
+			continue
+		}
+		helmRepo, _ := projected["helmRepo"].(map[string]any)
+		if stringValue(projected, "sourceType") != "helmRepo" ||
+			stringValue(helmRepo, "repoName") != "atum" ||
+			stringValue(helmRepo, "chartName") != artifact.Name ||
+			stringValue(helmRepo, "tag") != artifact.Version {
+			*problems = append(*problems, "generated package "+pkg.ID+" does not exactly project its locked Harbor chart")
+		}
+		if _, legacy := projected["git"]; legacy {
+			*problems = append(*problems, "generated package "+pkg.ID+" retains an upstream Git projection")
+		}
+	}
+	certManagerFound := false
+	for index := range project.Desired.Platform.Charts {
+		chart := project.Desired.Platform.Charts[index]
+		if chart.ID == "cert-manager" {
+			certManagerFound = true
+		}
+		artifact, exists := chartArtifactByID(
+			project.Lock.Resolved.Artifacts,
+			"chart/"+chart.ID,
+		)
+		if !exists {
+			continue
+		}
+		projected, err := nestedMap(values.Generated, chart.ValuesPath)
+		if err != nil {
+			*problems = append(*problems, "generated chart "+chart.ID+" projection is missing")
+			continue
+		}
+		helmRepo, _ := projected["helmRepo"].(map[string]any)
+		if stringValue(projected, "sourceType") != "helmRepo" ||
+			stringValue(helmRepo, "repoName") != "atum" ||
+			stringValue(helmRepo, "chartName") != artifact.Name ||
+			stringValue(helmRepo, "tag") != artifact.Version {
+			*problems = append(
+				*problems,
+				"generated chart "+chart.ID+" does not exactly project its locked Harbor chart",
+			)
+		}
+	}
+	if !certManagerFound {
+		*problems = append(*problems, "generic Big Bang chart inventory has no cert-manager")
+	}
+	for _, chart := range project.Desired.Platform.Bootstrap.Charts {
+		if chart.ID == "cert-manager" {
+			*problems = append(*problems, "cert-manager remains in the bootstrap chart inventory")
+		}
+	}
+	validateGenericSourceKustomizations(problems, project, files)
+}
+
+func validateGenericSourceKustomizations(
+	problems *[]string,
+	project *Project,
+	files map[string][]byte,
+) {
+	for _, candidate := range []struct {
+		path      string
+		obsolete  map[string]struct{}
+		component string
+	}{
+		{
+			path: "platform/apps/bigbang/kustomization.yaml",
+			obsolete: map[string]struct{}{
+				"source-opensearch.yaml":          {},
+				"source-opensearch-operator.yaml": {},
+			},
+			component: "Big Bang",
+		},
+		{
+			path: "platform/apps/prep/kustomization.yaml",
+			obsolete: map[string]struct{}{
+				"cert-manager": {},
+			},
+			component: "prep",
+		},
+	} {
+		kustomization, err := readCandidateYAML(project.Root, candidate.path, files)
+		if err != nil {
+			*problems = append(
+				*problems,
+				candidate.component+" Kustomization projection is invalid: "+err.Error(),
+			)
+			continue
+		}
+		resources, _ := kustomization["resources"].([]any)
+		for _, raw := range resources {
+			resource, _ := raw.(string)
+			if _, found := candidate.obsolete[resource]; found {
+				*problems = append(
+					*problems,
+					candidate.component+" Kustomization retains obsolete resource "+resource,
+				)
+			}
+		}
+	}
+}
+
+func chartArtifactByID(artifacts []ChartArtifact, id string) (ChartArtifact, bool) {
+	index := sort.Search(len(artifacts), func(index int) bool {
+		return artifacts[index].ID >= id
+	})
+	if index == len(artifacts) || artifacts[index].ID != id {
+		return ChartArtifact{}, false
+	}
+	return artifacts[index], true
+}
+
+func readCandidateYAML(
+	root, relative string,
+	files map[string][]byte,
+) (map[string]any, error) {
+	data, candidate := files[filepath.Clean(relative)]
+	if candidate && data == nil {
+		return nil, os.ErrNotExist
+	}
+	if !candidate {
+		path, err := fssecure.Resolve(root, relative, false)
+		if err != nil {
+			return nil, err
+		}
+		var err error
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var value map[string]any
+	if err := yaml.Unmarshal(data, &value); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func nestedMap(root map[string]any, path string) (map[string]any, error) {
+	current := root
+	for _, component := range strings.Split(path, ".") {
+		next, ok := current[component].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("path %s is not a map", path)
+		}
+		current = next
+	}
+	return current, nil
+}
+
+func imageRepository(reference string) string {
+	lastSlash := strings.LastIndexByte(reference, '/')
+	if colon := strings.LastIndexByte(reference, ':'); colon > lastSlash {
+		return reference[:colon]
+	}
+	return reference
+}
+
 func validateSupportSources(problems *[]string, p *Project, allowStale bool, files map[string][]byte) {
 	sources := p.Lock.Resolved.SupportSources
 	if allowStale {
@@ -1609,7 +1959,7 @@ func validateSupportSources(problems *[]string, p *Project, allowStale bool, fil
 		return
 	}
 	if len(sources) != 1 {
-		*problems = append(*problems, "rendered wrapper Git source requires exactly one resolved support source")
+		*problems = append(*problems, "rendered wrapper chart requires exactly one resolved support source")
 		return
 	}
 	source := sources[0]
@@ -1618,16 +1968,12 @@ func validateSupportSources(problems *[]string, p *Project, allowStale bool, fil
 	}
 	wrapper, _ := values.Merged["wrapper"].(map[string]any)
 	sourceType, _ := wrapper["sourceType"].(string)
-	gitValues, _ := wrapper["git"].(map[string]any)
-	internalURL := strings.TrimSuffix(p.Desired.Platform.Sources.ClusterURL, "/") + "/" +
-		p.Desired.Platform.Sources.UpstreamOrganization + "/" + source.ID + ".git"
-	if sourceType != "git" ||
-		stringValue(gitValues, "repo") != internalURL ||
-		stringValue(gitValues, "tag") != "" ||
-		stringValue(gitValues, "semver") != source.Source.Version ||
-		stringValue(gitValues, "branch") != source.Source.Branch ||
-		stringValue(gitValues, "commit") != source.Source.Commit ||
-		stringValue(gitValues, "path") != source.ChartPath {
+	helmRepo, _ := wrapper["helmRepo"].(map[string]any)
+	artifact, exists := chartArtifactByID(p.Lock.Resolved.Artifacts, "wrapper/"+source.ID)
+	if !exists || sourceType != "helmRepo" ||
+		stringValue(helmRepo, "repoName") != "atum" ||
+		stringValue(helmRepo, "chartName") != artifact.Name ||
+		stringValue(helmRepo, "tag") != artifact.Version {
 		*problems = append(*problems, "generated wrapper values do not exactly project the resolved support source")
 	}
 	if _, err := RepositoryInventory(p.Desired, p.Lock.Resolved); err != nil {
@@ -1908,7 +2254,7 @@ func validateTrackedCharts(problems *[]string, charts []TrackedChart) {
 	seenValues := make(map[string]struct{}, len(charts))
 	for i := range charts {
 		chart := &charts[i]
-		if !validResourceID(chart.ID) || chart.Name == "" || chart.ValuesPath == "" || chart.FluxSource == "" || chart.Version == "" ||
+		if !validResourceID(chart.ID) || chart.Name == "" || chart.ValuesPath == "" || chart.Version == "" ||
 			chart.AppVersion == "" || chart.License == "" || !validHexSHA256(chart.ArchiveSHA256) {
 			*problems = append(*problems, fmt.Sprintf("platform chart %d has invalid identity", i))
 		}
@@ -1920,7 +2266,6 @@ func validateTrackedCharts(problems *[]string, charts []TrackedChart) {
 		}
 		seenIDs[chart.ID] = struct{}{}
 		seenValues[chart.ValuesPath] = struct{}{}
-		validateRelative(problems, "platform chart "+chart.ID+" Flux source", chart.FluxSource)
 		validateChartSource(problems, "platform chart "+chart.ID, chart.Source)
 	}
 }

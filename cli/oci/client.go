@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"atum/cli/config"
+	"atum/cli/secretvalue"
 
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -35,8 +36,18 @@ const (
 
 type Credentials struct {
 	Username string
-	Password string
+	Password secretvalue.Value
 	CACert   []byte
+}
+
+func (credentials *Credentials) Clear() {
+	if credentials == nil {
+		return
+	}
+	credentials.Username = ""
+	credentials.Password.Clear()
+	clear(credentials.CACert)
+	credentials.CACert = nil
 }
 
 // Client owns registry authentication and transport policy. Credentials are
@@ -53,7 +64,7 @@ func NewClient(target config.Registry, credentials Credentials) (*Client, error)
 	if strings.TrimSpace(target.Host) == "" {
 		return nil, errors.New("registry host is empty")
 	}
-	if (credentials.Username == "") != (credentials.Password == "") {
+	if (credentials.Username == "") != (len(credentials.Password) == 0) {
 		return nil, errors.New("registry username and password must be supplied together")
 	}
 	var rootCAs *x509.CertPool
@@ -64,11 +75,38 @@ func NewClient(target config.Registry, credentials Credentials) (*Client, error)
 		}
 	}
 	return &Client{
-		target:  target,
-		creds:   credentials,
+		target: target,
+		creds: Credentials{
+			Username: credentials.Username,
+			Password: credentials.Password.Clone(),
+			CACert:   append([]byte(nil), credentials.CACert...),
+		},
 		rootCAs: rootCAs,
 		clients: make(map[string]*auth.Client, 8),
 	}, nil
+}
+
+// Clear releases the registry client's owned credential bytes and cached
+// authentication holders after the final network handoff.
+func (client *Client) Clear() {
+	if client == nil {
+		return
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	client.creds.Clear()
+	for registry, configured := range client.clients {
+		if configured != nil {
+			configured.Credential = func(context.Context, string) (auth.Credential, error) {
+				return auth.EmptyCredential, nil
+			}
+			if configured.Client != nil {
+				configured.Client.CloseIdleConnections()
+			}
+		}
+		delete(client.clients, registry)
+	}
+	client.rootCAs = nil
 }
 
 func (client *Client) Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error) {
@@ -394,7 +432,6 @@ func (client *Client) authClient(registry string) *auth.Client {
 	transport.MaxIdleConns = 128
 	transport.MaxIdleConnsPerHost = 32
 	transport.IdleConnTimeout = 90 * time.Second
-	transport.ResponseHeaderTimeout = 30 * time.Second
 	if registry == client.target.Host && client.target.TLSVerify {
 		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 		if client.rootCAs != nil {
@@ -421,10 +458,12 @@ func (client *Client) authClient(registry string) *auth.Client {
 		return auth.EmptyCredential, nil
 	})
 	if registry == client.target.Host && client.creds.Username != "" {
+		password := string(client.creds.Password.Bytes())
 		credentials = auth.StaticCredential(registry, auth.Credential{
 			Username: client.creds.Username,
-			Password: client.creds.Password,
+			Password: password,
 		})
+		password = ""
 	}
 	configured := &auth.Client{
 		Client:     httpClient,

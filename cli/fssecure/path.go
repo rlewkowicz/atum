@@ -135,3 +135,34 @@ func EnsureDirectory(root, relative string, mode os.FileMode) (string, error) {
 	}
 	return path, nil
 }
+
+// EnsureDirectoryMode creates a managed directory and sets the final
+// component to the requested mode through a securely resolved descriptor.
+func EnsureDirectoryMode(root, relative string, mode os.FileMode) (string, error) {
+	path, err := EnsureDirectory(root, relative, mode)
+	if err != nil {
+		return "", err
+	}
+	clean, err := Relative(relative)
+	if err != nil {
+		return "", err
+	}
+	root, err = Root(root)
+	if err != nil {
+		return "", err
+	}
+	handle, err := pathrs.OpenInRoot(root, clean)
+	if err != nil {
+		return "", fmt.Errorf("open managed directory %s: %w", clean, err)
+	}
+	defer handle.Close()
+	directory, err := pathrs.Reopen(handle, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC)
+	if err != nil {
+		return "", fmt.Errorf("reopen managed directory %s: %w", clean, err)
+	}
+	defer directory.Close()
+	if err := unix.Fchmod(int(directory.Fd()), uint32(mode.Perm())); err != nil {
+		return "", fmt.Errorf("set managed directory %s mode: %w", clean, err)
+	}
+	return path, nil
+}

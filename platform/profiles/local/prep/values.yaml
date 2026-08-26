@@ -13,7 +13,86 @@ networkPolicies:
         from:
           - ipBlock:
               cidr: *kubeAPICIDR
+kyvernoPolicies:
+  values:
+    policies:
+      restrict-image-registries:
+        skipOverlayMerge: true
+        parameters:
+          allow:
+            - 10.77.0.9:32443
+istiod:
+  values:
+    upstream:
+      pilot:
+        autoscaleEnabled: false
+        replicaCount: 1
+kiali:
+  values:
+    upstream:
+      cr:
+        spec:
+          deployment:
+            replicas: 1
+kyverno:
+  values:
+    upstream:
+      admissionController:
+        replicas: 1
+      backgroundController:
+        replicas: 1
+      cleanupController:
+        replicas: 1
+      reportsController:
+        replicas: 1
+kyvernoReporter:
+  values:
+    upstream:
+      replicaCount: 1
+      ui:
+        replicaCount: 1
+      plugin:
+        kyverno:
+          replicaCount: 1
+tempo:
+  values:
+    upstream:
+      replicas: 1
+monitoring:
+  values:
+    upstream:
+      alertmanager:
+        alertmanagerSpec:
+          replicas: 1
+      prometheus:
+        prometheusSpec:
+          replicas: 1
+grafana:
+  values:
+    upstream:
+      replicas: 1
+      autoscaling:
+        enabled: false
 addons:
+  gitlab:
+    values:
+      upstream:
+        registry:
+          hpa:
+            minReplicas: 1
+            maxReplicas: 1
+        gitlab:
+          toolbox:
+            replicas: 1
+          webservice:
+            minReplicas: 1
+            maxReplicas: 1
+          sidekiq:
+            minReplicas: 1
+            maxReplicas: 1
+          gitlab-shell:
+            minReplicas: 1
+            maxReplicas: 1
   keycloak:
     values:
       upstream:
@@ -37,11 +116,6 @@ addons:
             secret:
               secretName: keycloak-tls
         extraVolumeMounts: |
-          # keep /etc/x509/https/ for legacy backwards compatibility
-          - name: keycloak-tls
-            mountPath: /etc/x509/https
-            readOnly: true
-          # Quarkus cert paths
           - name: keycloak-tls
             mountPath: /opt/keycloak/conf/atum-tls
             readOnly: true
@@ -66,3 +140,39 @@ istioGateway:
             type: LoadBalancer
             annotations:
               kube-vip.io/loadbalancerIPs: "10.77.0.21"
+packages:
+  postgresql:
+    values:
+      cluster:
+        instances: 1
+        storage:
+          size: 8Gi
+        resources:
+          requests:
+            cpu: "1"
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+  redis:
+    values:
+      upstream:
+        master:
+          persistence:
+            enabled: true
+            size: 256Mi
+  garage:
+    values:
+      garageInit:
+        capacityBytes: "10000000000"
+      upstream:
+        deployment:
+          replicaCount: 1
+        garage:
+          replicationFactor: "1"
+        persistence:
+          enabled: true
+          meta:
+            size: 1Gi
+          data:
+            size: 10Gi

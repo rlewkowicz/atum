@@ -2,27 +2,25 @@ package update
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
+	"sync"
 
 	"atum/cli/config"
-	"atum/cli/gitcache"
 
 	"golang.org/x/sync/errgroup"
 )
 
 type artifactInput struct {
-	ID                     string
-	Path                   string
-	InvocationBaselinePath string
-	InvocationRepositories []string
-	Values                 map[string]any
-	Instances              []releaseValueInstance
-	Bindings               []artifactBinding
-	Sources                []map[string]any
+	ID        string
+	Path      string
+	Values    map[string]any
+	Instances []releaseValueInstance
+	Bindings  []artifactBinding
+	Sources   []map[string]any
 }
 
 type artifactRenderError struct {
@@ -40,52 +38,40 @@ func candidateRenderError(id string, err error) error {
 }
 
 func artifactBindings(
-	root string,
-	registry config.SourceRegistry,
 	chartRegistry config.Registry,
 	packages []config.Package,
 	charts []config.TrackedChart,
 	values map[string]any,
-	files map[string][]byte,
 ) ([]artifactBinding, []map[string]any, error) {
 	bindings := make([]artifactBinding, 0, len(packages)+len(charts))
-	sources := make([]map[string]any, 0, len(charts))
 	for _, pkg := range packages {
 		packageValues, err := valuesAt(values, pkg.ValuesPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve package %s source binding: %w", pkg.ID, err)
 		}
-		gitValues, _ := packageValues["git"].(map[string]any)
-		chartPath, _ := gitValues["path"].(string)
-		if strings.TrimSpace(chartPath) == "" {
-			chartPath = "./chart"
-		}
-		sourceReference, err := config.RenderedPackageSourceReference(pkg, packageValues)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolve package %s rendered source: %w", pkg.ID, err)
+		helmValues, _ := packageValues["helmRepo"].(map[string]any)
+		repositoryName, _ := helmValues["repoName"].(string)
+		chartName, _ := helmValues["chartName"].(string)
+		version, _ := helmValues["tag"].(string)
+		sourceType, _ := packageValues["sourceType"].(string)
+		if sourceType != "helmRepo" || repositoryName == "" ||
+			chartName == "" || version == "" {
+			return nil, nil, fmt.Errorf(
+				"package %s has an incomplete Harbor Helm repository binding", pkg.ID,
+			)
 		}
 		binding := artifactBinding{
 			id:                pkg.ID,
-			sourceKind:        "GitRepository",
-			sourceName:        sourceReference.Name,
-			sourceNamespace:   sourceReference.Namespace,
-			sourceURL:         internalSourceURL(registry, registry.UpstreamOrganization, pkg.ID),
-			sourceTag:         renderedPackageGitTag(pkg.Source),
-			sourceBranch:      pkg.Source.Branch,
-			sourceCommit:      pkg.Source.Commit,
-			chart:             chartPath,
-		}
-		if pkg.Integration == "generic" {
-			binding.reconcileStrategy = "Revision"
-			binding.releaseName = sourceReference.Name
-			binding.releaseNamespace = sourceReference.Namespace
-		} else {
-			binding.reconcileStrategy = "ChartVersion"
-			binding.defaultReconcile = true
+			sourceKind:        "HelmRepository",
+			sourceName:        repositoryName,
+			sourceNamespace:   "bigbang",
+			sourceURL:         "oci://" + chartRegistry.Host + "/" + chartRegistry.Project,
+			chart:             chartName,
+			version:           version,
+			reconcileStrategy: "Revision",
 		}
 		bindings = append(bindings, binding)
 	}
-	loadedSources := make(map[string]map[string]any, len(charts))
 	for _, chart := range charts {
 		chartValues, err := valuesAt(values, chart.ValuesPath)
 		if err != nil {
@@ -95,131 +81,28 @@ func artifactBindings(
 		repositoryName, _ := helmValues["repoName"].(string)
 		chartName, _ := helmValues["chartName"].(string)
 		version, _ := helmValues["tag"].(string)
-		if repositoryName == "" || chartName == "" || version == "" {
+		sourceType, _ := chartValues["sourceType"].(string)
+		if sourceType != "helmRepo" || repositoryName != "atum" ||
+			chartName != chart.Name || version != chart.Version {
 			return nil, nil, fmt.Errorf("chart %s has an incomplete Helm repository binding", chart.ID)
 		}
-		source, exists := loadedSources[chart.FluxSource]
-		if !exists {
-			source, err = readManagedYAML(root, files, chart.FluxSource)
-			if err != nil {
-				return nil, nil, fmt.Errorf("decode chart %s Flux source: %w", chart.ID, err)
-			}
-			loadedSources[chart.FluxSource] = source
-			sources = append(sources, source)
-		}
-		metadata, _ := source["metadata"].(map[string]any)
-		sourceName, _ := metadata["name"].(string)
-		sourceNamespace, _ := metadata["namespace"].(string)
-		kind, _ := source["kind"].(string)
-		spec, _ := source["spec"].(map[string]any)
-		sourceURL, _ := spec["url"].(string)
-		sourceType, _ := spec["type"].(string)
-		insecure, _ := spec["insecure"].(bool)
-		interval, _ := spec["interval"].(string)
-		provider, _ := spec["provider"].(string)
 		expectedURL := "oci://" + chartRegistry.Host + "/" + chartRegistry.Project
-		if kind != "HelmRepository" || sourceName != repositoryName || sourceNamespace == "" ||
-			sourceType != "oci" || normalizedChartRepositoryURL(sourceURL) != expectedURL ||
-			insecure == chartRegistry.TLSVerify || interval != "30m" || provider != "generic" || len(spec) != 5 {
-			return nil, nil, fmt.Errorf("chart %s Flux source does not exactly bind internal HelmRepository %s at %s", chart.ID, repositoryName, expectedURL)
-		}
 		bindings = append(bindings, artifactBinding{
 			id:                chart.ID,
-			sourceKind:        kind,
-			sourceName:        sourceName,
-			sourceNamespace:   sourceNamespace,
-			sourceURL:         sourceURL,
+			sourceKind:        "HelmRepository",
+			sourceName:        repositoryName,
+			sourceNamespace:   "bigbang",
+			sourceURL:         expectedURL,
 			chart:             chartName,
 			version:           version,
 			reconcileStrategy: "Revision",
 		})
 	}
-	return bindings, sources, nil
-}
-
-func renderedPackageGitTag(source config.GitSource) string {
-	if source.Commit != "" && source.Branch != "" {
-		return ""
-	}
-	return sourceGitTag(source)
-}
-
-func (service *Service) currentArtifacts(
-	ctx context.Context,
-	desired config.Document,
-	renderValues map[string]any,
-	parallelism int,
-	files map[string][]byte,
-) (map[string]artifactInput, error) {
-	var bigBangPath string
-	var packagePaths map[string]string
-	var chartPaths map[string]string
-	var bootstrapPaths map[string]string
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(4)
-	group.Go(func() error {
-		var err error
-		bigBangPath, err = service.cache.Hydrate(groupContext, "bigbang", desired.Platform.BigBang.URL, gitcache.Release{
-			Version: sourceGitTag(desired.Platform.BigBang),
-			Commit:  desired.Platform.BigBang.Commit,
-		})
-		return err
-	})
-	group.Go(func() error {
-		var err error
-		packagePaths, err = hydrateConfiguredGit(groupContext, service.cache, parallelism, desired.Platform.Packages)
-		return err
-	})
-	group.Go(func() error {
-		var err error
-		chartPaths, err = fetchConfiguredTrackedCharts(groupContext, service.charts, parallelism, desired.Platform.Charts)
-		return err
-	})
-	group.Go(func() error {
-		var err error
-		bootstrapPaths, err = fetchConfiguredBootstrapCharts(groupContext, service.charts, parallelism, desired.Platform.Bootstrap.Charts)
-		return err
-	})
-	if err := group.Wait(); err != nil {
-		return nil, err
-	}
-	bindings, sources, err := artifactBindings(service.root, desired.Platform.Sources, desired.Platform.Bootstrap.Registry, desired.Platform.Packages, desired.Platform.Charts, renderValues, files)
-	if err != nil {
-		return nil, err
-	}
-	inputs := make(map[string]artifactInput, 1+len(desired.Platform.Packages)+len(desired.Platform.Charts)+len(desired.Platform.Bootstrap.Charts))
-	inputs["bigbang"] = artifactInput{
-		ID: "bigbang", Path: filepath.Join(bigBangPath, "chart"), Values: renderValues,
-		Bindings: bindings, Sources: sources,
-	}
-	for _, pkg := range desired.Platform.Packages {
-		id := "package/" + pkg.ID
-		inputs[id] = artifactInput{
-			ID: id, Path: filepath.Join(packagePaths[pkg.ID], filepath.FromSlash(pkg.RepositoryChartPath())),
-		}
-	}
-	for _, chart := range desired.Platform.Charts {
-		id := "chart/" + chart.ID
-		inputs[id] = artifactInput{ID: id, Path: chartPaths[chart.ID]}
-	}
-	for _, chart := range desired.Platform.Bootstrap.Charts {
-		values, err := readManagedYAML(service.root, files, chart.Values)
-		if err != nil {
-			return nil, err
-		}
-		id := "bootstrap/" + chart.ID
-		instance, err := readBootstrapRelease(service.root, chart, values, nil, files)
-		if err != nil {
-			return nil, err
-		}
-		inputs[id] = artifactInput{ID: id, Path: bootstrapPaths[chart.ID], Instances: []releaseValueInstance{instance}}
-	}
-	return inputs, nil
+	return bindings, nil, nil
 }
 
 func candidateArtifacts(
 	bigBang resolvedGit,
-	registry config.SourceRegistry,
 	chartRegistry config.Registry,
 	packages []resolvedPackage,
 	charts []resolvedTrackedChart,
@@ -237,7 +120,7 @@ func candidateArtifacts(
 	for i := range charts {
 		configuredCharts[i] = charts[i].Chart
 	}
-	bindings, sources, err := artifactBindings(root, registry, chartRegistry, configuredPackages, configuredCharts, renderValues, files)
+	bindings, sources, err := artifactBindings(chartRegistry, configuredPackages, configuredCharts, renderValues)
 	if err != nil {
 		return nil, err
 	}
@@ -253,10 +136,8 @@ func candidateArtifacts(
 	}
 	for _, chart := range charts {
 		inputs = append(inputs, artifactInput{
-			ID:                     "chart/" + chart.Chart.ID,
-			Path:                   chart.ArchivePath,
-			InvocationBaselinePath: chart.InvocationBaselinePath,
-			InvocationRepositories: chart.InvocationRepositories,
+			ID:   "chart/" + chart.Chart.ID,
+			Path: chart.ArchivePath,
 		})
 	}
 	for _, chart := range bootstrap {
@@ -281,398 +162,234 @@ func candidateArtifacts(
 	return inputs, nil
 }
 
-func pairArtifacts(current map[string]artifactInput, candidate []artifactInput) ([]chartArtifact, error) {
-	candidateIDs := make(map[string]struct{}, len(candidate))
-	for index := range candidate {
-		if _, duplicate := candidateIDs[candidate[index].ID]; duplicate {
-			return nil, fmt.Errorf("candidate chart %s is duplicated", candidate[index].ID)
+func selectedArtifacts(inputs []artifactInput) ([]chartArtifact, error) {
+	ids := make(map[string]struct{}, len(inputs))
+	artifacts := make([]chartArtifact, len(inputs))
+	for index := range inputs {
+		if _, duplicate := ids[inputs[index].ID]; duplicate {
+			return nil, fmt.Errorf("selected chart %s is duplicated", inputs[index].ID)
 		}
-		candidateIDs[candidate[index].ID] = struct{}{}
-	}
-	for id := range current {
-		if strings.HasPrefix(id, "package/") {
-			if _, retained := candidateIDs[id]; !retained {
-				return nil, fmt.Errorf("current package chart %s has no candidate contract", id)
-			}
-		}
-	}
-	paired := make([]chartArtifact, len(candidate))
-	for i := range candidate {
-		old, exists := current[candidate[i].ID]
-		introductionBaseline := false
-		if !exists {
-			if !strings.HasPrefix(candidate[i].ID, "package/") {
-				return nil, fmt.Errorf("candidate chart %s has no current contract", candidate[i].ID)
-			}
-			// A newly declared package has no historical render. Its immutable
-			// declared source is the explicit introduction baseline; existing
-			// packages continue to compare against their prior artifact.
-			old = candidate[i]
-			introductionBaseline = true
-		}
-		paired[i] = chartArtifact{
-			ID:                     candidate[i].ID,
-			CurrentPath:            old.Path,
-			CandidatePath:          candidate[i].Path,
-			InvocationBaselinePath: candidate[i].InvocationBaselinePath,
-			InvocationRepositories: candidate[i].InvocationRepositories,
-			CurrentValues:          old.Values,
-			CandidateValues:        candidate[i].Values,
-			CurrentInstances:       old.Instances,
-			CandidateInstances:     candidate[i].Instances,
-			CurrentBindings:        old.Bindings,
-			CandidateBindings:      candidate[i].Bindings,
-			CurrentSources:         old.Sources,
-			CandidateSources:       candidate[i].Sources,
-			IntroductionBaseline:   introductionBaseline,
+		ids[inputs[index].ID] = struct{}{}
+		artifacts[index] = chartArtifact{
+			ID:        inputs[index].ID,
+			Path:      inputs[index].Path,
+			Values:    inputs[index].Values,
+			Instances: inputs[index].Instances,
+			Bindings:  inputs[index].Bindings,
+			Sources:   inputs[index].Sources,
 		}
 	}
-	return paired, nil
+	return artifacts, nil
 }
 
-func inspectCompatibleArtifacts(
-	ctx context.Context,
-	parallelism int,
-	releases []kubernetesRelease,
-	artifacts []chartArtifact,
-) (kubernetesRelease, []chartInspection, []chartInspection, error) {
-	renderParallelism := min(parallelism, 4)
-	var failures []string
-	for _, release := range releases {
-		current, candidate, err := inspectArtifactPairs(ctx, renderParallelism, release.Version, artifacts)
-		if err != nil {
-			failures = append(failures, release.Version+": "+err.Error())
-			continue
-		}
-		return release, current, candidate, nil
-	}
-	return kubernetesRelease{}, nil, nil, fmt.Errorf("no compatible Kubernetes version rendered the selected charts: %s", strings.Join(failures, "; "))
-}
-
-func inspectArtifactPairs(
+func inspectArtifacts(
 	ctx context.Context,
 	parallelism int,
 	kubernetesVersion string,
 	artifacts []chartArtifact,
-) ([]chartInspection, []chartInspection, error) {
+	report func(string, int, int),
+) ([]chartInspection, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	currentInspections := make([]chartInspection, len(artifacts))
-	candidateInspections := make([]chartInspection, len(artifacts))
+	inspections := make([]chartInspection, len(artifacts))
 	bigBangIndex := -1
-	for i := range artifacts {
-		if artifacts[i].ID == "bigbang" {
-			bigBangIndex = i
+	for index := range artifacts {
+		if artifacts[index].ID == "bigbang" {
+			bigBangIndex = index
 			break
 		}
 	}
 	if bigBangIndex < 0 {
-		return nil, nil, fmt.Errorf("artifact set has no Big Bang chart")
+		return nil, errors.New("artifact set has no Big Bang chart")
 	}
-	currentCollector := newReleaseValueCollector("bigbang")
-	candidateCollector := newReleaseValueCollector("bigbang")
-	for _, source := range artifacts[bigBangIndex].CandidateSources {
-		if err := candidateCollector.observe(source); err != nil {
-			return nil, nil, fmt.Errorf("observe candidate Big Bang source: %w", err)
+	collector := newReleaseValueCollector("bigbang")
+	for _, source := range artifacts[bigBangIndex].Sources {
+		if err := collector.observe(source); err != nil {
+			return nil, fmt.Errorf("observe selected Big Bang source: %w", err)
 		}
 	}
-	candidate, err := renderChart(
-		artifacts[bigBangIndex].CandidatePath,
+	inspection, err := renderChart(
+		artifacts[bigBangIndex].Path,
 		kubernetesVersion,
-		artifacts[bigBangIndex].CandidateValues,
-		candidateCollector,
+		artifacts[bigBangIndex].Values,
+		collector,
 		releaseOptions("bigbang", "bigbang"),
-		nil,
 	)
 	if err != nil {
-		return nil, nil, candidateRenderError("bigbang", fmt.Errorf("render bigbang: %w", err))
+		return nil, candidateRenderError("bigbang", fmt.Errorf("render bigbang: %w", err))
 	}
-	candidateInspections[bigBangIndex] = candidate
-	if artifacts[bigBangIndex].CurrentPath == artifacts[bigBangIndex].CandidatePath &&
-		reflect.DeepEqual(artifacts[bigBangIndex].CurrentValues, artifacts[bigBangIndex].CandidateValues) {
-		currentInspections[bigBangIndex] = candidate
-		currentCollector = candidateCollector
-	} else {
-		for _, source := range artifacts[bigBangIndex].CurrentSources {
-			if err := currentCollector.observe(source); err != nil {
-				return nil, nil, fmt.Errorf("observe current Big Bang source: %w", err)
-			}
+	inspections[bigBangIndex] = inspection
+	completed := 0
+	var progressMu sync.Mutex
+	if report != nil {
+		completed++
+		report(artifacts[bigBangIndex].ID, completed, len(artifacts))
+	}
+	releaseValues, err := collector.valuesForArtifacts(artifacts[bigBangIndex].Bindings)
+	if err != nil {
+		return nil, err
+	}
+	for index := range artifacts {
+		if !strings.HasPrefix(artifacts[index].ID, "package/") &&
+			!strings.HasPrefix(artifacts[index].ID, "chart/") {
+			continue
 		}
-		current, err := renderChart(
-			artifacts[bigBangIndex].CurrentPath,
-			kubernetesVersion,
-			artifacts[bigBangIndex].CurrentValues,
-			currentCollector,
-			releaseOptions("bigbang", "bigbang"),
-			nil,
+		releaseName := strings.SplitN(artifacts[index].ID, "/", 2)[1]
+		instances := releaseValues[releaseName]
+		artifacts[index].Instances = append(
+			artifacts[index].Instances[:0],
+			instances...,
 		)
-		if err != nil {
-			return nil, nil, fmt.Errorf("render current bigbang: %w", err)
-		}
-		currentInspections[bigBangIndex] = current
-	}
-	currentReleaseValues, err := currentCollector.valuesForArtifacts(artifacts[bigBangIndex].CurrentBindings)
-	if err != nil {
-		return nil, nil, err
-	}
-	candidateReleaseValues, err := candidateCollector.valuesForArtifacts(artifacts[bigBangIndex].CandidateBindings)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(parallelism)
-	for i := range artifacts {
-		i := i
-		if i == bigBangIndex {
+	for index := range artifacts {
+		index := index
+		if index == bigBangIndex {
 			continue
 		}
 		group.Go(func() error {
 			if err := groupContext.Err(); err != nil {
 				return err
 			}
-			managedRelease := strings.HasPrefix(artifacts[i].ID, "package/") || strings.HasPrefix(artifacts[i].ID, "chart/")
-			if managedRelease {
-				releaseName := strings.SplitN(artifacts[i].ID, "/", 2)[1]
-				candidate, err := inspectChartInstances(artifacts[i].CandidatePath, kubernetesVersion, candidateReleaseValues[releaseName])
-				if err != nil {
-					return candidateRenderError(artifacts[i].ID, fmt.Errorf("render %s: %w", artifacts[i].ID, err))
-				}
-				if artifacts[i].InvocationBaselinePath != "" {
-					baseline := candidate
-					if artifacts[i].InvocationBaselinePath != artifacts[i].CandidatePath {
-						baseline, err = inspectChartInstances(
-							artifacts[i].InvocationBaselinePath,
-							kubernetesVersion,
-							candidateReleaseValues[releaseName],
-						)
-						if err != nil {
-							return candidateRenderError(
-								artifacts[i].ID,
-								fmt.Errorf("render application invocation baseline for %s: %w", artifacts[i].ID, err),
-							)
-						}
-					}
-					if err := validateApplicationInvocation(
-						artifacts[i].ID,
-						candidate.AppVersion,
-						artifacts[i].InvocationRepositories,
-						baseline,
-						candidate,
-					); err != nil {
-						return candidateRenderError(artifacts[i].ID, err)
-					}
-				}
-				candidateInspections[i] = candidate
-				if artifacts[i].IntroductionBaseline {
-					currentInspections[i] = candidate
-					return nil
-				}
-				if artifacts[i].CurrentPath == artifacts[i].CandidatePath &&
-					reflect.DeepEqual(currentReleaseValues[releaseName], candidateReleaseValues[releaseName]) {
-					currentInspections[i] = candidate
-					return nil
-				}
-				current, err := inspectChartInstances(artifacts[i].CurrentPath, kubernetesVersion, currentReleaseValues[releaseName])
-				if err != nil {
-					return fmt.Errorf("render current %s: %w", artifacts[i].ID, err)
-				}
-				currentInspections[i] = current
-				return nil
+			artifact := artifacts[index]
+			var selected chartInspection
+			var renderErr error
+			if strings.HasPrefix(artifact.ID, "package/") ||
+				strings.HasPrefix(artifact.ID, "chart/") {
+				releaseName := strings.SplitN(artifact.ID, "/", 2)[1]
+				selected, renderErr = inspectChartInstances(
+					artifact.Path,
+					kubernetesVersion,
+					releaseValues[releaseName],
+				)
+			} else if len(artifact.Instances) != 0 {
+				selected, renderErr = inspectChartInstances(
+					artifact.Path,
+					kubernetesVersion,
+					artifact.Instances,
+				)
+			} else {
+				selected, renderErr = inspectChart(
+					artifact.Path,
+					kubernetesVersion,
+					artifact.Values,
+				)
 			}
-			if len(artifacts[i].CandidateInstances) != 0 {
-				candidate, err := inspectChartInstances(artifacts[i].CandidatePath, kubernetesVersion, artifacts[i].CandidateInstances)
-				if err != nil {
-					return candidateRenderError(artifacts[i].ID, fmt.Errorf("render %s: %w", artifacts[i].ID, err))
-				}
-				candidateInspections[i] = candidate
-				if artifacts[i].CurrentPath == artifacts[i].CandidatePath &&
-					reflect.DeepEqual(artifacts[i].CurrentInstances, artifacts[i].CandidateInstances) {
-					currentInspections[i] = candidate
-					return nil
-				}
-				current, err := inspectChartInstances(artifacts[i].CurrentPath, kubernetesVersion, artifacts[i].CurrentInstances)
-				if err != nil {
-					return fmt.Errorf("render current %s: %w", artifacts[i].ID, err)
-				}
-				currentInspections[i] = current
-				return nil
+			if renderErr != nil {
+				return candidateRenderError(
+					artifact.ID,
+					fmt.Errorf("render %s: %w", artifact.ID, renderErr),
+				)
 			}
-			candidate, err := inspectChart(artifacts[i].CandidatePath, kubernetesVersion, artifacts[i].CandidateValues)
-			if err != nil {
-				return candidateRenderError(artifacts[i].ID, fmt.Errorf("render %s: %w", artifacts[i].ID, err))
+			inspections[index] = selected
+			if report != nil {
+				progressMu.Lock()
+				completed++
+				report(artifact.ID, completed, len(artifacts))
+				progressMu.Unlock()
 			}
-			candidateInspections[i] = candidate
-			if artifacts[i].CurrentPath == artifacts[i].CandidatePath && reflect.DeepEqual(artifacts[i].CurrentValues, artifacts[i].CandidateValues) {
-				currentInspections[i] = candidate
-				return nil
-			}
-			current, err := inspectChart(artifacts[i].CurrentPath, kubernetesVersion, artifacts[i].CurrentValues)
-			if err != nil {
-				return fmt.Errorf("render current %s: %w", artifacts[i].ID, err)
-			}
-			currentInspections[i] = current
 			return nil
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return currentInspections, candidateInspections, nil
+	return inspections, nil
 }
 
-type mappedInvocation struct {
-	Command any
-	Args    any
-	key     string
-}
-
-func validateApplicationInvocation(
-	artifact string,
-	appVersion string,
-	repositories []string,
-	baseline chartInspection,
-	candidate chartInspection,
-) error {
-	expected := mappedApplicationInvocations(baseline.Invocations, repositories)
-	if len(expected) == 0 {
-		return fmt.Errorf(
-			"%s application %s invocation baseline has no container mapped to repositories %s",
-			artifact, appVersion, strings.Join(repositories, ", "),
-		)
-	}
-	actual := mappedApplicationInvocations(candidate.Invocations, repositories)
-	if len(actual) == 0 {
-		return fmt.Errorf(
-			"%s chart %s has no container invocation mapped to application %s",
-			artifact, candidate.Version, appVersion,
-		)
-	}
-	if !reflect.DeepEqual(expected, actual) {
-		return fmt.Errorf(
-			"%s chart %s changes the mapped application %s container command or arguments from its chart introduction",
-			artifact, candidate.Version, appVersion,
-		)
-	}
-	return nil
-}
-
-func mappedApplicationInvocations(
-	invocations []containerInvocation,
-	repositories []string,
-) []mappedInvocation {
-	result := make([]mappedInvocation, 0, len(invocations))
-	for i := range invocations {
-		if !containsString(repositories, invocations[i].Repository) {
-			continue
-		}
-		result = append(result, mappedInvocation{
-			Command: invocations[i].Command,
-			Args:    invocations[i].Args,
-			key:     fmt.Sprintf("%v\x00%v", invocations[i].Command, invocations[i].Args),
-		})
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].key < result[j].key
-	})
-	return result
-}
-
-func validateAppliedArtifacts(
+func inspectAppliedArtifacts(
 	ctx context.Context,
 	parallelism int,
 	kubernetesVersion string,
 	root string,
-	currentDesired config.Document,
-	candidateDesired config.Document,
+	desired config.Document,
 	operational map[string]any,
-	currentGenerated map[string]any,
-	candidateGenerated map[string]any,
+	generated map[string]any,
 	profile map[string]any,
-	bigBangDefaults map[string]any,
 	bootstrapValues map[string]map[string]any,
 	artifacts []chartArtifact,
 	files map[string][]byte,
-) error {
+	report func(string, int, int),
+) ([]chartArtifact, []chartInspection, error) {
 	exact := make([]chartArtifact, len(artifacts))
 	copy(exact, artifacts)
+	bootstrapByID := make(map[string]config.Chart, len(desired.Platform.Bootstrap.Charts))
+	for _, chart := range desired.Platform.Bootstrap.Charts {
+		if _, duplicate := bootstrapByID[chart.ID]; duplicate {
+			return nil, nil, fmt.Errorf("candidate bootstrap chart %s is duplicated", chart.ID)
+		}
+		bootstrapByID[chart.ID] = chart
+	}
 	for i := range exact {
 		switch {
 		case exact[i].ID == "bigbang":
 			var err error
-			currentOperational, err := config.CurrentPackageSelectionValues(
-				operational, bigBangDefaults, currentDesired.Platform.Packages,
+			exact[i].Values, err = config.MergePlatformValues(
+				operational, generated, profile,
 			)
 			if err != nil {
-				return fmt.Errorf("project current package selection values: %w", err)
+				return nil, nil, err
 			}
-			exact[i].CurrentValues, err = config.MergePlatformValues(currentOperational, currentGenerated, profile)
-			if err != nil {
-				return err
-			}
-			candidateOperational, err := config.StripPackageSelectionMetadata(
-				operational, bigBangDefaults,
+			bindings, sources, err := artifactBindings(
+				desired.Platform.Bootstrap.Registry,
+				desired.Platform.Packages,
+				desired.Platform.Charts,
+				exact[i].Values,
 			)
 			if err != nil {
-				return fmt.Errorf("project candidate package selection values: %w", err)
+				return nil, nil, err
 			}
-			exact[i].CandidateValues, err = config.MergePlatformValues(candidateOperational, candidateGenerated, profile)
-			if err != nil {
-				return err
-			}
-			bindings, sources, err := artifactBindings(root, currentDesired.Platform.Sources, currentDesired.Platform.Bootstrap.Registry, currentDesired.Platform.Packages, currentDesired.Platform.Charts, exact[i].CurrentValues, files)
-			if err != nil {
-				return err
-			}
-			exact[i].CurrentBindings, exact[i].CurrentSources = bindings, sources
-			bindings, sources, err = artifactBindings(root, candidateDesired.Platform.Sources, candidateDesired.Platform.Bootstrap.Registry, candidateDesired.Platform.Packages, candidateDesired.Platform.Charts, exact[i].CandidateValues, files)
-			if err != nil {
-				return err
-			}
-			exact[i].CandidateBindings, exact[i].CandidateSources = bindings, sources
+			exact[i].Bindings, exact[i].Sources = bindings, sources
 		case strings.HasPrefix(exact[i].ID, "bootstrap/"):
 			id := strings.TrimPrefix(exact[i].ID, "bootstrap/")
-			chart, exists := bootstrapChartByID(candidateDesired.Platform.Bootstrap.Charts, id)
+			chart, exists := bootstrapByID[id]
 			if !exists {
-				return fmt.Errorf("candidate bootstrap chart %s is missing", id)
+				return nil, nil, fmt.Errorf("candidate bootstrap chart %s is missing", id)
 			}
 			source, err := bootstrapSourceValues(root, chart, files)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			instance, err := readBootstrapRelease(root, chart, bootstrapValues[id], source, files)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
-			exact[i].CandidateInstances = []releaseValueInstance{instance}
+			exact[i].Instances = []releaseValueInstance{instance}
 		}
 	}
-	_, candidate, err := inspectArtifactPairs(ctx, min(parallelism, 4), kubernetesVersion, exact)
+	inspections, err := inspectArtifacts(
+		ctx,
+		parallelism,
+		kubernetesVersion,
+		exact,
+		report,
+	)
 	if err != nil {
-		return fmt.Errorf("render exact deployed values: %w", err)
+		return nil, nil, fmt.Errorf("render exact deployed values: %w", err)
 	}
-	allowed := make(map[string]struct{}, len(candidateDesired.Delivery.Images))
-	for _, image := range candidateDesired.Delivery.Images {
+	allowed := make(map[string]struct{}, len(desired.Delivery.Images))
+	for _, image := range desired.Delivery.Images {
 		allowed[image.Target] = struct{}{}
 	}
+	var untracked []string
 	for i := range exact {
-		for _, reference := range candidate[i].Images {
+		for _, reference := range inspections[i].Images {
 			if _, exists := allowed[reference]; !exists {
-				return fmt.Errorf("exact applied %s values render untracked runtime image %s", exact[i].ID, reference)
+				untracked = append(untracked, exact[i].ID+"="+reference)
 			}
 		}
 	}
-	return nil
-}
-
-func bootstrapChartByID(charts []config.Chart, id string) (config.Chart, bool) {
-	for _, chart := range charts {
-		if chart.ID == id {
-			return chart, true
-		}
+	if len(untracked) != 0 {
+		sort.Strings(untracked)
+		return nil, nil, fmt.Errorf(
+			"exact applied values render untracked runtime images: %s",
+			strings.Join(untracked, ", "),
+		)
 	}
-	return config.Chart{}, false
+	return exact, inspections, nil
 }
 
 func readBootstrapRelease(
@@ -736,19 +453,11 @@ func readBootstrapRelease(
 	if err := validateBootstrapSource(chart, namespace, sourceOverride); err != nil {
 		return releaseValueInstance{}, err
 	}
-	var renderers []releasePostRenderer
-	if raw, exists := spec["postRenderers"]; exists {
-		renderers, err = decodePostRenderers(raw)
-		if err != nil {
-			return releaseValueInstance{}, fmt.Errorf("bootstrap chart %s has invalid postRenderers: %w", chart.ID, err)
-		}
-	}
 	return releaseValueInstance{
 		identity:  namespace + "/" + name,
 		name:      releaseName,
 		namespace: targetNamespace,
 		values:    values,
-		renderers: renderers,
 	}, nil
 }
 

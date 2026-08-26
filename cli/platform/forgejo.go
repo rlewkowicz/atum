@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"atum/cli/delivery"
@@ -24,7 +23,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -32,7 +30,6 @@ const (
 	forgejoPushRemote = "atum-publish"
 	forgejoRefTimeout = 30 * time.Second
 	forgejoRefPoll    = 250 * time.Millisecond
-	deployedBranch    = "deployed"
 	fluxTokenName     = "atum-flux-read"
 )
 
@@ -86,14 +83,6 @@ func (service Service) configureForgejo(
 	); err != nil {
 		return nil, err
 	}
-	if err := control.ensureOrganization(
-		ctx,
-		sources.UpstreamOrganization,
-		"Atum Immutable Upstreams",
-		forgejo.VisibleTypePublic,
-	); err != nil {
-		return nil, err
-	}
 	if err := control.ensureRepository(
 		ctx,
 		sources.Organization,
@@ -106,39 +95,8 @@ func (service Service) configureForgejo(
 	if err := control.publishAtumSource(ctx, bundle, sources.Organization, sources.Repository); err != nil {
 		return nil, err
 	}
-	total := len(bundle.Repositories) + 1
-	var published atomic.Int64
-	published.Store(1)
 	progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
-		"published exact Atum source", 1, total)
-
-	parallelism := min(max(service.Project.Desired.Updates.Parallelism, 1), 16)
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(parallelism)
-	for _, repository := range bundle.Repositories {
-		repository := repository
-		group.Go(func() error {
-			if err := control.ensureRepository(
-				groupContext,
-				sources.UpstreamOrganization,
-				repository.ID,
-				"Immutable upstream snapshot for "+repository.ID,
-				false,
-			); err != nil {
-				return err
-			}
-			if err := control.publishUpstream(groupContext, repository, sources.UpstreamOrganization); err != nil {
-				return err
-			}
-			current := int(published.Add(1))
-			progress.Update(groupContext, progress.Platform, "forgejo", "Forgejo sources",
-				"published immutable source "+repository.ID, current, total)
-			return nil
-		})
-	}
-	if err := group.Wait(); err != nil {
-		return nil, err
-	}
+		"published exact Atum main source", 1, 1)
 	succeeded = true
 	return control, nil
 }
@@ -295,24 +253,6 @@ func (control *forgejoControl) publishAtumSource(
 	})
 }
 
-// activateAtumSource is the sole deployed-branch handoff. Immutable source
-// publication happens before Kubespray so a fresh cluster has everything it
-// needs, while this ref update is delayed until the compatibility planner has
-// selected the platform side of the transition.
-func (control *forgejoControl) activateAtumSource(
-	ctx context.Context,
-	bundle *delivery.DeploymentBundle,
-	owner, name string,
-) error {
-	return control.withAtumRepository(bundle, func(repository *git.Repository, commit plumbing.Hash) error {
-		deployed := plumbing.NewBranchReferenceName(deployedBranch)
-		if err := repository.Storer.SetReference(plumbing.NewHashReference(deployed, commit)); err != nil {
-			return err
-		}
-		return control.advanceBranch(ctx, repository, owner, name, deployedBranch, bundle.SourceCommit)
-	})
-}
-
 func (control *forgejoControl) withAtumRepository(
 	bundle *delivery.DeploymentBundle,
 	operation func(*git.Repository, plumbing.Hash) error,
@@ -354,73 +294,6 @@ func (control *forgejoControl) withAtumRepository(
 		return fmt.Errorf("materialized Atum source commit is %s, want %s", commit, bundle.SourceCommit)
 	}
 	return operation(repository, commit)
-}
-
-func (control *forgejoControl) publishUpstream(
-	ctx context.Context,
-	source delivery.BundleRepository,
-	owner string,
-) error {
-	repository, head, err := openBundledUpstream(source)
-	if err != nil {
-		return err
-	}
-	if err := repository.Storer.SetReference(plumbing.NewHashReference(
-		plumbing.NewTagReferenceName(source.Version), head,
-	)); err != nil {
-		return err
-	}
-	return control.pushImmutable(ctx, repository, owner, source.ID, source.Version, source.Commit)
-}
-
-func (control *forgejoControl) activateUpstreams(
-	ctx context.Context,
-	sources []delivery.BundleRepository,
-	owner string,
-	parallelism int,
-) error {
-	var activated atomic.Int64
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(min(max(parallelism, 1), 16))
-	for _, source := range sources {
-		source := source
-		group.Go(func() error {
-			repository, head, err := openBundledUpstream(source)
-			if err != nil {
-				return err
-			}
-			if err := repository.Storer.SetReference(plumbing.NewHashReference(
-				plumbing.NewBranchReferenceName("main"), head,
-			)); err != nil {
-				return err
-			}
-			if err := control.advanceBranch(groupContext, repository, owner, source.ID, "main", source.Commit); err != nil {
-				return err
-			}
-			current := int(activated.Add(1))
-			progress.Update(groupContext, progress.Platform, "forgejo", "Forgejo sources",
-				"advanced upstream source "+source.ID, current+1, len(sources)+1)
-			return nil
-		})
-	}
-	return group.Wait()
-}
-
-func openBundledUpstream(source delivery.BundleRepository) (*git.Repository, plumbing.Hash, error) {
-	repository, err := git.PlainOpen(source.Path)
-	if err != nil {
-		return nil, plumbing.ZeroHash, fmt.Errorf("open bundled repository %s: %w", source.ID, err)
-	}
-	head, err := repository.Head()
-	if err != nil {
-		return nil, plumbing.ZeroHash, err
-	}
-	if head.Hash().String() != source.Commit {
-		return nil, plumbing.ZeroHash, fmt.Errorf(
-			"bundled repository %s is at %s, want %s", source.ID, head.Hash(), source.Commit,
-		)
-	}
-	return repository, head.Hash(), nil
 }
 
 func (control *forgejoControl) remote(repository *git.Repository, owner, name string) *git.Remote {

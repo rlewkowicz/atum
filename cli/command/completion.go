@@ -1,12 +1,14 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 
 	"atum/cli/identity"
 	"atum/cli/platform"
+	atumsecrets "atum/cli/secrets"
 	"atum/cli/tui"
 )
 
@@ -16,11 +18,15 @@ type completionRoute struct {
 	access   identity.Access
 }
 
-func (a *app) platformCompletion(status platform.Status) (tui.Completion, error) {
+func (a *app) platformCompletion(
+	ctx context.Context,
+	status platform.Status,
+) (tui.Completion, error) {
 	if a.dryRun {
 		return tui.Completion{}, nil
 	}
-	if !status.Ready() {
+	if !status.Reconciliation.Complete() || !status.Delivery.Compliant() ||
+		!status.Local.Exact() {
 		return tui.Completion{}, errors.New("local access is not exact; completion withheld")
 	}
 	relative, required := a.project.Desired.ActiveIdentityContractPath()
@@ -31,6 +37,29 @@ func (a *app) platformCompletion(status platform.Status) (tui.Completion, error)
 	if err != nil {
 		return tui.Completion{}, err
 	}
+	loader := a.secretLoader
+	if loader == nil {
+		loader = atumsecrets.Load
+	}
+	credentials, err := loader(ctx, a.project, a.sops)
+	if err != nil {
+		return tui.Completion{}, fmt.Errorf("load completion credentials: %w", err)
+	}
+	defer credentials.Clear()
+	target, found := a.project.Desired.ActiveTarget()
+	if !found || target.LocalAccess == nil {
+		return tui.Completion{}, errors.New("local completion requires the active local-access target")
+	}
+	projection, err := identity.Derive(
+		contract,
+		credentials.Identity.Seed.Bytes(),
+		a.project.Desired.Project.Cluster,
+		target.LocalAccess.Domain,
+	)
+	if err != nil {
+		return tui.Completion{}, fmt.Errorf("derive completion credentials: %w", err)
+	}
+	defer projection.Clear()
 
 	routes := make(map[string]completionRoute,
 		len(contract.Clients())+len(contract.AdditionalEndpoints()))
@@ -57,8 +86,8 @@ func (a *app) platformCompletion(status platform.Status) (tui.Completion, error)
 		identity.Identity: nil, identity.Development: nil, identity.Observability: nil,
 	}
 	applications := make([]tui.CompletionEndpoint, 0)
-	seenBrowser := make(map[string]struct{}, len(status.AccessURLs))
-	for _, raw := range status.AccessURLs {
+	seenBrowser := make(map[string]struct{}, len(status.Local.AccessURLs))
+	for _, raw := range status.Local.AccessURLs {
 		parsed, err := url.Parse(raw)
 		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
 			return tui.Completion{}, fmt.Errorf("invalid exact platform access URL %q", raw)
@@ -101,11 +130,11 @@ func (a *app) platformCompletion(status platform.Status) (tui.Completion, error)
 	}
 	admin := contract.Administrator()
 	return tui.NewCompletion(tui.CompletionSpec{
-		ResolverPath: status.ResolverPath, CAPath: status.CAPath,
-		CAFingerprint: status.CAFingerprint, PublicVIP: status.PublicIngressVIP,
-		PassthroughVIP: status.PassthroughIngressVIP, SSOIssuer: contract.Issuer(),
+		ResolverPath: status.Local.ResolverPath, CAPath: status.Local.CAPath,
+		CAFingerprint: status.Local.CAFingerprint, PublicVIP: status.Local.PublicIngressVIP,
+		PassthroughVIP: status.Local.PassthroughIngressVIP, SSOIssuer: contract.Issuer(),
 		AdministratorURL: issuer.Scheme + "://" + issuer.Host + "/auth/admin/master/console/",
-		Username:         admin.Username, Password: admin.Password,
+		Username:         admin.Username, Password: projection.AdministratorPassword(),
 		BrowserGroups: groups, ProtocolEndpoints: protocol,
 		UncategorizedWebApps: applications,
 	})
@@ -138,8 +167,8 @@ func applicationAccessName(application identity.Application) string {
 		return "Policy Reporter"
 	case identity.Harbor:
 		return "Harbor"
-	case identity.OpenBao:
-		return "OpenBao"
+	case identity.Vault:
+		return "Vault"
 	case identity.Prometheus:
 		return "Prometheus"
 	case identity.Alertmanager:

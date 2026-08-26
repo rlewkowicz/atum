@@ -31,14 +31,14 @@ type VerifiedBundle struct {
 // the embedded manifest, and every desired source/chart/image identity against
 // the current project lock in one pass over the potentially large artifact.
 func VerifyBundle(project *config.Project, artifactPath, sidecarPath string) (VerifiedBundle, error) {
-	if project == nil || project.Lock.Bundle == nil {
-		return VerifiedBundle{}, errors.New("current root lock has no deployment bundle")
+	if project == nil || project.ExecutionBundle == nil {
+		return VerifiedBundle{}, errors.New("local deployment receipt has no bundle")
 	}
-	expectedArtifact, err := fssecure.Resolve(project.Root, project.Lock.Bundle.File, false)
+	expectedArtifact, err := fssecure.Resolve(project.Root, project.ExecutionBundle.File, false)
 	if err != nil {
 		return VerifiedBundle{}, fmt.Errorf("resolve locked deployment bundle: %w", err)
 	}
-	expectedSidecarRelative := strings.TrimSuffix(project.Lock.Bundle.File, ".tar") + ".lock.json"
+	expectedSidecarRelative := strings.TrimSuffix(project.ExecutionBundle.File, ".tar") + ".lock.json"
 	expectedSidecar, err := fssecure.Resolve(project.Root, expectedSidecarRelative, false)
 	if err != nil {
 		return VerifiedBundle{}, fmt.Errorf("resolve locked deployment bundle sidecar: %w", err)
@@ -87,7 +87,7 @@ func VerifyBundle(project *config.Project, artifactPath, sidecarPath string) (Ve
 	if artifactBase != expectedBase || filepath.Base(sidecarPath) != strings.TrimSuffix(expectedBase, ".tar")+".lock.json" {
 		return VerifiedBundle{}, errors.New("deployment bundle artifact or sidecar filename does not match its identity")
 	}
-	artifact, err := fssecure.OpenRegular(project.Root, project.Lock.Bundle.File)
+	artifact, err := fssecure.OpenRegular(project.Root, project.ExecutionBundle.File)
 	if err != nil {
 		return VerifiedBundle{}, fmt.Errorf("open deployment bundle artifact: %w", err)
 	}
@@ -121,9 +121,9 @@ func VerifyBundle(project *config.Project, artifactPath, sidecarPath string) (Ve
 
 func sidecarMatchesLock(project *config.Project, sidecar bundleSidecar) bool {
 	return sidecar.SchemaVersion == bundleLockSchema &&
-		sidecar.Artifact.File == project.Lock.Bundle.File &&
-		sidecar.Artifact.SHA256 == project.Lock.Bundle.SHA256 &&
-		sidecar.Artifact.Size == project.Lock.Bundle.Size &&
-		sidecar.Bundle.Source.SnapshotSHA256 == project.Lock.Bundle.AtumSourceSHA256 &&
-		validArchive(sidecar.Artifact, project.Lock.Bundle.File)
+		sidecar.Artifact.File == project.ExecutionBundle.File &&
+		sidecar.Artifact.SHA256 == project.ExecutionBundle.SHA256 &&
+		sidecar.Artifact.Size == project.ExecutionBundle.Size &&
+		sidecar.Bundle.Source.SnapshotSHA256 == project.ExecutionBundle.AtumSourceSHA256 &&
+		validArchive(sidecar.Artifact, project.ExecutionBundle.File)
 }

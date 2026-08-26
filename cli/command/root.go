@@ -338,6 +338,7 @@ func (a *app) pullCommand() *cobra.Command {
 		Short: "Resolve declarative upstream updates",
 	}
 	var check bool
+	var parallelism int
 	updates := &cobra.Command{
 		Use:         "updates [bigbang-commit]",
 		Short:       "Resolve stable compatible upstream releases into Atum state",
@@ -350,7 +351,9 @@ func (a *app) pullCommand() *cobra.Command {
 			}
 			service := update.NewService(a.root, a.logger)
 			result, err := service.Pull(cmd.Context(), update.Options{
-				Check: check || a.dryRun, BigBangCommit: bigBangCommit,
+				Check:         check || a.dryRun,
+				BigBangCommit: bigBangCommit,
+				Parallelism:   parallelism,
 			})
 			if err != nil {
 				return err
@@ -374,6 +377,7 @@ func (a *app) pullCommand() *cobra.Command {
 		}),
 	}
 	updates.Flags().BoolVar(&check, "check", false, "report available updates without changing tracked files")
+	updates.Flags().IntVar(&parallelism, "parallelism", 0, "maximum concurrent update workers (defaults to atum.json, capped at 24 CPUs)")
 	pull.AddCommand(updates)
 	return pull
 }
@@ -646,6 +650,8 @@ func (a *app) applyCommand() *cobra.Command {
 						return tui.Completion{}, err
 					}
 					defer handoff.Clear()
+					service.RootCAPEM = handoff.RootCAPEM()
+					defer clear(service.RootCAPEM)
 					if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
 						return tui.Completion{}, err
 					}
@@ -777,17 +783,21 @@ func (a *app) runFullConvergence(
 	applyPlatform := func() error {
 		return platformService.ApplySeeded(ctx, handoff, options)
 	}
-	if err := a.convergeOrchestration(
+	platformApplied, err := a.convergeOrchestration(
 		ctx,
 		service,
 		a.orchestrationInventoryPath(),
 		nil,
 		orchestration.FullConvergence,
 		applyPlatform,
-	); err != nil {
+	)
+	if err != nil {
 		progress.Finish(ctx, progress.Orchestration, progress.Failed, err.Error())
 		return err
 	}
 	progress.Finish(ctx, progress.Orchestration, progress.Complete, "cluster healthy")
+	if platformApplied {
+		return nil
+	}
 	return applyPlatform()
 }

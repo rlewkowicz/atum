@@ -9,7 +9,6 @@ scopes:
 groupClaim: groups
 administrator:
   username: atum
-  password: atum
   group: atum-admins
   serverRole: admin
 additionalEndpoints:
@@ -87,13 +86,13 @@ clients:
     callbacks:
       - https://harbor.atum.test/c/oidc/callback
     administratorMapping: oidc-admin-group
-  - id: atum-openbao
-    application: openbao
+  - id: atum-vault
+    application: vault
     type: confidential
     host: vault.atum.test
     category: identity
     integration: flux-reconciliation
-    secretPurpose: openbao
+    secretPurpose: vault
     callbacks:
       - https://vault.atum.test/ui/vault/auth/oidc/oidc/callback
     administratorMapping: administrator-policy

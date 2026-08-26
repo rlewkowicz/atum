@@ -2,7 +2,6 @@ package orchestration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -13,13 +12,6 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-)
-
-const (
-	identityNamespace = "kube-system"
-	identityName      = "atum-system"
-	identitySchema    = "atum.dev/cluster-identity/v1"
 )
 
 var (
@@ -28,7 +20,6 @@ var (
 )
 
 type UpgradeOrder string
-
 type ConvergenceMode uint8
 
 const (
@@ -51,11 +42,7 @@ type ClusterState struct {
 	RecordedKubernetes  string
 	KubesprayVersion    string
 	KubesprayCommit     string
-	BigBangVersion      string
-	BigBangCommit       string
-	PlatformConstraints []config.CompatibilityConstraint
 	OrchestrationSHA256 string
-	Phase               string
 	TargetKubernetes    string
 }
 
@@ -70,29 +57,12 @@ type UpgradePlan struct {
 
 type clusterClient = kube.Observer
 
-func (service Service) RecordPlatform(ctx context.Context) error {
-	client, state, err := service.validatedPlatformState(ctx)
-	if err != nil {
-		return err
-	}
-	if err := service.validateLiveBigBang(ctx, client, service.Project.Desired.Platform.BigBang.Version, service.Project.Desired.Platform.BigBang.Commit); err != nil {
-		return err
-	}
-	state.BigBangVersion = service.Project.Desired.Platform.BigBang.Version
-	state.BigBangCommit = service.Project.Desired.Platform.BigBang.Commit
-	state.PlatformConstraints = append(
-		[]config.CompatibilityConstraint(nil),
-		service.Project.Lock.Compatibility.Constraints...,
-	)
-	return service.writeIdentity(ctx, state, nil)
-}
-
 func (service Service) ValidatePlatformPrerequisites(ctx context.Context) error {
 	client, state, err := service.validatedPlatformState(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = service.bigBangTransition(ctx, client, state)
+	_, err = service.bigBangObservation(ctx, client)
 	return err
 }
 
@@ -115,9 +85,6 @@ func (service Service) validatedPlatformState(ctx context.Context) (*clusterClie
 }
 
 func (service Service) validatePlatformState(state ClusterState) error {
-	if state.Phase != "ready" {
-		return fmt.Errorf("platform mutation requires a ready Kubernetes identity, found phase %q", state.Phase)
-	}
 	if err := service.validateClusterIdentity(state); err != nil {
 		return err
 	}
@@ -133,9 +100,13 @@ func (service Service) validatePlatformState(state ClusterState) error {
 }
 
 func (service Service) validateClusterIdentity(state ClusterState) error {
+	if state.RecordedKubernetes != state.Kubernetes {
+		return fmt.Errorf("orchestration receipt records Kubernetes %q but the API server reports %s", state.RecordedKubernetes, state.Kubernetes)
+	}
 	release, tracked := releaseForKubernetes(service.Project.Desired.Orchestration.Releases, state.Kubernetes)
-	if !tracked || state.KubesprayVersion != release.Kubespray.Version || state.KubesprayCommit != release.Kubespray.Commit {
-		return fmt.Errorf("Kubernetes %s has no exact committed Kubespray identity", state.Kubernetes)
+	if !tracked || state.KubesprayVersion != release.Kubespray.Version ||
+		state.KubesprayCommit != release.Kubespray.Commit {
+		return fmt.Errorf("Kubernetes %s has no exact committed Kubespray receipt", state.Kubernetes)
 	}
 	return nil
 }
@@ -143,12 +114,7 @@ func (service Service) validateClusterIdentity(state ClusterState) error {
 func (service Service) clusterClient() (*clusterClient, error) {
 	kubeconfig := service.environment("KUBECONFIG")
 	if kubeconfig == "" {
-		kubeconfig = filepath.Join(
-			service.Project.Root,
-			service.Project.Desired.Orchestration.Inventory,
-			"artifacts",
-			"admin.conf",
-		)
+		kubeconfig = filepath.Join(service.Project.Root, service.Project.Desired.Orchestration.Inventory, "artifacts", "admin.conf")
 	}
 	client, err := kube.New(kubeconfig)
 	if errors.Is(err, kube.ErrKubeconfigAbsent) {
@@ -173,164 +139,60 @@ func (service Service) discoverState(ctx context.Context, client *clusterClient)
 		return ClusterState{}, err
 	}
 	state := ClusterState{Kubernetes: kubernetesVersion}
-	identity, found, err := client.ConfigMapData(ctx, identityNamespace, identityName)
-	if err == nil && found {
-		if identity["schemaVersion"] != identitySchema || identity["cluster"] != service.Project.Desired.Project.Cluster {
-			return ClusterState{}, errors.New("live atum-system identity belongs to an unsupported schema or cluster")
-		}
-		state.KubesprayVersion = identity["kubesprayVersion"]
-		state.KubesprayCommit = identity["kubesprayCommit"]
-		state.RecordedKubernetes = identity["kubernetes"]
-		state.BigBangVersion = identity["bigBangVersion"]
-		state.BigBangCommit = identity["bigBangCommit"]
-		state.OrchestrationSHA256 = identity["orchestrationSha256"]
-		if err := json.Unmarshal([]byte(identity["platformConstraints"]), &state.PlatformConstraints); err != nil {
-			return ClusterState{}, fmt.Errorf("decode live platform constraints: %w", err)
-		}
-		state.Phase = identity["phase"]
-		state.TargetKubernetes = identity["targetKubernetes"]
-		if err := service.validateDiscoveredIdentity(state); err != nil {
-			return ClusterState{}, err
-		}
+	receipt, found, err := service.readOrchestrationReceipt()
+	if err != nil {
+		return ClusterState{}, err
+	}
+	if !found {
 		return state, nil
 	}
-	if err != nil {
-		return ClusterState{}, fmt.Errorf("read live cluster identity: %w", err)
+	state.RecordedKubernetes = receipt.Kubernetes
+	state.KubesprayVersion = receipt.KubesprayVersion
+	state.KubesprayCommit = receipt.KubesprayCommit
+	state.OrchestrationSHA256 = receipt.OrchestrationSHA256
+	state.TargetKubernetes = receipt.NextKubernetes
+	if state.RecordedKubernetes != state.Kubernetes && state.TargetKubernetes != state.Kubernetes {
+		return ClusterState{}, fmt.Errorf(
+			"orchestration receipt records Kubernetes %q with checkpoint %q but the API server reports %s",
+			state.RecordedKubernetes, state.TargetKubernetes, state.Kubernetes,
+		)
 	}
 	return state, nil
 }
 
-func (service Service) validateDiscoveredIdentity(state ClusterState) error {
-	if state.RecordedKubernetes == "" ||
-		(state.RecordedKubernetes != state.Kubernetes && state.TargetKubernetes != state.Kubernetes) {
-		return fmt.Errorf("live identity records Kubernetes %q but the API server reports %s", state.RecordedKubernetes, state.Kubernetes)
-	}
-	bigBangFields := 0
-	for _, value := range [...]string{state.BigBangVersion, state.BigBangCommit} {
-		if value != "" {
-			bigBangFields++
-		}
-	}
-	if bigBangFields != 0 && bigBangFields != 2 {
-		return errors.New("live cluster identity has an incomplete Big Bang source")
-	}
-	if (bigBangFields == 0) != (len(state.PlatformConstraints) == 0) {
-		return errors.New("live cluster identity has an incomplete platform compatibility record")
-	}
-	if _, err := parsePlatformConstraints(state.PlatformConstraints); err != nil {
-		return fmt.Errorf("validate live platform constraints: %w", err)
-	}
-	if state.OrchestrationSHA256 != "" && !validCheckpointSHA256(state.OrchestrationSHA256) {
-		return errors.New("live cluster identity has an invalid orchestration input SHA-256")
-	}
-	switch state.Phase {
-	case "ready":
-		if state.TargetKubernetes != "" {
-			return errors.New("ready cluster identity retains an upgrade target")
-		}
-	case "upgrading":
-		if state.TargetKubernetes == "" {
-			return errors.New("upgrading cluster identity has no target Kubernetes release")
-		}
-		releases := service.Project.Desired.Orchestration.Releases
-		recordedIndex := releaseIndex(releases, state.RecordedKubernetes)
-		targetIndex := releaseIndex(releases, state.TargetKubernetes)
-		if recordedIndex < 0 || targetIndex != recordedIndex+1 {
-			return fmt.Errorf("upgrading cluster identity does not advance one exact release from %s to %s", state.RecordedKubernetes, state.TargetKubernetes)
-		}
-	default:
-		return fmt.Errorf("live cluster identity has unsupported phase %q", state.Phase)
-	}
-	return nil
-}
-
-func (service Service) bigBangTransition(ctx context.Context, client *clusterClient, state ClusterState) (bool, error) {
-	live, err := service.liveBigBang(ctx, client)
+func (service Service) bigBangObservation(
+	ctx context.Context,
+	client *clusterClient,
+) (kube.FluxRootObservation, error) {
+	artifact, err := service.bigBangArtifact()
 	if err != nil {
-		return false, err
+		return kube.FluxRootObservation{}, err
 	}
-	if live == nil {
-		if state.BigBangVersion == "" {
-			return false, nil
-		}
-		return false, errors.New("recorded Big Bang source is absent from the live cluster")
-	}
-	if state.BigBangVersion != "" && liveBigBangIdentityMatches(live, state.BigBangVersion, state.BigBangCommit) {
-		return false, validateLiveBigBangSource(live, state.BigBangVersion, state.BigBangCommit)
-	}
-	desired := service.Project.Desired.Platform.BigBang
-	if liveBigBangIdentityMatches(live, desired.Version, desired.Commit) {
-		// An exact desired ref with incomplete readiness is a known interrupted
-		// platform handoff. The platform convergence path owns the bounded Flux
-		// wait and records the new identity only after the source is Ready.
-		return state.BigBangVersion != desired.Version || state.BigBangCommit != desired.Commit, nil
-	}
-	return false, errors.New("live Big Bang source matches neither the recorded nor desired immutable source")
-}
-
-func (service Service) validateLiveBigBang(ctx context.Context, client *clusterClient, version, commit string) error {
-	live, err := service.liveBigBang(ctx, client)
+	url, tag, err := artifact.FluxOCITarget()
 	if err != nil {
-		return err
+		return kube.FluxRootObservation{}, err
 	}
-	if live == nil {
-		return errors.New("recorded Big Bang source is absent from the live cluster")
-	}
-	return validateLiveBigBangSource(live, version, commit)
-}
-
-func (service Service) liveBigBang(ctx context.Context, client *clusterClient) (*kube.Object, error) {
-	repository, found, err := client.GetResource(ctx, kube.GitRepository, "bigbang", "bigbang")
-	if !found && err == nil {
-		return nil, nil
-	}
+	observation, err := client.ObserveFluxHelmRoot(
+		ctx,
+		"bigbang",
+		"bigbang",
+		kube.FluxRootTarget{URL: url, Tag: tag},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("read live Big Bang source: %w", err)
+		return kube.FluxRootObservation{}, err
 	}
-	return repository, nil
+	return observation, nil
 }
 
-func validateLiveBigBangSource(repository *kube.Object, version, commit string) error {
-	ref, found, err := unstructured.NestedStringMap(repository.Object, "spec", "ref")
-	if err != nil || !found || ref["tag"] != version || ref["commit"] != commit {
-		return fmt.Errorf("live Big Bang source does not match recorded tag %s at %s", version, commit)
-	}
-	revision, found, err := unstructured.NestedString(repository.Object, "status", "artifact", "revision")
-	if err != nil || !found || (revision != commit && !strings.HasSuffix(revision, ":"+commit)) {
-		return fmt.Errorf("live Big Bang source has not fetched recorded commit %s", commit)
-	}
-	conditions, found, err := unstructured.NestedSlice(repository.Object, "status", "conditions")
-	if err != nil || !found {
-		return errors.New("live Big Bang source has no readiness status")
-	}
-	for _, raw := range conditions {
-		condition, ok := raw.(map[string]any)
-		if !ok || condition["type"] != "Ready" || condition["status"] != "True" {
-			continue
-		}
-		observed, _, _ := unstructured.NestedInt64(condition, "observedGeneration")
-		if observed == repository.GetGeneration() {
-			return nil
-		}
-	}
-	return errors.New("live Big Bang source is not Ready at its current generation")
+func (service Service) bigBangArtifact() (config.ChartArtifact, error) {
+	return service.Project.BigBangArtifact()
 }
 
-func liveBigBangIdentityMatches(repository *kube.Object, version, commit string) bool {
-	ref, found, err := unstructured.NestedStringMap(repository.Object, "spec", "ref")
-	return err == nil && found && ref["tag"] == version && ref["commit"] == commit
-}
-
-func (service Service) identityForRelease(release config.ClusterRelease, previous ClusterState) ClusterState {
+func (service Service) receiptForRelease(release config.ClusterRelease, previous ClusterState) ClusterState {
 	return ClusterState{
-		Kubernetes:          release.Kubernetes,
-		KubesprayVersion:    release.Kubespray.Version,
-		KubesprayCommit:     release.Kubespray.Commit,
-		BigBangVersion:      previous.BigBangVersion,
-		BigBangCommit:       previous.BigBangCommit,
-		PlatformConstraints: append([]config.CompatibilityConstraint(nil), previous.PlatformConstraints...),
+		Kubernetes: release.Kubernetes, RecordedKubernetes: release.Kubernetes,
+		KubesprayVersion: release.Kubespray.Version, KubesprayCommit: release.Kubespray.Commit,
 		OrchestrationSHA256: previous.OrchestrationSHA256,
-		Phase:               "ready",
 	}
 }
 

@@ -67,14 +67,18 @@ func (a *app) accessCommand() *cobra.Command {
 	}
 	for _, action := range []string{"install", "status", "uninstall"} {
 		action := action
-		command.AddCommand(&cobra.Command{
+		subcommand := &cobra.Command{
 			Use:   action,
 			Short: action + " local workstation access",
 			Args:  cobra.NoArgs,
 			RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 				return a.runAccessAction(cmd.Context(), action)
 			}),
-		})
+		}
+		if action == "status" {
+			subcommand.Annotations = map[string]string{"atum.dev/read-only": "true"}
+		}
+		command.AddCommand(subcommand)
 	}
 	return command
 }
@@ -237,7 +241,7 @@ func (a *app) runAccessAction(ctx context.Context, action string) error {
 		return err
 	}
 	if !local {
-		return errors.New("active cloud profile has no workstation access configuration")
+		return errors.New("active target has no supported local workstation access configuration")
 	}
 	switch action {
 	case "status":
@@ -370,7 +374,7 @@ func (a *app) observePlatformHostAccessWithDNS(
 	status *platform.Status,
 	dns *infra.AccessStatus,
 ) error {
-	if status == nil || !status.LoadBalancerRequired {
+	if status == nil || !status.Local.Required {
 		return nil
 	}
 	facts, local, err := a.localAccessFacts()
@@ -392,19 +396,20 @@ func (a *app) observePlatformHostAccessWithDNS(
 	if err != nil {
 		return err
 	}
-	status.HostAccessObserved = true
-	status.ResolverPath = host.ResolverPath
-	status.ResolverReady = host.DNSExact()
-	status.PublicDNSReady = host.PublicLookupExact
-	status.PassthroughDNSReady = host.PassthroughLookupsExact
-	status.LocalDNSReady = status.ResolverReady &&
-		status.PublicDNSReady && status.PassthroughDNSReady
-	status.CAPath = host.AnchorPath
-	status.CAFingerprint = host.AnchorFingerprint
-	status.CATrustReady = host.AnchorPresent && status.RootCAFingerprint != "" &&
-		host.AnchorFingerprint == status.RootCAFingerprint
+	status.Local.HostAccessObserved = true
+	status.Local.ResolverPath = host.ResolverPath
+	status.Local.ResolverReady = host.DNSExact()
+	status.Local.PublicDNSReady = host.PublicLookupExact
+	status.Local.PassthroughDNSReady = host.PassthroughLookupsExact
+	status.Local.LocalDNSReady = status.Local.ResolverReady &&
+		status.Local.PublicDNSReady && status.Local.PassthroughDNSReady
+	status.Local.CAPath = host.AnchorPath
+	status.Local.CAFingerprint = host.AnchorFingerprint
+	status.Local.CATrustReady = host.AnchorPresent &&
+		status.Local.RootCAFingerprint != "" &&
+		host.AnchorFingerprint == status.Local.RootCAFingerprint
 	if dns == nil {
-		if status.LocalDNSReady {
+		if status.Local.LocalDNSReady {
 			progress.Done(ctx, progress.Platform, "local-dns", "Local DNS",
 				"resolver and public/passthrough lookups exact")
 		} else {
@@ -412,7 +417,7 @@ func (a *app) observePlatformHostAccessWithDNS(
 				errors.New("resolver, public DNS, or exact passthrough DNS not exact"))
 		}
 	}
-	if status.CATrustReady {
+	if status.Local.CATrustReady {
 		progress.Done(ctx, progress.Platform, "local-certificates", "Local certificates",
 			"host CA trust fingerprint exact")
 	} else {

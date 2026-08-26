@@ -11,20 +11,3 @@ type: Opaque
 stringData:
   values.yaml: |
 {{ indent 4 .Values }}
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: atum-sso-ca
-  namespace: bigbang
-spec:
-  commonName: sso-ca.bigbang
-  dnsNames:
-    - sso-ca.bigbang
-  duration: 8760h
-  renewBefore: 720h
-  issuerRef:
-    group: cert-manager.io
-    kind: ClusterIssuer
-    name: atum-test-ca
-  secretName: atum-sso-ca

@@ -52,7 +52,7 @@ Terraform validates that every declared address belongs to the network, that sta
 
 For the local profile, Atum passes the active target's access settings into Terraform explicitly. Terraform owns the libvirt dnsmasq service and emits one `atum.test` wildcard rule for the public gateway plus sorted exact rules such as `keycloak.atum.test` for the passthrough gateway. The internal libvirt domain remains `atum.local`; it is independent from the application domain.
 
-The CLI, not Terraform, owns workstation resolver integration. It points the workstation's routed `atum.test` domain at the Terraform-owned DNS server without editing `/etc/hosts`. Cloud targets have no local-access settings, receive no local DNS Terraform variables, and perform no workstation resolver integration.
+The CLI, not Terraform, owns workstation resolver integration. It points the workstation's routed `atum.test` domain at the Terraform-owned DNS server without editing `/etc/hosts`. Standalone remote Terraform modules have no local-access settings, receive no local DNS Terraform variables, and perform no workstation resolver integration.
 
 Inspect, install, or remove only the workstation integration with:
 
@@ -67,8 +67,8 @@ distribution-specific `atum-test-ca.crt` trust anchor after validating the
 in-cluster public CA. Uninstall removes only exact Atum-managed files. A
 successful local apply verifies wildcard and passthrough DNS, the `.20` and
 `.21` ingress addresses, certificate validity, and host trust before printing
-application URLs. The cloud profile deploys neither kube-vip nor the local
-issuers and never prompts for workstation access.
+application URLs. Standalone remote Terraform modules never prompt for
+workstation access.
 
 Kubespray installs Cilium only. The overlay enables kube-proxy replacement, native routing with auto direct node routes, BPF masquerading, dynamic BPF map sizing, and Cilium bandwidth manager. NodeLocal DNS is disabled so Big Bang network policies allow DNS through the CoreDNS Service instead of a link-local node cache. The local overlay pins the Cilium operator and CoreDNS to one replica for the current singleton platform shape while keeping the replica knobs explicit for HA overlays. This local network is a single L2 segment so direct node routes work without a tunnel fallback.
 

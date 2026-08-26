@@ -70,24 +70,26 @@ func (service *Service) bundleSeed(
 		return imageErr
 	})
 	group.Go(func() error {
-		asset := project.Desired.Delivery.Seed.Harbor.Installer
-		cached, fetchErr := update.FetchSeedAsset(groupContext, project.Root, asset)
-		if fetchErr != nil {
+		return runDeliveryWorker(groupContext, func() error {
+			asset := project.Desired.Delivery.Seed.Harbor.Installer
+			cached, fetchErr := update.FetchSeedAsset(groupContext, project.Root, asset)
+			if fetchErr != nil {
+				return fetchErr
+			}
+			relative, relativeErr := filepath.Rel(project.Root, cached)
+			if relativeErr != nil {
+				return relativeErr
+			}
+			installer, fetchErr = copyVerified(
+				project.Root,
+				relative,
+				filepath.Join(seedRoot, asset.File),
+				asset.File,
+				asset.SHA256,
+				config.SeedAssetLimit,
+			)
 			return fetchErr
-		}
-		relative, relativeErr := filepath.Rel(project.Root, cached)
-		if relativeErr != nil {
-			return relativeErr
-		}
-		installer, fetchErr = copyVerified(
-			project.Root,
-			relative,
-			filepath.Join(seedRoot, asset.File),
-			asset.File,
-			asset.SHA256,
-			config.SeedAssetLimit,
-		)
-		return fetchErr
+		})
 	})
 	if err := group.Wait(); err != nil {
 		return bundleSeed{}, err
@@ -148,11 +150,12 @@ func (service *Service) bundleSeedImages(
 		lockedByID[image.ID] = image
 	}
 	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(max(1, parallelism))
+	group.SetLimit(effectiveParallelism(parallelism, 0))
 	for index, image := range images {
 		index, image := index, image
 		group.Go(func() error {
-			if local != nil {
+			return runDeliveryWorker(groupContext, func() error {
+				if local != nil {
 				locked, lockedFound := lockedByID[image.ID]
 				output, outputFound := local.mirrors[image.ID]
 				if lockedFound && outputFound && locked.Digest == image.Digest && locked.Delivery.Type == "mirror" &&
@@ -177,7 +180,8 @@ func (service *Service) bundleSeedImages(
 				return fmt.Errorf("validate seed image %s: %w", image.ID, err)
 			}
 			inputs[index] = dockerArchiveImage{Reference: image.Source, Descriptor: descriptor, Store: extraStore}
-			return nil
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {

@@ -21,7 +21,7 @@ func (a *app) platformCommand() *cobra.Command {
 	var prepareOptions platform.PrepareOptions
 	prepare := &cobra.Command{
 		Use:   "prepare",
-		Short: "Import and publish the exact deployment bundle and converge preparation services",
+		Short: "Publish exact seed artifacts and bootstrap Flux from Forgejo main",
 		Args:  cobra.NoArgs,
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			return a.withDashboard(cmd.Context(), "platform prepare", tui.ScopePlatform, func(ctx context.Context) error {
@@ -81,7 +81,7 @@ func (a *app) platformCommand() *cobra.Command {
 					if err != nil {
 						return tui.Completion{}, err
 					}
-					return a.platformCompletion(status)
+					return a.platformCompletion(ctx, status)
 				})
 		}),
 	}
@@ -93,9 +93,10 @@ func (a *app) platformCommand() *cobra.Command {
 	)
 
 	status := &cobra.Command{
-		Use:   "status",
-		Short: "Report exact active-profile, workload, source, and local-access readiness",
-		Args:  cobra.NoArgs,
+		Use:         "status",
+		Short:       "Report native Flux, delivery, and local-integration status",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"atum.dev/read-only": "true"},
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			result, err := a.platformService().Status(cmd.Context())
 			if err != nil {
@@ -109,8 +110,14 @@ func (a *app) platformCommand() *cobra.Command {
 			if err := encoder.Encode(result); err != nil {
 				return err
 			}
-			if !result.Ready() {
-				return errors.New("platform is not fully converged")
+			if !result.Reconciliation.Complete() {
+				return errors.New("Flux reconciliation is incomplete")
+			}
+			if !result.Delivery.Compliant() {
+				return errors.New("platform delivery compliance is incomplete")
+			}
+			if !result.Local.Exact() {
+				return errors.New("local platform integration is incomplete")
 			}
 			return nil
 		}),
@@ -162,5 +169,6 @@ func (a *app) platformService() platform.Service {
 		DryRun:        a.dryRun,
 		Out:           a.out,
 		Orchestration: &orchestrationService,
+		SOPS:          a.sops,
 	}
 }

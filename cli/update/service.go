@@ -12,12 +12,15 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	"atum/cli/gitcache"
 	"atum/cli/identity"
+	"atum/cli/orchestration"
+	"atum/cli/progress"
 
 	"github.com/Masterminds/semver/v3"
 	"golang.org/x/sync/errgroup"
@@ -34,6 +37,7 @@ type Service struct {
 type Options struct {
 	Check         bool
 	BigBangCommit string
+	Parallelism   int
 }
 
 type Result struct {
@@ -78,6 +82,20 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	if options.Parallelism < 0 || options.Parallelism > 24 {
+		return Result{}, fmt.Errorf(
+			"update parallelism %d must be zero or between 1 and 24",
+			options.Parallelism,
+		)
+	}
+	if options.Parallelism != 0 {
+		desired.Updates.Parallelism = options.Parallelism
+	}
+	previousImages := make(map[string]config.Image, len(desired.Delivery.Images))
+	for index := range desired.Delivery.Images {
+		image := desired.Delivery.Images[index]
+		previousImages[image.ID] = image
+	}
 	initialImageTargets := imageTargetsByID(desired.Delivery.Images)
 	resetRenderedImageInventory(&desired)
 	currentClusterTarget, err := desired.Orchestration.TargetRelease()
@@ -104,7 +122,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if !bytes.Equal(desiredSnapshot, project.DesiredData) || !bytes.Equal(lockSnapshot, project.LockData) {
 		return Result{}, errors.New("declarative state changed while the updater was loading it; retry without discarding the concurrent edit")
 	}
-	managedFiles := tree.Files()
+	managedFiles := tree.filesView()
+	obsoleteChartPaths, err := canonicalizeGenericChartInventory(&desired)
+	if err != nil {
+		return Result{}, err
+	}
 	identityContract, err := loadCandidateIdentity(tree, desired)
 	if err != nil {
 		return Result{}, err
@@ -113,7 +135,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	parallelism := desired.Updates.Parallelism
+	parallelism := config.EffectiveWorkLimit(
+		options.Parallelism,
+		desired.Updates.Parallelism,
+		config.DefaultWorkLimit,
+	)
 	if len(desired.Platform.Flux.Assets) != 1 || desired.Platform.Flux.Assets[0].ID != "install-manifest" {
 		return Result{}, errors.New("Flux source must define exactly one install-manifest asset")
 	}
@@ -155,9 +181,17 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	service.logger.InfoContext(ctx, "resolving stable upstream Git releases")
+	progress.Update(ctx, progress.Platform, "update-releases", "Upstream releases",
+		"resolving stable release candidates", 0, 3)
 	var bigBang, kubespray, flux resolvedGit
 	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(3)
+	group.SetLimit(min(parallelism, 3))
+	var resolvedSources atomic.Int64
+	reportResolvedSource := func(id string) {
+		completed := int(resolvedSources.Add(1))
+		progress.Update(ctx, progress.Platform, "update-releases", "Upstream releases",
+			"resolved stable source "+id, completed, 3)
+	}
 	group.Go(func() error {
 		var resolveErr error
 		if historicalBigBang {
@@ -167,21 +201,35 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		} else {
 			bigBang, resolveErr = resolveLatestGit(groupContext, service.cache, "bigbang", desired.Platform.BigBang)
 		}
+		if resolveErr == nil {
+			reportResolvedSource("bigbang")
+		}
 		return resolveErr
 	})
 	group.Go(func() error {
 		var resolveErr error
 		kubespray, resolveErr = resolveLatestGit(groupContext, service.cache, "kubespray", clusterResolutionFloor.Kubespray)
+		if resolveErr == nil {
+			reportResolvedSource("kubespray")
+		}
 		return resolveErr
 	})
 	group.Go(func() error {
 		var resolveErr error
 		flux, resolveErr = resolveLatestGit(groupContext, service.cache, "flux", desired.Platform.Flux)
+		if resolveErr == nil {
+			reportResolvedSource("flux")
+		}
 		return resolveErr
 	})
 	if err := group.Wait(); err != nil {
 		return Result{}, err
 	}
+	service.logger.InfoContext(ctx, "resolved stable upstream Git releases",
+		"completed", 3, "total", 3,
+		"bigBangCandidates", len(bigBang.Releases),
+		"kubesprayCandidates", len(kubespray.Releases),
+		"fluxCandidates", len(flux.Releases))
 	bigBangDefaults, err := readBigBangValues(bigBang.Checkout)
 	if err != nil {
 		return Result{}, fmt.Errorf("read Big Bang %s values: %w", bigBang.Source.Version, err)
@@ -218,7 +266,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	var bootstrapChartCatalogs []*chartCatalog
 	var vendors []resolvedVendor
 	group, groupContext = errgroup.WithContext(ctx)
-	group.SetLimit(3)
+	group.SetLimit(min(parallelism, 3))
 	group.Go(func() error {
 		var resolveErr error
 		vendors, resolveErr = resolveVendors(groupContext, service.cache, service.root, parallelism, desired.Platform.Vendors)
@@ -311,6 +359,18 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	fluxReplacements, err := renderedImageTargetReplacements(desired.Delivery.Images)
+	if err != nil {
+		return Result{}, err
+	}
+	for _, replacement := range fluxReplacements {
+		fluxManifest = bytes.ReplaceAll(
+			fluxManifest,
+			[]byte(replacement.Old),
+			[]byte(replacement.New),
+		)
+	}
+	desired.Platform.Flux.Assets[0].SHA256 = config.SHA256(fluxManifest)
 	if err := replaceImageReferences(candidateGenerated, replacements); err != nil {
 		return Result{}, err
 	}
@@ -324,6 +384,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	candidateBigBangHelmRelease := cloneMap(currentBigBangHelmRelease)
 	if err := configurePlatformValuesFrom(candidateBigBangHelmRelease); err != nil {
+		return Result{}, err
+	}
+	if err := configureBigBangChartRef(
+		candidateBigBangHelmRelease,
+		desired.Platform.Bootstrap.Registry,
+		desired.Platform.BigBang.Version,
+	); err != nil {
 		return Result{}, err
 	}
 	if err := setCandidateYAML(
@@ -360,6 +427,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	candidateFluxKustomization := cloneMap(fluxKustomization)
+	delete(candidateFluxKustomization, "images")
 	if err := replaceImageReferences(candidateFluxKustomization, replacements); err != nil {
 		return Result{}, err
 	}
@@ -410,6 +478,10 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 			return Result{}, err
 		}
 	}
+	service.logger.InfoContext(ctx, "rendering exact applied Helm contracts",
+		"completed", 0, "total", len(artifacts), "parallelism", parallelism)
+	progress.Update(ctx, progress.Platform, "update-exact-render", "Exact applied rendering",
+		"rendering exact applied Helm contracts", 0, len(artifacts))
 	finalArtifacts, finalInspections, err := inspectAppliedArtifacts(
 		ctx,
 		parallelism,
@@ -421,18 +493,151 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		profileRenderValues,
 		bootstrapValues,
 		artifacts,
-		tree.Files(),
+		tree.filesView(),
+		func(id string, completed, total int) {
+			service.logger.InfoContext(ctx, "rendered exact applied Helm contract",
+				"artifact", id, "completed", completed, "total", total)
+			progress.Update(
+				ctx,
+				progress.Platform,
+				"update-exact-render",
+				"Exact applied rendering",
+				"rendered exact applied chart "+id,
+				completed,
+				total,
+			)
+		},
 	)
 	if err != nil {
 		return Result{}, err
 	}
+	chartInputs, err := selectedChartPackageInputs(
+		bigBang, packages, supportSources, trackedCharts, bootstrapCharts, finalArtifacts,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	service.logger.InfoContext(ctx, "packaging immutable Helm chart inventory",
+		"completed", 0, "total", len(chartInputs), "parallelism", parallelism)
+	progress.Update(ctx, progress.Platform, "update-charts", "Chart packaging",
+		"packaging immutable Helm charts", 0, len(chartInputs))
+	lockedCharts, err := packageChartInventory(
+		ctx,
+		service.root,
+		desired.Platform.Bootstrap.Registry,
+		parallelism,
+		chartInputs,
+		func(completed, total int) {
+			service.logger.InfoContext(ctx, "packaged immutable Helm chart inventory",
+				"completed", completed, "total", total)
+			progress.Update(ctx, progress.Platform, "update-charts", "Chart packaging",
+				"packaged immutable Helm charts", completed, total)
+		},
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	packagedByID := make(map[string]config.ChartArtifact, len(lockedCharts))
+	for index := range lockedCharts {
+		packagedByID[lockedCharts[index].ID] = lockedCharts[index]
+	}
+	for index := range finalArtifacts {
+		packaged, exists := packagedByID[finalArtifacts[index].ID]
+		if !exists {
+			return Result{}, fmt.Errorf("packaged chart inventory is missing %s", finalArtifacts[index].ID)
+		}
+		finalArtifacts[index].Path = filepath.Join(service.root, filepath.FromSlash(packaged.File))
+	}
+	service.logger.InfoContext(ctx, "rendering exact packaged Helm contracts",
+		"completed", 0, "total", len(finalArtifacts), "parallelism", parallelism)
+	progress.Update(ctx, progress.Platform, "update-packaged-render", "Packaged chart rendering",
+		"rendering exact packaged Helm contracts", 0, len(finalArtifacts))
+	finalInspections, err = inspectArtifacts(
+		ctx,
+		parallelism,
+		selectedKubernetes.Version,
+		finalArtifacts,
+		func(id string, completed, total int) {
+			service.logger.InfoContext(ctx, "rendered exact packaged Helm contract",
+				"artifact", id, "completed", completed, "total", total)
+			progress.Update(
+				ctx,
+				progress.Platform,
+				"update-packaged-render",
+				"Packaged chart rendering",
+				"rendered exact packaged chart "+id,
+				completed,
+				total,
+			)
+		},
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("render exact packaged chart inventory: %w", err)
+	}
 	finalArtifacts = append(finalArtifacts, chartArtifact{ID: "flux"})
 	finalInspections = append(finalInspections, finalFluxInspection)
+	renderContractsUnchanged :=
+		reflect.DeepEqual(project.Desired.Platform.Sources, desired.Platform.Sources) &&
+			reflect.DeepEqual(project.Desired.Platform.BigBang, desired.Platform.BigBang) &&
+			reflect.DeepEqual(project.Desired.Platform.Flux, desired.Platform.Flux) &&
+			reflect.DeepEqual(project.Desired.Platform.Packages, desired.Platform.Packages) &&
+			reflect.DeepEqual(project.Desired.Platform.Charts, desired.Platform.Charts) &&
+			reflect.DeepEqual(project.Desired.Platform.Bootstrap, desired.Platform.Bootstrap) &&
+			reflect.DeepEqual(project.Desired.Delivery.Policy, desired.Delivery.Policy) &&
+			reflect.DeepEqual(currentGenerated, candidateGenerated) &&
+			currentClusterTarget.Kubernetes == selectedKubernetes.Version &&
+			reflect.DeepEqual(currentClusterTarget.Checksums, selectedKubernetes.Checksums) &&
+			reflect.DeepEqual(currentBigBangHelmRelease, candidateBigBangHelmRelease) &&
+			reflect.DeepEqual(fluxKustomization, candidateFluxKustomization) &&
+			reflect.DeepEqual(currentFluxProfilePatch, candidateFluxProfilePatch) &&
+			bytes.Equal(
+				managedFiles[project.Desired.Platform.Flux.Assets[0].File],
+				fluxManifest,
+			)
+	if renderContractsUnchanged {
+		for _, chart := range desired.Platform.Bootstrap.Charts {
+			currentValues, valuesErr := readManagedYAML(
+				service.root,
+				managedFiles,
+				chart.Values,
+			)
+			if valuesErr != nil {
+				return Result{}, valuesErr
+			}
+			if !reflect.DeepEqual(currentValues, bootstrapValues[chart.ID]) {
+				renderContractsUnchanged = false
+				break
+			}
+		}
+	}
+	service.logger.InfoContext(ctx, "verifying official image runtime contracts",
+		"images", len(desired.Delivery.Images),
+		"parallelism", parallelism,
+		"reuse", renderContractsUnchanged,
+	)
+	progress.Update(ctx, progress.Platform, "update-images", "Image admission",
+		"verifying official image runtime contracts", 0, len(desired.Delivery.Images))
+	lastAdmissionProgress := 0
 	if err := admitFinalRenderedImages(
 		ctx,
+		parallelism,
 		&desired,
 		finalArtifacts,
 		finalInspections,
+		previousImages,
+		renderContractsUnchanged,
+		func(completed, total int) {
+			if completed <= lastAdmissionProgress {
+				return
+			}
+			lastAdmissionProgress = completed
+			service.logger.InfoContext(ctx, "verified official image runtime contracts",
+				"completed", completed,
+				"total", total,
+			)
+			progress.Update(ctx, progress.Platform, "update-images", "Image admission",
+				"verified official image runtime contracts", completed, total)
+		},
 	); err != nil {
 		return Result{}, err
 	}
@@ -443,14 +648,14 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err := tree.Set(buildGraphFile, buildGraph); err != nil {
 		return Result{}, err
 	}
-	service.logger.InfoContext(ctx, "resolving public linux/amd64 image digests")
+	service.logger.InfoContext(ctx, "finalizing public linux/amd64 image digests")
 	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
 		return Result{}, err
 	}
 	candidateProject := *project
 	candidateProject.Desired = desired
 	candidateProject.Lock = lock
-	graphSHA, err := config.DeliveryGraphSHA256WithFiles(&candidateProject, lock.Delivery.Profile, tree.Files())
+	graphSHA, err := config.DeliveryGraphSHA256WithFiles(&candidateProject, lock.Delivery.Profile, tree.filesView())
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve candidate delivery graph: %w", err)
 	}
@@ -466,6 +671,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		Packages:        desired.Platform.Packages,
 		SupportSources:  supportSourceValues(supportSources),
 		Charts:          desired.Platform.Charts,
+		Artifacts:       lockedCharts,
 		Vendors:         desired.Platform.Vendors,
 		Bootstrap:       desired.Platform.Bootstrap,
 	}
@@ -520,8 +726,12 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err := setCandidateYAML(tree, desired.Platform.Values.Generated, currentGenerated, candidateGenerated); err != nil {
 		return Result{}, err
 	}
+	rootChart, exists := packagedByID["bigbang"]
+	if !exists {
+		return Result{}, errors.New("locked chart inventory has no Big Bang root")
+	}
 	bigBangSource, err := bigBangSourceValues(
-		service.root, desired.Platform.Sources, desired.Platform.BigBang, tree.Files())
+		service.root, desired.Platform.Bootstrap.Registry, rootChart, tree.filesView())
 	if err != nil {
 		return Result{}, err
 	}
@@ -531,6 +741,25 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	if err := setCandidateYAML(tree, "platform/apps/bigbang/source-bigbang.yaml", currentBigBangSource, bigBangSource); err != nil {
 		return Result{}, err
+	}
+	if err := removeKustomizationResources(
+		tree,
+		"platform/apps/bigbang/kustomization.yaml",
+		[]string{"source-opensearch.yaml", "source-opensearch-operator.yaml"},
+	); err != nil {
+		return Result{}, err
+	}
+	if err := removeKustomizationResources(
+		tree,
+		"platform/apps/prep/kustomization.yaml",
+		[]string{"cert-manager"},
+	); err != nil {
+		return Result{}, err
+	}
+	for _, path := range obsoleteChartPaths {
+		if err := tree.Delete(path); err != nil {
+			return Result{}, err
+		}
 	}
 	for _, chart := range desired.Platform.Bootstrap.Charts {
 		currentValues, err := tree.YAML(chart.Values)
@@ -603,13 +832,130 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 func trackedChartDiscoveryValues(charts []config.TrackedChart) (map[string]any, error) {
 	values := make(map[string]any)
 	for _, chart := range charts {
-		entry, err := ensureNestedMap(values, chart.ValuesPath+".helmRepo")
-		if err != nil {
+		if err := projectGenericChartDefaults(values, chart); err != nil {
+			return nil, err
+		}
+		if err := pinChartRepository(
+			values,
+			chart.ValuesPath,
+			chart.Name,
+			chart.Version,
+		); err != nil {
 			return nil, fmt.Errorf("prepare chart %s discovery values: %w", chart.ID, err)
 		}
-		entry["tag"] = chart.Version
 	}
 	return values, nil
+}
+
+func canonicalizeGenericChartInventory(desired *config.Document) ([]string, error) {
+	if desired == nil {
+		return nil, errors.New("desired state is required")
+	}
+	obsolete := []string{
+		"platform/apps/bigbang/source-opensearch.yaml",
+		"platform/apps/bigbang/source-opensearch-operator.yaml",
+	}
+	certManagerIndex := -1
+	for index := range desired.Platform.Charts {
+		chart := &desired.Platform.Charts[index]
+		if chart.ID == "cert-manager" {
+			certManagerIndex = index
+		}
+	}
+	bootstrap := desired.Platform.Bootstrap.Charts[:0]
+	for index := range desired.Platform.Bootstrap.Charts {
+		chart := desired.Platform.Bootstrap.Charts[index]
+		if chart.ID != "cert-manager" {
+			bootstrap = append(bootstrap, chart)
+			continue
+		}
+		if certManagerIndex >= 0 {
+			return nil, errors.New("cert-manager is duplicated across bootstrap and generic chart inventories")
+		}
+		if len(chart.Profiles) != 0 {
+			return nil, errors.New("cert-manager generic package cannot be profile-scoped")
+		}
+		desired.Platform.Charts = append(desired.Platform.Charts, config.TrackedChart{
+			ID:            chart.ID,
+			Name:          chart.Name,
+			ValuesPath:    "packages.cert-manager",
+			Version:       chart.Version,
+			AppVersion:    chart.AppVersion,
+			License:       chart.License,
+			KubeVersion:   chart.KubeVersion,
+			Source:        chart.Source,
+			ArchiveSHA256: chart.ArchiveSHA256,
+		})
+		certManagerIndex = len(desired.Platform.Charts) - 1
+		directory := filepath.Dir(chart.Values)
+		obsolete = append(
+			obsolete,
+			chart.Values,
+			chart.FluxSource,
+			filepath.Join(directory, "helmrelease.yaml"),
+			filepath.Join(directory, "kustomization.yaml"),
+			filepath.Join(directory, "namespace.yaml"),
+		)
+	}
+	desired.Platform.Bootstrap.Charts = bootstrap
+	if certManagerIndex < 0 {
+		return nil, errors.New("canonical generic chart inventory has no cert-manager")
+	}
+	sort.Slice(desired.Platform.Charts, func(i, j int) bool {
+		return desired.Platform.Charts[i].ID < desired.Platform.Charts[j].ID
+	})
+	sort.Strings(obsolete)
+	return slices.Compact(obsolete), nil
+}
+
+func projectGenericChartDefaults(values map[string]any, chart config.TrackedChart) error {
+	if chart.ID != "cert-manager" {
+		return nil
+	}
+	entry, err := ensureNestedMap(values, chart.ValuesPath)
+	if err != nil {
+		return fmt.Errorf("prepare chart %s generic values: %w", chart.ID, err)
+	}
+	entry["enabled"] = true
+	entry["namespace"] = map[string]any{
+		"name": "cert-manager",
+	}
+	entry["istio"] = map[string]any{
+		"injection": "disabled",
+	}
+	chartValues, err := ensureNestedMap(values, chart.ValuesPath+".values")
+	if err != nil {
+		return fmt.Errorf("prepare chart %s public values: %w", chart.ID, err)
+	}
+	chartValues["crds"] = map[string]any{"enabled": true}
+	return nil
+}
+
+func removeKustomizationResources(
+	tree *candidateTree,
+	path string,
+	obsolete []string,
+) error {
+	current, err := tree.YAML(path)
+	if err != nil {
+		return err
+	}
+	resources, _ := current["resources"].([]any)
+	remove := make(map[string]struct{}, len(obsolete))
+	for _, resource := range obsolete {
+		remove[resource] = struct{}{}
+	}
+	filtered := make([]any, 0, len(resources))
+	for _, raw := range resources {
+		resource, _ := raw.(string)
+		if _, found := remove[resource]; found {
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+	candidate := cloneMap(current)
+	candidate["resources"] = filtered
+	return setCandidateYAML(tree, path, current, candidate)
 }
 
 func (service *Service) lock(ctx context.Context) (func(), error) {
@@ -689,24 +1035,41 @@ func buildReleaseLadder(
 	if candidate.Major() != terminal.Major() {
 		return nil, fmt.Errorf("selected Kubernetes %s changes major version from %s", candidate, terminal)
 	}
-	for minor := terminal.Minor() + 1; minor <= candidate.Minor(); minor++ {
-		found := false
-		for _, step := range candidates {
-			version, _ := semver.NewVersion(step.kubernetes.Version)
-			if version.Major() != terminal.Major() || version.Minor() != minor {
-				continue
-			}
-			result = append(result, config.ClusterRelease{
-				Kubernetes: step.kubernetes.Version,
-				Kubespray:  step.kubespray.Source,
-				Checksums:  step.kubernetes.Checksums,
-			})
-			found = true
-			break
+	type releaseCoordinate struct {
+		major uint64
+		minor uint64
+	}
+	byCoordinate := make(map[releaseCoordinate]kubernetesCandidate, len(candidates))
+	for _, step := range candidates {
+		version, parseErr := semver.NewVersion(step.kubernetes.Version)
+		if parseErr != nil {
+			return nil, fmt.Errorf(
+				"parse compatible Kubernetes release %s: %w",
+				step.kubernetes.Version,
+				parseErr,
+			)
 		}
+		coordinate := releaseCoordinate{
+			major: version.Major(),
+			minor: version.Minor(),
+		}
+		if _, exists := byCoordinate[coordinate]; !exists {
+			byCoordinate[coordinate] = step
+		}
+	}
+	for minor := terminal.Minor() + 1; minor <= candidate.Minor(); minor++ {
+		step, found := byCoordinate[releaseCoordinate{
+			major: terminal.Major(),
+			minor: minor,
+		}]
 		if !found {
 			return nil, fmt.Errorf("no exact Kubespray release is compatible with Kubernetes %d.%d", terminal.Major(), minor)
 		}
+		result = append(result, config.ClusterRelease{
+			Kubernetes: step.kubernetes.Version,
+			Kubespray:  step.kubespray.Source,
+			Checksums:  step.kubernetes.Checksums,
+		})
 	}
 	return result, nil
 }
@@ -753,12 +1116,18 @@ func (service *Service) resolveKubernetesCandidates(
 		if err != nil && !errors.Is(err, errNoCompatibleKubernetes) {
 			return nil, err
 		}
+		oidcImplementationErr := validateKubesprayOIDCImplementation(
+			candidate.Checkout,
+		)
 		kubesprayVersion, err := semver.NewVersion(strings.TrimPrefix(candidate.Source.Version, "v"))
 		if err != nil {
 			return nil, err
 		}
 		for _, kubernetes := range compatible {
-			if err := validateKubesprayOIDCLifecycle(candidate.Checkout, kubernetes.Version); err != nil {
+			_, apiErr := orchestration.AuthenticationConfigAPIVersion(
+				kubernetes.Version,
+			)
+			if err := errors.Join(apiErr, oidcImplementationErr); err != nil {
 				oidcFailures = append(oidcFailures,
 					candidate.Source.Version+"/Kubernetes "+kubernetes.Version+": "+err.Error())
 				continue
@@ -910,7 +1279,7 @@ func (service *Service) selectCompatiblePlatform(
 	}
 	candidate.Source.KubeVersion = metadata.KubeVersion
 	effectiveValues := mergeValues(bigBangValues, configuredValues)
-	if err := verifyTrackedChartBindings(service.root, effectiveValues, desired.Platform.Bootstrap.Registry, desired.Platform.Charts, files); err != nil {
+	if err := verifyTrackedChartBindings(effectiveValues, desired.Platform.Charts); err != nil {
 		return platformSelection{}, fmt.Errorf("Big Bang %s chart sources: %w", candidate.Source.Version, err)
 	}
 	candidatePlatform := admitted.platform
@@ -1015,7 +1384,7 @@ func (service *Service) selectCompatiblePlatform(
 			candidateGenerated := cloneMap(generated)
 			if err := updateGeneratedVersions(
 				candidateGenerated,
-				attemptDesired.Platform.Sources,
+				attemptDesired.Platform.Bootstrap.Registry,
 				packages,
 				supportSources,
 				trackedCharts,
@@ -1032,20 +1401,9 @@ func (service *Service) selectCompatiblePlatform(
 					"merge platform values for %s: %w", coordinate, err,
 				)
 			}
-			candidateRenderValues, err := sourceVersionValues(
-				candidateConfiguredValues,
-				attemptDesired.Platform.Sources,
-				attemptDesired.Platform.Packages,
-				supportSourceValues(supportSources),
-				attemptDesired.Platform.Charts,
-			)
-			if err != nil {
-				return platformSelection{}, fmt.Errorf(
-					"prepare source values for %s: %w", coordinate, err,
-				)
-			}
+			candidateRenderValues := cloneMap(candidateConfiguredValues)
 			candidateInputs, err := candidateArtifacts(
-				candidate, attemptDesired.Platform.Sources, attemptDesired.Platform.Bootstrap.Registry,
+				candidate, attemptDesired.Platform.Bootstrap.Registry,
 				packages, trackedCharts, bootstrapCharts, candidateRenderValues, service.root, files,
 			)
 			if err != nil {
@@ -1065,8 +1423,24 @@ func (service *Service) selectCompatiblePlatform(
 				"attempt", attempt,
 				"candidates", len(artifacts),
 			)
+			progress.Update(ctx, progress.Platform, "update-render", "Candidate rendering",
+				"rendering candidate Helm contracts", 0, len(artifacts))
 			inspections, err := inspectArtifacts(
-				ctx, min(parallelism, 4), kubernetesCandidate.kubernetes.Version, artifacts,
+				ctx,
+				parallelism,
+				kubernetesCandidate.kubernetes.Version,
+				artifacts,
+				func(id string, completed, total int) {
+					progress.Update(
+						ctx,
+						progress.Platform,
+						"update-render",
+						"Candidate rendering",
+						"rendered candidate chart "+id,
+						completed,
+						total,
+					)
+				},
 			)
 			if err != nil {
 				var renderErr *artifactRenderError
@@ -1182,95 +1556,64 @@ func lockConstraints(constraints []versionConstraint) []config.CompatibilityCons
 
 func updateGeneratedVersions(
 	generated map[string]any,
-	sources config.SourceRegistry,
+	registry config.Registry,
 	packages []resolvedPackage,
 	supportSources []resolvedSupportSource,
 	charts []resolvedTrackedChart,
 ) error {
 	delete(generated, "wrapper")
+	generated["offline"] = true
+	generated["helmRepositories"] = []any{map[string]any{
+		"name":       "atum",
+		"repository": "oci://" + registry.Host + "/" + registry.Project,
+		"type":       "oci",
+	}}
 	for _, pkg := range packages {
-		if err := pinPackageSource(generated, sources, pkg.Package); err != nil {
+		if err := pinChartRepository(
+			generated, pkg.Package.ValuesPath,
+			pkg.ChartName, pkg.Package.Source.Version,
+		); err != nil {
 			return fmt.Errorf("update generated package %s source: %w", pkg.Package.ID, err)
 		}
 	}
 	for _, support := range supportSources {
-		if err := pinSupportSource(generated, sources, support.Support); err != nil {
+		if err := pinChartRepository(
+			generated, support.Support.ValuesPath,
+			support.Support.ID, support.Support.Source.Version,
+		); err != nil {
 			return fmt.Errorf("update generated support source %s: %w", support.Support.ID, err)
 		}
 	}
 	for _, chart := range charts {
-		if err := setNestedValue(generated, chart.Chart.ValuesPath+".helmRepo.tag", chart.Chart.Version); err != nil {
-			return fmt.Errorf("update generated chart %s: %w", chart.Chart.ID, err)
+		if err := projectGenericChartDefaults(generated, chart.Chart); err != nil {
+			return err
+		}
+		if err := pinChartRepository(
+			generated,
+			chart.Chart.ValuesPath,
+			chart.Chart.Name,
+			chart.Chart.Version,
+		); err != nil {
+			return fmt.Errorf("update generated chart %s source: %w", chart.Chart.ID, err)
 		}
 	}
 	return nil
 }
 
-func sourceVersionValues(
-	operational map[string]any,
-	sources config.SourceRegistry,
-	packages []config.Package,
-	supportSources []config.SupportSource,
-	charts []config.TrackedChart,
-) (map[string]any, error) {
-	values := cloneMap(operational)
-	for _, pkg := range packages {
-		if err := pinPackageSource(values, sources, pkg); err != nil {
-			return nil, fmt.Errorf("pin package source %s: %w", pkg.ID, err)
-		}
+func pinChartRepository(
+	values map[string]any,
+	valuesPath, chartName, version string,
+) error {
+	entry, err := ensureNestedMap(values, valuesPath)
+	if err != nil {
+		return err
 	}
-	for _, support := range supportSources {
-		if err := pinSupportSource(values, sources, support); err != nil {
-			return nil, fmt.Errorf("pin support source %s: %w", support.ID, err)
-		}
-	}
-	for _, chart := range charts {
-		if err := setNestedValue(values, chart.ValuesPath+".helmRepo.tag", chart.Version); err != nil {
-			return nil, fmt.Errorf("pin chart source %s: %w", chart.ID, err)
-		}
-	}
-	return values, nil
-}
-
-func pinPackageSource(values map[string]any, sources config.SourceRegistry, pkg config.Package) error {
-	fields := [...]struct {
-		name  string
-		value string
-	}{
-		{name: "repo", value: internalSourceURL(sources, sources.UpstreamOrganization, pkg.ID)},
-		{name: "tag", value: ""},
-		{name: "semver", value: pkg.Source.Version},
-		{name: "branch", value: pkg.Source.Branch},
-		{name: "commit", value: pkg.Source.Commit},
-		{name: "path", value: pkg.RepositoryChartPath()},
-	}
-	for _, field := range fields {
-		if err := setNestedValue(values, pkg.ValuesPath+".git."+field.name, field.value); err != nil {
-			return fmt.Errorf("set %s: %w", field.name, err)
-		}
-	}
-	return nil
-}
-
-func pinSupportSource(values map[string]any, sources config.SourceRegistry, support config.SupportSource) error {
-	if err := setNestedValue(values, support.ValuesPath+".sourceType", "git"); err != nil {
-		return fmt.Errorf("set sourceType: %w", err)
-	}
-	fields := [...]struct {
-		name  string
-		value string
-	}{
-		{name: "repo", value: internalSourceURL(sources, sources.UpstreamOrganization, support.ID)},
-		{name: "tag", value: ""},
-		{name: "semver", value: support.Source.Version},
-		{name: "branch", value: support.Source.Branch},
-		{name: "commit", value: support.Source.Commit},
-		{name: "path", value: support.ChartPath},
-	}
-	for _, field := range fields {
-		if err := setNestedValue(values, support.ValuesPath+".git."+field.name, field.value); err != nil {
-			return fmt.Errorf("set %s: %w", field.name, err)
-		}
+	delete(entry, "git")
+	entry["sourceType"] = "helmRepo"
+	entry["helmRepo"] = map[string]any{
+		"repoName": "atum",
+		"chartName": chartName,
+		"tag": version,
 	}
 	return nil
 }
@@ -1349,6 +1692,29 @@ func compactReplacements(replacements []imageReplacement) ([]imageReplacement, e
 		}
 		byOld[replacement.Old] = replacement.New
 	}
+	resolved := make(map[string]string, len(byOld))
+	state := make(map[string]uint8, len(byOld))
+	var resolve func(string) (string, error)
+	resolve = func(old string) (string, error) {
+		if final, exists := resolved[old]; exists {
+			return final, nil
+		}
+		if state[old] == 1 {
+			return "", fmt.Errorf("image replacement cycle includes %s", old)
+		}
+		state[old] = 1
+		final := byOld[old]
+		if _, chained := byOld[final]; chained {
+			var err error
+			final, err = resolve(final)
+			if err != nil {
+				return "", err
+			}
+		}
+		state[old] = 2
+		resolved[old] = final
+		return final, nil
+	}
 	oldReferences := make([]string, 0, len(byOld))
 	for old := range byOld {
 		oldReferences = append(oldReferences, old)
@@ -1356,18 +1722,9 @@ func compactReplacements(replacements []imageReplacement) ([]imageReplacement, e
 	sort.Strings(oldReferences)
 	result := make([]imageReplacement, 0, len(oldReferences))
 	for _, old := range oldReferences {
-		seen := map[string]struct{}{old: {}}
-		final := byOld[old]
-		for {
-			next, exists := byOld[final]
-			if !exists {
-				break
-			}
-			if _, cycle := seen[final]; cycle {
-				return nil, fmt.Errorf("image replacement cycle includes %s", final)
-			}
-			seen[final] = struct{}{}
-			final = next
+		final, err := resolve(old)
+		if err != nil {
+			return nil, err
 		}
 		if old != final {
 			result = append(result, imageReplacement{Old: old, New: final})

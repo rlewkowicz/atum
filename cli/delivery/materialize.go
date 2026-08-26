@@ -21,14 +21,13 @@ import (
 	"atum/cli/fssecure"
 	"atum/cli/progress"
 
-	"golang.org/x/sync/errgroup"
 	"oras.land/oras-go/v2"
 )
 
 const materializeMemberLimit = 2_000_000
 
-// MaterializeLockedBundle resolves and verifies the canonical bundle selected
-// by the root lock before exposing any of its cache-backed payloads.
+// MaterializeLockedBundle resolves and verifies the bundle selected by the
+// current ignored execution receipt before exposing cache-backed payloads.
 func MaterializeLockedBundle(ctx context.Context, project *config.Project) (bundle *DeploymentBundle, err error) {
 	const (
 		itemID = "bundle-materialization"
@@ -46,9 +45,9 @@ func MaterializeLockedBundle(ctx context.Context, project *config.Project) (bund
 	if project == nil {
 		return nil, errors.New("Atum project is not loaded")
 	}
-	locked := project.Lock.Bundle
+	locked := project.ExecutionBundle
 	if locked == nil {
-		return nil, errors.New("root lock has no deployment bundle")
+		return nil, errors.New("local deployment receipt has no bundle")
 	}
 	artifact, err := fssecure.Resolve(project.Root, locked.File, false)
 	if err != nil {
@@ -68,10 +67,8 @@ func MaterializeLockedBundle(ctx context.Context, project *config.Project) (bund
 type DeploymentBundle struct {
 	Identity      VerifiedBundle
 	SourceRoot    string
-	Repositories  []BundleRepository
 	Images        []BundleImage
 	Charts        []BundleChart
-	FluxAssets    []BundleFile
 	SeedPayload   BundleFile
 	SourceTag     string
 	SourceCommit  string
@@ -79,14 +76,6 @@ type DeploymentBundle struct {
 	ArchiveSHA256 string
 	imageStore    oras.ReadOnlyTarget
 	runtimeImages map[string]map[string]struct{}
-}
-
-type BundleRepository struct {
-	ID      string
-	URL     string
-	Version string
-	Commit  string
-	Path    string
 }
 
 type BundleImage struct {
@@ -148,6 +137,9 @@ func MaterializeBundle(
 	project *config.Project,
 	artifactPath, sidecarPath string,
 ) (*DeploymentBundle, error) {
+	ctx = withDeliveryBudget(
+		ctx, effectiveParallelism(0, project.Desired.Updates.Parallelism),
+	)
 	identity, err := VerifyBundle(project, artifactPath, sidecarPath)
 	if err != nil {
 		return nil, err
@@ -179,8 +171,10 @@ func MaterializeBundle(
 		store, runtimeImages, imageErr := validateMaterializedImages(ctx, project.Root, cacheRelative, sidecar.Bundle)
 		if imageErr == nil {
 			progress.Update(ctx, progress.Platform, "bundle-materialization", "Bundle materialization",
-				"refreshing exact source snapshots", 0, len(sidecar.Bundle.Source.Repositories)+1)
-			if err := refreshMaterializedSources(ctx, project.Root, cacheRelative, sidecar.Bundle, project.Desired.Updates.Parallelism); err != nil {
+				"refreshing exact main source", 0, 1)
+			if err := refreshMaterializedSources(
+				project.Root, cacheRelative, sidecar.Bundle,
+			); err != nil {
 				return nil, fmt.Errorf("refresh materialized deployment sources: %w", err)
 			}
 			return deploymentBundle(project.Root, cacheRelative, identity, sidecar.Bundle, store, runtimeImages), nil
@@ -207,8 +201,10 @@ func MaterializeBundle(
 		return nil, err
 	}
 	progress.Update(ctx, progress.Platform, "bundle-materialization", "Bundle materialization",
-		"extracting exact source snapshots", 0, len(sidecar.Bundle.Source.Repositories)+1)
-	if err := refreshMaterializedSources(ctx, project.Root, cacheRelative, sidecar.Bundle, project.Desired.Updates.Parallelism); err != nil {
+		"extracting exact main source", 0, 1)
+	if err := refreshMaterializedSources(
+		project.Root, cacheRelative, sidecar.Bundle,
+	); err != nil {
 		return nil, fmt.Errorf("extract deployment sources: %w", err)
 	}
 	progress.Update(ctx, progress.Platform, "bundle-materialization", "Bundle materialization",
@@ -225,8 +221,8 @@ func MaterializeBundle(
 }
 
 func loadBundleSidecar(project *config.Project, sidecarPath string) (bundleSidecar, error) {
-	if project == nil || project.Lock.Bundle == nil {
-		return bundleSidecar{}, errors.New("current root lock has no deployment bundle")
+	if project == nil || project.ExecutionBundle == nil {
+		return bundleSidecar{}, errors.New("local deployment receipt has no bundle")
 	}
 	relative, err := filepath.Rel(project.Root, sidecarPath)
 	if err != nil {
@@ -300,12 +296,6 @@ func materializedBundleCurrent(root, cacheRelative string, marker []byte, manife
 	for _, chart := range manifest.Charts {
 		required = append(required, filepath.Join(cacheRelative, chart.File))
 	}
-	for _, repository := range manifest.Source.Repositories {
-		required = append(required, filepath.Join(cacheRelative, "repositories", repository.ID, "HEAD"))
-	}
-	for _, asset := range manifest.FluxAssets {
-		required = append(required, filepath.Join(cacheRelative, asset.File))
-	}
 	for _, relative := range required {
 		file, err := fssecure.OpenRegular(root, relative)
 		if err != nil {
@@ -330,21 +320,6 @@ func materializedBundleCurrent(root, cacheRelative string, marker []byte, manife
 		manifest.Seed.Artifact.Size,
 	) {
 		return false
-	}
-	for _, repository := range manifest.Source.Repositories {
-		if !regularFileMatches(
-			root,
-			filepath.Join(cacheRelative, repository.File),
-			repository.SHA256,
-			repository.Size,
-		) {
-			return false
-		}
-	}
-	for _, asset := range manifest.FluxAssets {
-		if !regularFileMatches(root, filepath.Join(cacheRelative, asset.File), asset.SHA256, asset.Size) {
-			return false
-		}
 	}
 	for _, chart := range manifest.Charts {
 		if !regularFileMatches(root, filepath.Join(cacheRelative, chart.File), chart.ArchiveSHA256, chart.Size) {
@@ -371,7 +346,7 @@ func regularFileMatches(root, relative, expectedSHA string, expectedSize int64) 
 		hex.EncodeToString(hash.Sum(nil)) == expectedSHA
 }
 
-func refreshMaterializedSources(ctx context.Context, root, cacheRelative string, manifest bundleManifest, parallelism int) error {
+func refreshMaterializedSources(root, cacheRelative string, manifest bundleManifest) error {
 	if err := extractTreeArchive(
 		root,
 		filepath.Join(cacheRelative, manifest.Source.Atum.File),
@@ -380,26 +355,7 @@ func refreshMaterializedSources(ctx context.Context, root, cacheRelative string,
 	); err != nil {
 		return err
 	}
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(max(1, parallelism))
-	for _, repository := range manifest.Source.Repositories {
-		repository := repository
-		group.Go(func() error {
-			if err := groupContext.Err(); err != nil {
-				return err
-			}
-			if err := extractTreeArchive(
-				root,
-				filepath.Join(cacheRelative, repository.File),
-				filepath.Join(cacheRelative, "repositories", repository.ID),
-				repository.SHA256,
-			); err != nil {
-				return fmt.Errorf("refresh repository %s: %w", repository.ID, err)
-			}
-			return nil
-		})
-	}
-	return group.Wait()
+	return nil
 }
 
 func deploymentBundle(
@@ -419,21 +375,13 @@ func deploymentBundle(
 		ArchiveSHA256: identity.ArchiveSHA256,
 		imageStore:    store,
 		runtimeImages: runtimeImages,
-		Repositories:  make([]BundleRepository, len(manifest.Source.Repositories)),
 		Images:        make([]BundleImage, len(manifest.Images)),
 		Charts:        make([]BundleChart, len(manifest.Charts)),
-		FluxAssets:    make([]BundleFile, len(manifest.FluxAssets)),
 		SeedPayload: BundleFile{
 			Path:   filepath.Join(cacheRoot, manifest.Seed.Artifact.File),
 			SHA256: manifest.Seed.Artifact.SHA256,
 			Size:   manifest.Seed.Artifact.Size,
 		},
-	}
-	for index, repository := range manifest.Source.Repositories {
-		result.Repositories[index] = BundleRepository{
-			ID: repository.ID, URL: repository.URL, Version: repository.Version, Commit: repository.Commit,
-			Path: filepath.Join(cacheRoot, "repositories", repository.ID),
-		}
 	}
 	for index, image := range manifest.Images {
 		result.Images[index] = BundleImage{LockedImage: image.LockedImage, SeedReference: image.SeedReference}
@@ -442,11 +390,6 @@ func deploymentBundle(
 		result.Charts[index] = BundleChart{
 			ID: chart.ID, Name: chart.Name, Version: chart.Version, Target: chart.Target,
 			ArchiveSHA256: chart.ArchiveSHA256, Size: chart.Size, Path: filepath.Join(cacheRoot, chart.File),
-		}
-	}
-	for index, asset := range manifest.FluxAssets {
-		result.FluxAssets[index] = BundleFile{
-			Path: filepath.Join(cacheRoot, asset.File), SHA256: asset.SHA256, Size: asset.Size,
 		}
 	}
 	return result
@@ -484,7 +427,7 @@ func extractOuterBundle(
 	if err != nil {
 		return err
 	}
-	if project.Lock.Bundle == nil || !info.Mode().IsRegular() || info.Size() != project.Lock.Bundle.Size || info.Size() <= 0 {
+	if project.ExecutionBundle == nil || !info.Mode().IsRegular() || info.Size() != project.ExecutionBundle.Size || info.Size() <= 0 {
 		return errors.New("deployment bundle changed before materialization")
 	}
 	archiveHash := sha256.New()
@@ -563,7 +506,7 @@ func extractOuterBundle(
 		return fmt.Errorf("close deployment bundle: %w", err)
 	}
 	closed = true
-	if hex.EncodeToString(archiveHash.Sum(nil)) != project.Lock.Bundle.SHA256 {
+	if hex.EncodeToString(archiveHash.Sum(nil)) != project.ExecutionBundle.SHA256 {
 		return errors.New("deployment bundle changed while it was materialized")
 	}
 	return nil
@@ -609,16 +552,6 @@ func expectedBundleFiles(project *config.Project, manifest bundleManifest) (map[
 	}
 	if err := add(manifest.Seed.Artifact); err != nil {
 		return nil, err
-	}
-	for _, repository := range manifest.Source.Repositories {
-		if err := add(repository.archiveIdentity); err != nil {
-			return nil, err
-		}
-	}
-	for _, asset := range manifest.FluxAssets {
-		if err := add(asset); err != nil {
-			return nil, err
-		}
 	}
 	for _, chart := range manifest.Charts {
 		if err := add(archiveIdentity{File: chart.File, SHA256: chart.ArchiveSHA256, Size: chart.Size}); err != nil {

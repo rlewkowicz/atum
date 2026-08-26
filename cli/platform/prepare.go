@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"atum/cli/delivery"
-	"atum/cli/fssecure"
 	"atum/cli/identity"
-	"atum/cli/kube"
 	"atum/cli/progress"
 	atumsecrets "atum/cli/secrets"
 )
@@ -29,9 +27,11 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 		return err
 	}
 	handoff, err := service.Seed(ctx, bundle, credentials, options)
+	credentials.Clear()
 	if err != nil {
 		return err
 	}
+	defer handoff.Clear()
 	return service.preparePlatform(ctx, handoff, options)
 }
 
@@ -41,10 +41,29 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 type Handoff struct {
 	bundle           *delivery.DeploymentBundle
 	forgejo          *forgejoControl
-	credentials      atumsecrets.Document
 	identityContract *identity.Contract
-	publication      publicationReceipt
-	activated        bool
+	rootCAPEM        []byte
+}
+
+func (handoff *Handoff) Clear() {
+	if handoff == nil {
+		return
+	}
+	if handoff.forgejo != nil {
+		handoff.forgejo.clear()
+	}
+	handoff.bundle = nil
+	handoff.forgejo = nil
+	handoff.identityContract = nil
+	clear(handoff.rootCAPEM)
+	handoff.rootCAPEM = nil
+}
+
+func (handoff *Handoff) RootCAPEM() []byte {
+	if handoff == nil {
+		return nil
+	}
+	return append([]byte(nil), handoff.rootCAPEM...)
 }
 
 // Seed waits for the Terraform-owned bastion services and publishes the exact
@@ -59,9 +78,9 @@ func (service Service) Seed(
 	if err := service.Validate(); err != nil {
 		return nil, err
 	}
-	if bundle == nil || service.Project.Lock.Bundle == nil ||
-		bundle.ArchiveSHA256 != service.Project.Lock.Bundle.SHA256 ||
-		bundle.Identity.ArchiveSHA256 != service.Project.Lock.Bundle.SHA256 {
+	if bundle == nil || service.Project.ExecutionBundle == nil ||
+		bundle.ArchiveSHA256 != service.Project.ExecutionBundle.SHA256 ||
+		bundle.Identity.ArchiveSHA256 != service.Project.ExecutionBundle.SHA256 {
 		return nil, errors.New("exact deployment bundle is required")
 	}
 	if err := credentials.Validate(); err != nil {
@@ -71,6 +90,14 @@ func (service Service) Seed(
 	if err != nil {
 		return nil, err
 	}
+	if err := service.validateFluxSourceBeforePublication(
+		ctx,
+		bundle.SourceRoot,
+		contract,
+		credentials,
+	); err != nil {
+		return nil, err
+	}
 	timeout := timeoutOrDefault(options.Timeout)
 	progress.Start(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", "waiting for bastion registry")
 	registryCredentials, err := service.configureHarbor(ctx, credentials, timeout)
@@ -78,6 +105,7 @@ func (service Service) Seed(
 		progress.Fail(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", err)
 		return nil, err
 	}
+	defer registryCredentials.Clear()
 	progress.Update(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", "publishing exact OCI content", 0, len(bundle.Images)+len(bundle.Charts))
 	if err := service.publishBundle(ctx, bundle, registryCredentials, options.Parallelism); err != nil {
 		progress.Fail(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication", err)
@@ -92,23 +120,57 @@ func (service Service) Seed(
 		return nil, err
 	}
 	progress.Done(ctx, progress.Platform, "forgejo", "Forgejo sources", "immutable sources ready for planner handoff")
-	runtimeImages, err := bundle.RuntimeImageDigests(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("retain seed runtime image receipt: %w", err)
-	}
 	handoff := &Handoff{
 		bundle:           bundle,
 		forgejo:          forgejo,
-		credentials:      credentials,
 		identityContract: contract,
-		publication: publicationReceipt{
-			registry: registryObservation{
-				imageExact: true, chartsExact: true, chartsImmutable: true,
-			},
-			runtimeImages: runtimeImages,
-		},
+		rootCAPEM:        append([]byte(nil), credentials.RootCA.Certificate.Bytes()...),
 	}
 	return handoff, nil
+}
+
+func (service Service) validateFluxSourceBeforePublication(
+	ctx context.Context,
+	sourceRoot string,
+	contract *identity.Contract,
+	credentials atumsecrets.Document,
+) error {
+	stateful, err := credentials.DeriveStatefulProjection()
+	if err != nil {
+		return err
+	}
+	defer stateful.Clear()
+	identityProjection, err := service.deriveIdentityProjection(
+		contract,
+		credentials,
+	)
+	if err != nil {
+		return err
+	}
+	defer identityProjection.Clear()
+	ageIdentity, err := atumsecrets.EnsureFluxAgeIdentity(ctx, service.Project)
+	if err != nil {
+		return err
+	}
+	defer ageIdentity.Clear()
+	rootCADigest, err := credentials.RootCADigest()
+	if err != nil {
+		return err
+	}
+	if err := atumsecrets.ValidateFluxSource(
+		service.Project,
+		sourceRoot,
+		stateful.Digest(),
+		identityProjection.Digest(),
+		rootCADigest,
+		ageIdentity.Recipient(),
+	); err != nil {
+		return fmt.Errorf(
+			"validate exact Flux secret source before publication: %w",
+			err,
+		)
+	}
+	return nil
 }
 
 func (service Service) preparePlatform(
@@ -121,33 +183,17 @@ func (service Service) preparePlatform(
 	}
 	bundle := handoff.bundle
 	timeout := timeoutOrDefault(options.Timeout)
-	client, err := service.cluster()
-	if err != nil {
-		return err
-	}
-	progress.Start(ctx, progress.Platform, "bundle", "Deployment bundle", "importing on cluster nodes")
-	if err := service.importBundle(ctx, bundle); err != nil {
-		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
-		return err
-	}
-	if err := verifyClusterBundle(ctx, client, bundle.Identity); err != nil {
-		progress.Fail(ctx, progress.Platform, "bundle", "Deployment bundle", err)
-		return err
-	}
-	progress.Done(ctx, progress.Platform, "bundle", "Deployment bundle", "exact bundle imported")
-	if handoff.forgejo.fluxToken == "" {
-		token, err := handoff.forgejo.rotateFluxToken()
+	if len(handoff.forgejo.fluxToken) == 0 {
+		token, err := handoff.forgejo.rotateFluxToken(ctx)
 		if err != nil {
 			return fmt.Errorf("rotate Flux read credential at platform handoff: %w", err)
 		}
+		handoff.forgejo.fluxToken.Clear()
 		handoff.forgejo.fluxToken = token
 	}
 
-	if err := service.bootstrapFlux(ctx, client, bundle, handoff, timeout); err != nil {
+	if err := service.bootstrapFlux(ctx, bundle, handoff, timeout); err != nil {
 		progress.Fail(ctx, progress.Platform, "flux", "Flux", err)
-		return err
-	}
-	if err := service.waitPrep(ctx, client, timeout); err != nil {
 		return err
 	}
 	service.logger().InfoContext(ctx, "platform preparation complete", "bundle", bundle.ArchiveSHA256)
@@ -183,7 +229,7 @@ func (service Service) deriveIdentityProjection(
 	}
 	projection, err := identity.Derive(
 		contract,
-		credentials.Identity.Seed,
+		credentials.Identity.Seed.Bytes(),
 		service.Project.Desired.Project.Cluster,
 		target.LocalAccess.Domain,
 	)
@@ -206,14 +252,15 @@ func (service Service) Apply(ctx context.Context, options ApplyOptions) error {
 		return err
 	}
 	handoff, err := service.Seed(ctx, bundle, credentials, PrepareOptions{Timeout: options.Timeout})
+	credentials.Clear()
 	if err != nil {
 		return err
 	}
+	defer handoff.Clear()
 	if err := service.preparePlatform(ctx, handoff, PrepareOptions{Timeout: options.Timeout}); err != nil {
 		return err
 	}
-	return service.applyPlatform(
-		ctx, handoff.bundle, handoff.credentials, handoff.publication, options)
+	return service.applyPlatform(ctx, handoff.bundle, options)
 }
 
 func (service Service) platformInputs(
@@ -225,6 +272,7 @@ func (service Service) platformInputs(
 	}
 	bundle, err := service.deploymentBundle(ctx)
 	if err != nil {
+		credentials.Clear()
 		return atumsecrets.Document{}, nil, err
 	}
 	return credentials, bundle, nil
@@ -240,117 +288,73 @@ func (service Service) ApplySeeded(ctx context.Context, handoff *Handoff, option
 	if err := service.preparePlatform(ctx, handoff, PrepareOptions{Timeout: options.Timeout}); err != nil {
 		return err
 	}
-	return service.applyPlatform(
-		ctx, handoff.bundle, handoff.credentials, handoff.publication, options)
+	return service.applyPlatform(ctx, handoff.bundle, options)
 }
 
 func (service Service) applyPlatform(
 	ctx context.Context,
 	bundle *delivery.DeploymentBundle,
-	credentials atumsecrets.Document,
-	publication publicationReceipt,
 	options ApplyOptions,
 ) error {
 	if bundle == nil {
 		return errors.New("deployment bundle is required")
 	}
 	timeout := timeoutOrDefault(options.Timeout)
-	client, err := service.cluster()
-	if err != nil {
+	if err := service.waitForPlatformReconciliation(ctx, timeout); err != nil {
 		return err
-	}
-	progress.Start(ctx, progress.Platform, "bigbang", "Big Bang", "Flux reconciliation in progress")
-	coordinationContext, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	if err := service.coordinatePlatformApply(
-		coordinationContext, client, bundle, publication,
-	); err != nil {
-		return err
-	}
-	status, err := service.statusWithBundle(ctx, client, bundle, credentials)
-	if err != nil {
-		return fmt.Errorf("verify converged platform: %w", err)
-	}
-	if !status.Ready() {
-		return errors.New("Flux reconciliation completed without satisfying the exact readiness contract")
-	}
-	if err := service.Orchestration.RecordPlatform(ctx); err != nil {
-		return fmt.Errorf("record platform identity: %w", err)
 	}
 	service.logger().InfoContext(ctx, "platform apply complete", "bundle", bundle.ArchiveSHA256)
 	return nil
 }
 
-func joinPlatformObligations(obligations [2]error) error {
-	if obligations[0] == nil && obligations[1] == nil {
-		return nil
-	}
-	if obligations[0] != nil && obligations[1] != nil {
-		if errors.Is(obligations[1], context.Canceled) &&
-			!errors.Is(obligations[0], context.Canceled) {
-			return obligations[0]
-		}
-		if errors.Is(obligations[0], context.Canceled) &&
-			!errors.Is(obligations[1], context.Canceled) {
-			return obligations[1]
-		}
-		return errors.Join(obligations[0], obligations[1])
-	}
-	if obligations[0] != nil {
-		return obligations[0]
-	}
-	if obligations[1] != nil {
-		return obligations[1]
-	}
-	return nil
-}
-
-func (service Service) importBundle(ctx context.Context, bundle *delivery.DeploymentBundle) error {
-	artifactRelative := service.Project.Lock.Bundle.File
-	sidecarRelative := strings.TrimSuffix(artifactRelative, ".tar") + ".lock.json"
-	artifact, err := fssecure.Resolve(service.Project.Root, artifactRelative, false)
+func (service Service) waitForPlatformReconciliation(
+	ctx context.Context,
+	timeout time.Duration,
+) error {
+	client, err := service.cluster()
 	if err != nil {
 		return err
 	}
-	sidecar, err := fssecure.Resolve(service.Project.Root, sidecarRelative, false)
-	if err != nil {
-		return err
-	}
-	inventory := filepath.Join(service.Project.Desired.Orchestration.Inventory, "hosts.yaml")
-	playbook := filepath.Join(service.Project.Desired.Orchestration.Directory, "playbooks", "bundle-import.yml")
-	if err := service.Orchestration.RunAnsible(ctx, progress.Target{
-		Phase: progress.Platform,
-		ID:    "bundle",
-		Label: "Deployment bundle",
-	}, []string{
-		"--inventory", inventory,
-		"--extra-vars", "atum_bundle_archive=" + artifact,
-		"--extra-vars", "atum_bundle_lock=" + sidecar,
-		playbook,
-	}); err != nil {
-		return fmt.Errorf("import deployment bundle %s: %w", bundle.ArchiveSHA256, err)
-	}
-	return nil
-}
-
-func verifyClusterBundle(ctx context.Context, client *kube.Observer, identity delivery.VerifiedBundle) error {
-	current, found, err := client.ConfigMapData(ctx, "kube-system", "atum-bundle")
-	if err != nil {
-		return fmt.Errorf("read cluster deployment bundle identity: %w", err)
-	}
-	if !found {
-		return errors.New("cluster deployment bundle identity is absent")
-	}
-	want := map[string]string{
-		"schemaVersion": identity.SchemaVersion, "archiveSha256": identity.ArchiveSHA256,
-		"desiredSha256": identity.DesiredSHA256, "inventorySha256": identity.InventorySHA256,
-		"graphSha256": identity.GraphSHA256, "lockSha256": identity.LockSHA256,
-		"sourceCommit": identity.SourceCommit,
-	}
-	for key, value := range want {
-		if current[key] != value {
-			return fmt.Errorf("cluster deployment bundle %s is %q, want %q", key, current[key], value)
+	waitContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		status, observeErr := observeFluxReconciliation(
+			waitContext,
+			client,
+			service.Project,
+		)
+		if observeErr == nil && status.Complete() {
+			return nil
+		}
+		select {
+		case <-waitContext.Done():
+			if observeErr != nil {
+				return fmt.Errorf(
+					"wait for native Flux reconciliation: %w: %v",
+					waitContext.Err(),
+					observeErr,
+				)
+			}
+			pending := make([]string, 0, len(status.Kustomizations))
+			if !status.BigBangSource.Ready {
+				pending = append(pending, status.BigBangSource.Name)
+			}
+			if !status.BigBangRelease.Ready {
+				pending = append(pending, status.BigBangRelease.Name)
+			}
+			for _, condition := range status.Kustomizations {
+				if !condition.Ready {
+					pending = append(pending, condition.Name)
+				}
+			}
+			return fmt.Errorf(
+				"wait for native Flux reconciliation: %w: pending %s",
+				waitContext.Err(),
+				strings.Join(pending, ", "),
+			)
+		case <-ticker.C:
 		}
 	}
-	return nil
 }

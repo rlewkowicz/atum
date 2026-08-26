@@ -18,8 +18,8 @@ import (
 const fluxComponents = "source-controller,kustomize-controller,helm-controller,notification-controller"
 
 // bootstrapFlux is deliberately linear. Flux bootstrap owns controller
-// installation and the root source; Atum owns only the publication, credential,
-// and source-activation handoffs that must precede it.
+// installation and the root source; Atum owns only exact source publication,
+// credentials, and the SOPS key projection that must precede reconciliation.
 func (service Service) bootstrapFlux(
 	ctx context.Context,
 	bundle *delivery.DeploymentBundle,
@@ -45,6 +45,8 @@ func (service Service) bootstrapFlux(
 		"clusters",
 		service.Project.Desired.Project.Cluster,
 	))
+	registry := strings.TrimSuffix(service.Project.Desired.Delivery.Registry.Host, "/") +
+		"/" + strings.Trim(service.Project.Desired.Delivery.Registry.Project, "/")
 	environment := []string{"KUBECONFIG=" + service.kubeconfig()}
 
 	progress.Start(ctx, progress.Platform, "flux", "Flux", "checking bootstrap prerequisites")
@@ -82,10 +84,16 @@ func (service Service) bootstrapFlux(
 		return err
 	}
 	defer ageIdentity.Clear()
+	rootCADigest, err := credentials.RootCADigest()
+	if err != nil {
+		return err
+	}
 	if err := atumsecrets.ValidateFluxSource(
 		service.Project,
+		bundle.SourceRoot,
 		statefulProjection.Digest(),
 		identityProjection.Digest(),
+		rootCADigest,
 		ageIdentity.Recipient(),
 	); err != nil {
 		return fmt.Errorf("validate declarative Flux secret source: %w", err)
@@ -94,26 +102,6 @@ func (service Service) bootstrapFlux(
 	identityProjection.Clear()
 	credentials.Clear()
 
-	progress.Update(ctx, progress.Platform, "forgejo", "Forgejo sources",
-		"activating exact platform and upstream source snapshots", 0, len(bundle.Repositories)+1)
-	if err := forgejo.activateAtumSource(
-		ctx, bundle, sources.Organization, sources.Repository,
-	); err != nil {
-		return fmt.Errorf("activate exact platform source: %w", err)
-	}
-	if err := forgejo.activateUpstreams(
-		ctx,
-		bundle.Repositories,
-		sources.UpstreamOrganization,
-		service.Project.Desired.Updates.Parallelism,
-	); err != nil {
-		return fmt.Errorf("activate exact upstream sources: %w", err)
-	}
-	if err := forgejo.waitExactBranch(
-		ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
-	); err != nil {
-		return fmt.Errorf("verify deployed platform source: %w", err)
-	}
 	fluxEnvironment := []string{
 		"GIT_PASSWORD=" + string(forgejo.fluxToken.Bytes()),
 		"KUBECONFIG=" + service.kubeconfig(),
@@ -122,10 +110,11 @@ func (service Service) bootstrapFlux(
 		"bootstrap", "git",
 		"--url=" + repositoryURL,
 		"--username=" + forgejo.username,
-		"--branch=" + deployedBranch,
+		"--branch=main",
 		"--path=" + clusterPath,
 		"--version=" + version,
 		"--components=" + fluxComponents,
+		"--registry=" + registry,
 		"--allow-insecure-http",
 		"--token-auth",
 		"--silent",
@@ -138,45 +127,15 @@ func (service Service) bootstrapFlux(
 		return fmt.Errorf("bootstrap Flux from exact Forgejo source: %w", fluxErr)
 	}
 	if err := forgejo.waitExactBranch(
-		ctx, sources.Organization, sources.Repository, deployedBranch, bundle.SourceCommit,
+		ctx, sources.Organization, sources.Repository, "main", bundle.SourceCommit,
 	); err != nil {
-		return fmt.Errorf("Flux bootstrap changed the declarative source branch: %w", err)
+		return fmt.Errorf("Flux bootstrap changed the declarative main source: %w", err)
 	}
 	if err := service.Orchestration.ProjectFluxSOPSIdentity(ctx, ageIdentity); err != nil {
 		return err
 	}
 	ageIdentity.Clear()
-	if err := service.reconcileFluxKustomization(
-		ctx, "platform-secrets", timeout,
-	); err != nil {
-		return err
-	}
-	if err := service.reconcileFluxKustomization(ctx, "flux-system", timeout); err != nil {
-		return err
-	}
-	progress.Done(ctx, progress.Platform, "flux", "Flux", "bootstrap source reconciled")
-	return nil
-}
-
-func (service Service) reconcileFluxKustomization(
-	ctx context.Context,
-	name string,
-	timeout time.Duration,
-) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("Flux Kustomization name is required")
-	}
-	progress.Start(ctx, progress.Platform, "flux-"+name, "Flux "+name, "reconciling native dependency graph")
-	if err := service.runFlux(ctx, []string{
-		"reconcile", "kustomization", name,
-		"--namespace=flux-system",
-		"--with-source",
-		"--timeout=" + timeout.String(),
-	}, []string{"KUBECONFIG=" + service.kubeconfig()}); err != nil {
-		progress.Fail(ctx, progress.Platform, "flux-"+name, "Flux "+name, err)
-		return fmt.Errorf("reconcile Flux Kustomization %s: %w", name, err)
-	}
-	progress.Done(ctx, progress.Platform, "flux-"+name, "Flux "+name, "native Ready condition reached")
+	progress.Done(ctx, progress.Platform, "flux", "Flux", "bootstrap installed from exact main source")
 	return nil
 }
 

@@ -46,11 +46,14 @@
       "additionalProperties": false,
       "required": ["active", "targets"],
       "properties": {
-        "active": {"$ref": "#/$defs/nonEmpty"},
+        "active": {"const": "local"},
         "targets": {
           "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/infrastructureTarget"}
+          "additionalProperties": false,
+          "required": ["local"],
+          "properties": {
+            "local": {"$ref": "#/$defs/infrastructureTarget"}
+          }
         }
       }
     },
@@ -62,7 +65,7 @@
         "driver": {"const": "terraform"},
         "directory": {"$ref": "#/$defs/nonEmpty"},
         "autoApprove": {"type": "boolean"},
-        "platformProfile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "platformProfile": {"const": "local"},
         "localAccess": {"$ref": "#/$defs/localAccess"}
       },
       "allOf": [
@@ -173,11 +176,10 @@
     "platform": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["directory", "sources", "packageSelection", "bigBang", "flux", "packages", "charts", "vendors", "values", "bootstrap"],
+      "required": ["directory", "sources", "bigBang", "flux", "packages", "charts", "vendors", "values", "bootstrap"],
       "properties": {
         "directory": {"$ref": "#/$defs/nonEmpty"},
         "sources": {"$ref": "#/$defs/sourceRegistry"},
-        "packageSelection": {"$ref": "#/$defs/nonEmpty"},
         "bigBang": {"$ref": "#/$defs/gitSource"},
         "flux": {"$ref": "#/$defs/gitSource"},
         "packages": {
@@ -234,7 +236,6 @@
         "license": {"$ref": "#/$defs/nonEmpty"},
         "integration": {"enum": ["integrated", "generic"]},
         "chartPath": {"$ref": "#/$defs/nonEmpty"},
-        "fluxName": {"$ref": "#/$defs/nonEmpty"},
         "source": {"$ref": "#/$defs/gitSource"}
       }
     },
@@ -361,23 +362,24 @@
     "delivery": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["registry", "seed", "profiles", "policy", "images", "renderedBaseline", "legacyCrosswalk"],
+      "required": ["registry", "seed", "profiles", "policy", "images"],
       "properties": {
         "registry": {"$ref": "#/$defs/registry"},
         "seed": {"$ref": "#/$defs/seedPlane"},
         "profiles": {
           "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {"$ref": "#/$defs/profile"}
+          "additionalProperties": false,
+          "required": ["platform"],
+          "properties": {
+            "platform": {"$ref": "#/$defs/profile"}
+          }
         },
         "policy": {"$ref": "#/$defs/policy"},
         "images": {
           "type": "array",
           "minItems": 1,
           "items": {"$ref": "#/$defs/image"}
-        },
-        "renderedBaseline": {"$ref": "#/$defs/renderedBaseline"},
-        "legacyCrosswalk": {"$ref": "#/$defs/legacyCrosswalk"}
+        }
       }
     },
     "seedPlane": {
@@ -445,10 +447,9 @@
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["description", "preferSourceBuild"],
+      "required": ["description"],
       "properties": {
-        "description": {"$ref": "#/$defs/nonEmpty"},
-        "preferSourceBuild": {"type": "boolean"}
+        "description": {"$ref": "#/$defs/nonEmpty"}
       }
     },
     "policy": {
@@ -469,7 +470,7 @@
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "family", "version", "target", "scopes", "runtime", "license", "consumers", "bigBangRefs", "delivery"],
+      "required": ["id", "family", "version", "target", "scopes", "runtime", "license", "consumers", "bigBangRefs", "discovery", "delivery"],
       "properties": {
         "id": {"$ref": "#/$defs/nonEmpty"},
         "family": {"$ref": "#/$defs/nonEmpty"},
@@ -478,18 +479,92 @@
         "scopes": {"$ref": "#/$defs/stringArray"},
         "runtime": {"type": "boolean"},
         "license": {"$ref": "#/$defs/nonEmpty"},
+        "provenance": {"$ref": "#/$defs/nonEmpty"},
         "consumers": {"$ref": "#/$defs/stringArray"},
         "bigBangRefs": {"$ref": "#/$defs/stringArray"},
+        "discovery": {"enum": ["rendered", "configuration", "controller-generated"]},
         "versionMapping": {"$ref": "#/$defs/imageVersionMapping"},
+        "compatibility": {"$ref": "#/$defs/imageCompatibility"},
         "delivery": {
           "type": "object",
           "additionalProperties": false,
           "required": ["default"],
           "properties": {
-            "default": {"$ref": "#/$defs/deliveryChoice"},
-            "fullBuildTarget": {"$ref": "#/$defs/nonEmpty"}
+            "default": {"$ref": "#/$defs/deliveryChoice"}
           }
         }
+      }
+    },
+    "imageCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observations", "incompatibility", "officialMaterial", "officialConfig"],
+      "properties": {
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/imageRuntimeEvidence"}
+        },
+        "incompatibility": {"$ref": "#/$defs/nonEmpty"},
+        "officialMaterial": {"$ref": "#/$defs/nonEmpty"},
+        "officialConfig": {"$ref": "#/$defs/imageOfficialConfig"}
+      }
+    },
+    "imageOfficialConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "entrypoint", "command", "user", "filesystem", "entrypointFiles"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "entrypoint": {"$ref": "#/$defs/stringArray"},
+        "command": {"$ref": "#/$defs/stringArray"},
+        "user": {"type": "string"},
+        "filesystem": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "present"],
+            "properties": {
+              "path": {"$ref": "#/$defs/nonEmpty"},
+              "present": {"type": "boolean"},
+              "type": {"$ref": "#/$defs/nonEmpty"},
+              "link": {"$ref": "#/$defs/nonEmpty"},
+              "mode": {"type": "string", "pattern": "^[0-7]{4}$"},
+              "uid": {"type": "integer", "minimum": 0},
+              "gid": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        "entrypointFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "environment"],
+            "properties": {
+              "path": {"$ref": "#/$defs/nonEmpty"},
+              "sha256": {"$ref": "#/$defs/hexSha256"},
+              "environment": {"$ref": "#/$defs/stringArray"}
+            }
+          }
+        }
+      }
+    },
+    "imageRuntimeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "renderedLocation", "runtimeContractSha256", "command", "arguments", "runAsUser", "runAsGroup", "requiredPaths", "requiredEnvironment"],
+      "properties": {
+        "artifact": {"$ref": "#/$defs/nonEmpty"},
+        "renderedLocation": {"$ref": "#/$defs/nonEmpty"},
+        "runtimeContractSha256": {"$ref": "#/$defs/hexSha256"},
+        "command": {"$ref": "#/$defs/stringArray"},
+        "arguments": {"$ref": "#/$defs/stringArray"},
+        "runAsUser": {"type": "string"},
+        "runAsGroup": {"type": "string"},
+        "requiredPaths": {"$ref": "#/$defs/stringArray"},
+        "requiredEnvironment": {"$ref": "#/$defs/stringArray"}
       }
     },
     "imageVersionMapping": {
@@ -501,22 +576,7 @@
         "source": {"enum": ["chartAppVersion", "upstreamImageTag"]},
         "upstreamTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
         "tagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
-        "tagSuffix": {"type": "string", "pattern": "^[^:@/]*$"},
-        "build": {"$ref": "#/$defs/imageBuildVersionMapping"}
-      }
-    },
-    "imageBuildVersionMapping": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["gitUrl", "gitContext", "fullTagSuffix"],
-      "properties": {
-        "imageRepository": {"$ref": "#/$defs/nonEmpty"},
-        "imageTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
-        "bakeContext": {"$ref": "#/$defs/nonEmpty"},
-        "gitUrl": {"type": "string", "format": "uri"},
-        "gitTagPrefix": {"type": "string", "pattern": "^[^:@/]*$"},
-        "gitContext": {"$ref": "#/$defs/nonEmpty"},
-        "fullTagSuffix": {"type": "string", "pattern": "^[^:@/]+$"}
+        "tagSuffix": {"type": "string", "pattern": "^[^:@/]*$"}
       }
     },
     "deliveryChoice": {
@@ -542,111 +602,6 @@
           }
         }
       ]
-    },
-    "renderedBaseline": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["schemaVersion", "bigBang", "counts", "normalization", "entries"],
-      "properties": {
-        "schemaVersion": {"const": "atum.dev/rendered-image-baseline/v2"},
-        "bigBang": {"$ref": "#/$defs/versionedCommit"},
-        "counts": {"$ref": "#/$defs/scopeCounts"},
-        "normalization": {"$ref": "#/$defs/nonEmpty"},
-        "entries": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["imageId", "target", "scopes", "evidence"],
-            "properties": {
-              "imageId": {"$ref": "#/$defs/nonEmpty"},
-              "target": {"$ref": "#/$defs/nonEmpty"},
-              "scopes": {"$ref": "#/$defs/stringArray"},
-              "evidence": {"enum": ["rendered", "configuration", "controller-generated"]}
-            }
-          }
-        }
-      }
-    },
-    "legacyCrosswalk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["schemaVersion", "bigBang", "strategy", "defaultCounts", "compatibilityBuilds", "entries"],
-      "properties": {
-        "schemaVersion": {"const": "atum.dev/bigbang-public-crosswalk/v2"},
-        "bigBang": {"$ref": "#/$defs/versionedCommit"},
-        "strategy": {"$ref": "#/$defs/nonEmpty"},
-        "defaultCounts": {"$ref": "#/$defs/deliveryCounts"},
-        "compatibilityBuilds": {"$ref": "#/$defs/stringArray"},
-        "entries": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["imageId", "family", "scopes", "consumers", "bigBangRefs", "replacement", "defaultDelivery"],
-            "properties": {
-              "imageId": {"$ref": "#/$defs/nonEmpty"},
-              "family": {"$ref": "#/$defs/nonEmpty"},
-              "scopes": {"$ref": "#/$defs/stringArray"},
-              "consumers": {"$ref": "#/$defs/stringArray"},
-              "bigBangRefs": {"$ref": "#/$defs/stringArray"},
-              "replacement": {"$ref": "#/$defs/nonEmpty"},
-              "defaultDelivery": {"enum": ["mirror", "build"]},
-              "officialSource": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["reference", "digest"],
-                "properties": {
-                  "reference": {"$ref": "#/$defs/nonEmpty"},
-                  "digest": {"$ref": "#/$defs/sha256"}
-                }
-              },
-              "compatibilityBuild": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["bakeTarget", "materials"],
-                "properties": {
-                  "bakeTarget": {"$ref": "#/$defs/nonEmpty"},
-                  "materials": {"$ref": "#/$defs/stringArray"}
-                }
-              }
-            },
-            "oneOf": [
-              {"required": ["officialSource"]},
-              {"required": ["compatibilityBuild"]}
-            ]
-          }
-        }
-      }
-    },
-    "versionedCommit": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["version", "commit"],
-      "properties": {
-        "version": {"$ref": "#/$defs/nonEmpty"},
-        "commit": {"$ref": "#/$defs/gitCommit"}
-      }
-    },
-    "scopeCounts": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["prep", "bigbang", "unique"],
-      "properties": {
-        "prep": {"type": "integer", "minimum": 0},
-        "bigbang": {"type": "integer", "minimum": 0},
-        "unique": {"type": "integer", "minimum": 0}
-      }
-    },
-    "deliveryCounts": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["total", "mirrored", "built"],
-      "properties": {
-        "total": {"type": "integer", "minimum": 0},
-        "mirrored": {"type": "integer", "minimum": 0},
-        "built": {"type": "integer", "minimum": 0}
-      }
     }
   }
 }

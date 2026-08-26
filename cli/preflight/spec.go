@@ -23,6 +23,7 @@ const (
 	TerraformDirect
 	FluxDirect
 	VeleroDirect
+	CommittedSecrets
 	Platform
 	Full
 	AccessDNS
@@ -39,10 +40,13 @@ const (
 	Python     Tool = "python"
 	OpenSSH    Tool = "openssh"
 	Flux       Tool = "flux"
+	SOPS       Tool = "sops"
 	Velero     Tool = "velero"
 	Virsh      Tool = "virsh"
 	Firewall   Tool = "firewall-cmd"
 	Restorecon Tool = "restorecon"
+	Getfacl    Tool = "getfacl"
+	Setfacl    Tool = "setfacl"
 	KVM        Tool = "kvm"
 	Resolver   Tool = "systemd-resolved"
 	ServiceMgr Tool = "systemctl"

@@ -27,7 +27,7 @@ func TestRenderFluxSyncOwnsPostAdmissionRoot(t *testing.T) {
 	}
 	sync := string(data)
 	for _, required := range []string{
-		"branch: deployed",
+		"branch: main",
 		"path: ./platform/clusters/atum",
 		"url: http://forgejo:3000/atum/atum.git",
 	} {

@@ -15,9 +15,9 @@ import (
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
-	"atum/cli/gitcache"
 	atumoci "atum/cli/oci"
 	"atum/cli/progress"
+	"atum/cli/secretvalue"
 	"atum/cli/update"
 
 	"github.com/opencontainers/image-spec/specs-go"
@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	bundleSchema     = "atum.dev/bundle/v2"
-	bundleLockSchema = "atum.dev/bundle-lock/v2"
+	bundleSchema     = "atum.dev/bundle/v3"
+	bundleLockSchema = "atum.dev/bundle-lock/v3"
 )
 
 type bundleManifest struct {
@@ -40,7 +40,6 @@ type bundleManifest struct {
 	LockSHA256      string            `json:"lockSha256"`
 	ImagesOCISHA256 string            `json:"imagesOciSha256"`
 	Source          sourceManifest    `json:"source"`
-	FluxAssets      []archiveIdentity `json:"fluxAssets"`
 	Images          []bundleImage     `json:"images"`
 	Charts          []bundleChart     `json:"charts"`
 	Seed            bundleSeed        `json:"seed"`
@@ -49,20 +48,11 @@ type bundleManifest struct {
 type sourceManifest struct {
 	Atum           atumSnapshot         `json:"atum"`
 	SnapshotSHA256 string               `json:"snapshotSha256"`
-	Repositories   []repositorySnapshot `json:"repositories"`
 }
 
 type atumSnapshot struct {
 	archiveIdentity
 	Commit string `json:"commit"`
-}
-
-type repositorySnapshot struct {
-	ID      string `json:"id"`
-	URL     string `json:"url"`
-	Version string `json:"version"`
-	Commit  string `json:"commit"`
-	archiveIdentity
 }
 
 type bundleImage struct {
@@ -109,8 +99,21 @@ func (service *Service) Bundle(ctx context.Context, options BundleOptions) (Bund
 	if err != nil {
 		return BundleResult{}, err
 	}
+	executionProject, executionCurrent, err := loadExecutionProject(project)
+	if err != nil {
+		return BundleResult{}, err
+	}
+	if executionCurrent {
+		project = executionProject
+	}
+	if err := config.ValidateSourceSnapshot(project); err != nil {
+		return BundleResult{}, fmt.Errorf("validate exact source handoff: %w", err)
+	}
 	if project.Lock.Delivery.Pending() && (options.Locked || options.Reproduce) {
 		return BundleResult{}, errors.New("pending image delivery must be resolved before locked bundle reproduction")
+	}
+	if (options.Locked || options.Reproduce) && !executionCurrent {
+		return BundleResult{}, errors.New("local image publication receipt is absent or stale; rerun image publication")
 	}
 	requestedProfile := options.Publish.Profile
 	if options.Reproduce {
@@ -157,9 +160,8 @@ func (service *Service) Bundle(ctx context.Context, options BundleOptions) (Bund
 			if err != nil {
 				return BundleResult{}, fmt.Errorf("identify reusable deployment bundle: %w", err)
 			}
-			if _, err := writeRootLock(project, resolved.lock, bundle); err != nil {
-				return BundleResult{}, err
-			}
+			project.Lock.Delivery = resolved.lock
+			project.ExecutionBundle = bundle
 		}
 		local = &resolved
 	} else if options.Publish.Profile != "" && options.Publish.Profile != project.Lock.Delivery.Profile {
@@ -174,11 +176,14 @@ func (service *Service) Bundle(ctx context.Context, options BundleOptions) (Bund
 			return result, nil
 		}
 	}
-	result, err := service.bundleLocked(ctx, project, options, local, true)
+	result, err := service.bundleLocked(ctx, project, options, local)
 	if err != nil {
 		return BundleResult{}, err
 	}
-	if err := pruneBundleArtifacts(project, project.Lock.Bundle); err != nil {
+	if err := persistExecutionProject(project); err != nil {
+		return BundleResult{}, err
+	}
+	if err := pruneBundleArtifacts(project, project.ExecutionBundle); err != nil {
 		return BundleResult{}, err
 	}
 	return result, nil
@@ -192,7 +197,7 @@ func (service *Service) reuseCurrentBundle(
 	if err != nil || !reused {
 		return result, reused, err
 	}
-	if err := pruneBundleArtifacts(project, project.Lock.Bundle); err != nil {
+	if err := pruneBundleArtifacts(project, project.ExecutionBundle); err != nil {
 		return BundleResult{}, false, err
 	}
 	service.logger.InfoContext(ctx, "reuse deployment bundle", "sha256", result.Bundle.SHA256)
@@ -204,10 +209,8 @@ func (service *Service) bundleLocked(
 	project *config.Project,
 	options BundleOptions,
 	local *localDelivery,
-	persistRoot bool,
 ) (BundleResult, error) {
 	snapshotLock := project.Lock
-	snapshotLock.Bundle = nil
 	snapshotLockData, err := json.MarshalIndent(snapshotLock, "", "  ")
 	if err != nil {
 		return BundleResult{}, fmt.Errorf("encode bundle lock snapshot: %w", err)
@@ -230,19 +233,21 @@ func (service *Service) bundleLocked(
 	stageRelative := filepath.Join(artifactRelative, filepath.Base(stage))
 	defer func() { _ = fssecure.RemoveTree(project.Root, stageRelative) }()
 
+	password := service.env("HARBOR_PASSWORD")
 	credentials := atumoci.Credentials{
 		Username: service.env("HARBOR_USERNAME"),
-		Password: service.env("HARBOR_PASSWORD"),
+		Password: secretvalue.New([]byte(password)),
 		CACert:   []byte(service.env("HARBOR_CA_CRT")),
 	}
+	password = ""
+	defer credentials.Clear()
 	registry, err := atumoci.NewClient(project.Desired.Delivery.Registry, credentials)
 	if err != nil {
 		return BundleResult{}, err
 	}
-	parallelism := project.Desired.Updates.Parallelism
-	if parallelism <= 0 {
-		parallelism = defaultParallelism
-	}
+	defer registry.Clear()
+	parallelism := effectiveParallelism(0, project.Desired.Updates.Parallelism)
+	ctx = withDeliveryBudget(ctx, parallelism)
 	manifest := bundleManifest{
 		SchemaVersion:   bundleSchema,
 		Platform:        project.Lock.Delivery.Platform,
@@ -263,16 +268,15 @@ func (service *Service) bundleLocked(
 		return err
 	})
 	group.Go(func() error {
-		source, err := service.bundleSources(groupContext, project, stage, sourceLockData, parallelism)
+		source, err := service.bundleSources(project, stage, sourceLockData)
 		if err == nil {
 			manifest.Source = source
 		}
 		return err
 	})
 	group.Go(func() error {
-		assets, charts, err := service.bundleBootstrap(groupContext, project, stage, parallelism)
+		charts, err := service.bundleCharts(groupContext, project, stage, parallelism)
 		if err == nil {
-			manifest.FluxAssets = assets
 			manifest.Charts = charts
 		}
 		return err
@@ -345,18 +349,12 @@ func (service *Service) bundleLocked(
 		}
 		bundle.OCIReference = target
 		bundle.OCIDigest = published.Digest.String()
-	} else if current := project.Lock.Bundle; current != nil &&
+	} else if current := project.ExecutionBundle; current != nil &&
 		current.File == bundle.File && current.SHA256 == bundle.SHA256 && current.Size == bundle.Size {
 		bundle.OCIReference = current.OCIReference
 		bundle.OCIDigest = current.OCIDigest
 	}
-	if persistRoot {
-		if _, err := writeRootLock(project, project.Lock.Delivery, &bundle); err != nil {
-			return BundleResult{}, err
-		}
-	} else {
-		project.Lock.Bundle = &bundle
-	}
+	project.ExecutionBundle = &bundle
 	return BundleResult{Bundle: bundle, Path: finalPath}, nil
 }
 
@@ -427,7 +425,8 @@ func (service *Service) bundleImages(
 	for index, image := range project.Lock.Delivery.Images {
 		index, image := index, image
 		group.Go(func() error {
-			seedReference := atumoci.SeedReference(image.ID)
+			return runDeliveryWorker(groupContext, func() error {
+				seedReference := atumoci.SeedReference(image.ID)
 			var descriptor ocispec.Descriptor
 			var err error
 			if local == nil {
@@ -481,7 +480,8 @@ func (service *Service) bundleImages(
 			current := int(packed.Add(1))
 			progress.Update(groupContext, progress.Platform, "bundle", "Deployment bundle",
 				"packed runtime image "+image.ID, current, len(images))
-			return nil
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {
@@ -521,11 +521,9 @@ func (service *Service) bundleImages(
 }
 
 func (service *Service) bundleSources(
-	ctx context.Context,
 	project *config.Project,
 	stage string,
 	snapshotLock []byte,
-	parallelism int,
 ) (sourceManifest, error) {
 	sourceRoot := filepath.Join(stage, "sources")
 	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
@@ -540,104 +538,33 @@ func (service *Service) bundleSources(
 	if err != nil {
 		return sourceManifest{}, fmt.Errorf("archive Atum handoff: %w", err)
 	}
-	sources, err := config.RepositoryInventory(project.Desired, project.Lock.Resolved)
-	if err != nil {
-		return sourceManifest{}, err
-	}
-	repositories := make([]repositorySnapshot, len(sources))
-	cache := gitcache.New(project.Root)
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(min(parallelism, 4))
-	for index, source := range sources {
-		index, source := index, source
-		group.Go(func() error {
-			version := source.Source.Ref
-			if version == "" {
-				version = source.Source.Version
-			}
-			checkout, err := cache.Hydrate(groupContext, source.CacheKey, source.Source.URL, gitcache.Release{
-				Version: version,
-				Commit:  source.Source.Commit,
-			})
-			if err != nil {
-				return err
-			}
-			filename := source.ID + ".tar"
-			identity, err := writeRepositoryArchive(
-				groupContext,
-				filepath.Join(sourceRoot, filename),
-				checkout,
-				"sources/"+filename,
-				version,
-				source.Source.Commit,
-			)
-			if err != nil {
-				return fmt.Errorf("archive source %s: %w", source.ID, err)
-			}
-			repositories[index] = repositorySnapshot{
-				ID:              source.ID,
-				URL:             source.Source.URL,
-				Version:         version,
-				Commit:          source.Source.Commit,
-				archiveIdentity: identity,
-			}
-			return nil
-		})
-	}
-	if err := group.Wait(); err != nil {
-		return sourceManifest{}, err
-	}
 	return sourceManifest{
 		Atum: atumSnapshot{
 			archiveIdentity: atumIdentity,
 			Commit:          snapshotIdentity.Commit,
 		},
 		SnapshotSHA256: snapshotIdentity.SHA256,
-		Repositories:   repositories,
 	}, nil
 }
 
-func (service *Service) bundleBootstrap(
+func (service *Service) bundleCharts(
 	ctx context.Context,
 	project *config.Project,
 	stage string,
 	parallelism int,
-) ([]archiveIdentity, []bundleChart, error) {
-	assets := make([]archiveIdentity, len(project.Desired.Platform.Flux.Assets))
-	bootstrapCount := len(project.Desired.Platform.Bootstrap.Charts)
-	charts := make([]bundleChart, bootstrapCount+len(project.Desired.Platform.Charts))
+) ([]bundleChart, error) {
+	charts := make([]bundleChart, len(project.Lock.Resolved.Artifacts))
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(min(parallelism, 8))
-	for index, asset := range project.Desired.Platform.Flux.Assets {
-		index, asset := index, asset
-		group.Go(func() error {
-			name := filepath.Base(asset.File)
-			identity, err := copyVerified(
-				project.Root, asset.File, filepath.Join(stage, "flux", name), "flux/"+name, asset.SHA256, -1,
-			)
-			if err != nil {
-				return fmt.Errorf("stage Flux asset %s: %w", asset.ID, err)
-			}
-			assets[index] = identity
-			return nil
-		})
-	}
-	for index, chart := range project.Desired.Platform.Bootstrap.Charts {
+	for index, chart := range project.Lock.Resolved.Artifacts {
 		index, chart := index, chart
 		group.Go(func() error {
-			source, err := update.FetchBootstrapChart(groupContext, project.Root, chart)
-			if err != nil {
-				return err
-			}
-			relative, err := filepath.Rel(project.Root, source)
-			if err != nil {
-				return err
-			}
-			identity, err := copyVerified(
+			return runDeliveryWorker(groupContext, func() error {
+				identity, err := copyVerified(
 				project.Root,
-				relative,
-				filepath.Join(stage, "charts", chart.File),
-				"charts/"+chart.File,
+				chart.File,
+				filepath.Join(stage, "charts", filepath.Base(chart.File)),
+				"charts/"+filepath.Base(chart.File),
 				chart.ArchiveSHA256,
 				config.ChartArchiveLimit,
 			)
@@ -651,51 +578,16 @@ func (service *Service) bundleBootstrap(
 				Target:        chart.Target,
 				ArchiveSHA256: chart.ArchiveSHA256,
 				Size:          identity.Size,
-				File:          "charts/" + chart.File,
+				File:          "charts/" + filepath.Base(chart.File),
 			}
-			return nil
-		})
-	}
-	for index, chart := range project.Desired.Platform.Charts {
-		index, chart := bootstrapCount+index, chart
-		group.Go(func() error {
-			source, err := update.FetchTrackedChart(groupContext, project.Root, chart)
-			if err != nil {
-				return err
-			}
-			relative, err := filepath.Rel(project.Root, source)
-			if err != nil {
-				return err
-			}
-			filename := chart.Name + "-" + chart.Version + ".tgz"
-			identity, err := copyVerified(
-				project.Root,
-				relative,
-				filepath.Join(stage, "charts", filename),
-				"charts/"+filename,
-				chart.ArchiveSHA256,
-				config.ChartArchiveLimit,
-			)
-			if err != nil {
-				return err
-			}
-			registry := project.Desired.Platform.Bootstrap.Registry
-			charts[index] = bundleChart{
-				ID:            chart.ID,
-				Name:          chart.Name,
-				Version:       chart.Version,
-				Target:        registry.Host + "/" + registry.Project + "/" + chart.Name + ":" + chart.Version,
-				ArchiveSHA256: chart.ArchiveSHA256,
-				Size:          identity.Size,
-				File:          "charts/" + filename,
-			}
-			return nil
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return assets, charts, nil
+	return charts, nil
 }
 
 func copyVerified(

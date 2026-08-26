@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,32 +25,15 @@ type Resource uint8
 
 const (
 	GitRepository Resource = iota + 1
-	OCIRepository
-	HelmRepository
 	Kustomization
+	OCIRepository
 	HelmRelease
-	Certificate
-	ClusterIssuer
-	VirtualService
-	Deployment
-	StatefulSet
-	DaemonSet
-	Job
 )
 
 type ListOptions struct {
 	LabelSelector string
 	Continue      string
 	Limit         int64
-}
-
-type TLSSecret struct {
-	Namespace          string
-	Name               string
-	Type               string
-	Certificate        []byte
-	CertificatePresent bool
-	PrivateKeyPresent  bool
 }
 
 // Object is a detached, read-only resource projection. Object contains the
@@ -141,32 +123,6 @@ func (observer *Observer) ConfigMapData(ctx context.Context, namespace, name str
 		data[key] = value
 	}
 	return data, true, nil
-}
-
-// TLSSecret returns one bounded detached public certificate plus metadata and
-// key-presence facts. Every Secret byte slice received from the API, including
-// private key data, is cleared before returning. Callers must not log the
-// certificate payload.
-func (observer *Observer) TLSSecret(ctx context.Context, namespace, name string) (TLSSecret, bool, error) {
-	var projection TLSSecret
-	found, err := observer.observeSecret(ctx, namespace, name, func(object *corev1.Secret) error {
-		certificate, certificateFound := object.Data[corev1.TLSCertKey]
-		privateKey, privateKeyFound := object.Data[corev1.TLSPrivateKeyKey]
-		if len(certificate) > maxTLSCertificateSize {
-			return fmt.Errorf("Secret %s/%s certificate exceeds %d bytes",
-				namespace, name, maxTLSCertificateSize)
-		}
-		projection = TLSSecret{
-			Namespace: object.Namespace, Name: object.Name, Type: string(object.Type),
-			CertificatePresent: certificateFound && len(certificate) != 0,
-			PrivateKeyPresent:  privateKeyFound && len(privateKey) != 0,
-		}
-		if projection.CertificatePresent {
-			projection.Certificate = append([]byte(nil), certificate...)
-		}
-		return nil
-	})
-	return projection, found, err
 }
 
 // SecretValue returns one bounded detached Secret value. Every byte slice
@@ -320,11 +276,6 @@ func (observer *Observer) Resources(ctx context.Context, resource Resource, name
 	}
 }
 
-func (observer *Observer) ResourceReady(ctx context.Context, resource Resource, namespace, name string) bool {
-	object, found, err := observer.GetResource(ctx, resource, namespace, name)
-	return err == nil && found && object.Ready
-}
-
 func (observer *Observer) ListPods(ctx context.Context, namespace string, options ListOptions) (PodPage, error) {
 	if err := validateListOptions(options); err != nil {
 		return PodPage{}, err
@@ -412,43 +363,16 @@ func nodeHasControlPlaneRole(labels map[string]string) bool {
 	return controlPlane || legacyMaster
 }
 
-func (observer *Observer) DeploymentsReady(ctx context.Context, namespace string, names []string) bool {
-	deployments := observer.core.AppsV1().Deployments(namespace)
-	for _, name := range names {
-		deployment, err := deployments.Get(ctx, name, metav1.GetOptions{})
-		if err != nil || !deploymentAvailable(deployment) {
-			return false
-		}
-	}
-	return true
-}
-
 func resourceGVR(resource Resource) (schema.GroupVersionResource, error) {
 	switch resource {
 	case GitRepository:
 		return schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"}, nil
-	case OCIRepository:
-		return schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "ocirepositories"}, nil
-	case HelmRepository:
-		return schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "helmrepositories"}, nil
 	case Kustomization:
 		return schema.GroupVersionResource{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"}, nil
+	case OCIRepository:
+		return schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "ocirepositories"}, nil
 	case HelmRelease:
 		return schema.GroupVersionResource{Group: "helm.toolkit.fluxcd.io", Version: "v2", Resource: "helmreleases"}, nil
-	case Certificate:
-		return schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "certificates"}, nil
-	case ClusterIssuer:
-		return schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "clusterissuers"}, nil
-	case VirtualService:
-		return schema.GroupVersionResource{Group: "networking.istio.io", Version: "v1", Resource: "virtualservices"}, nil
-	case Deployment:
-		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, nil
-	case StatefulSet:
-		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, nil
-	case DaemonSet:
-		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, nil
-	case Job:
-		return schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, nil
 	default:
 		return schema.GroupVersionResource{}, fmt.Errorf("unsupported observed resource %d", resource)
 	}
@@ -491,22 +415,12 @@ func objectReady(object *unstructured.Unstructured) bool {
 	if err != nil || !found {
 		return false
 	}
-	if object.GetKind() == "Job" {
-		for _, raw := range conditions {
-			condition, ok := raw.(map[string]any)
-			if ok && condition["type"] == "Failed" && condition["status"] == "True" {
-				return false
-			}
-		}
-	}
 	for _, raw := range conditions {
 		condition, ok := raw.(map[string]any)
 		if !ok || condition["status"] != "True" {
 			continue
 		}
-		conditionType := condition["type"]
-		if conditionType != "Ready" &&
-			!(object.GetKind() == "Job" && conditionType == "Complete") {
+		if condition["type"] != "Ready" {
 			continue
 		}
 		observed, present := condition["observedGeneration"]
@@ -566,17 +480,4 @@ func projectPod(item *corev1.Pod) Pod {
 		Phase: item.Status.Phase, Deleting: item.DeletionTimestamp != nil,
 		Ready: ready, Containers: containers,
 	}
-}
-
-func deploymentAvailable(deployment *appsv1.Deployment) bool {
-	if deployment == nil || deployment.DeletionTimestamp != nil ||
-		deployment.Status.ObservedGeneration != deployment.Generation {
-		return false
-	}
-	for _, condition := range deployment.Status.Conditions {
-		if condition.Type == appsv1.DeploymentAvailable && condition.Status == corev1.ConditionTrue {
-			return deployment.Status.AvailableReplicas >= 1
-		}
-	}
-	return false
 }

@@ -25,9 +25,10 @@ func TestRequirementsForScope(t *testing.T) {
 	}{
 		{"infrastructure", Infrastructure, requirementSet{terraform: true, localTarget: true}},
 		{"terraform passthrough", TerraformDirect, requirementSet{terraform: true}},
-		{"platform", Platform, requirementSet{docker: true, python: true, ssh: true, flux: true}},
+		{"committed secrets", CommittedSecrets, requirementSet{sops: true}},
+		{"platform", Platform, requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}},
 		{"full", Full, requirementSet{
-			terraform: true, docker: true, python: true, ssh: true, flux: true, localTarget: true,
+			terraform: true, docker: true, python: true, ssh: true, flux: true, sops: true, localTarget: true,
 		}},
 		{"DNS access", AccessDNS, requirementSet{resolver: true, serviceManager: true, sudo: true}},
 		{"CA access", AccessCA, requirementSet{sudo: true, trust: true}},
@@ -78,6 +79,65 @@ func TestVersionParsers(t *testing.T) {
 	); err != nil || version != identity || identity != "client=28.3.3 server=28.3.3" {
 		t.Fatalf("Docker identity = %q, %q, %v", version, identity, err)
 	}
+	if got, err := checkSOPSVersion("sops 3.10.2"); err != nil || got != "3.10.2" {
+		t.Fatalf("SOPS version = %q, %v", got, err)
+	}
+	for _, invalid := range []string{
+		"arbitrary output",
+		"sops 3.8.1",
+		"sops 4.0.0",
+		"sops 3.10.2-rc.1",
+	} {
+		if _, err := checkSOPSVersion(invalid); err == nil {
+			t.Errorf("invalid SOPS identity %q was accepted", invalid)
+		}
+	}
+}
+
+func TestSOPSPreflightUsesExactOverrideBinary(t *testing.T) {
+	t.Parallel()
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve test executable: %v", err)
+	}
+	var observed process.Command
+	service := Service{
+		Project: &config.Project{
+			Root: ".",
+			Desired: config.Document{
+				Updates: config.UpdatePolicy{Parallelism: 1},
+			},
+		},
+		Runner: runnerFunc(func(_ context.Context, command process.Command) error {
+			observed = command
+			_, err := io.WriteString(command.Stdout, "sops 3.10.2\n")
+			return err
+		}),
+		Environment: func(name string) string {
+			if name == "ATUM_SOPS_BIN" {
+				return executable
+			}
+			return ""
+		},
+	}
+	report, err := service.Check(t.Context(), CommittedSecrets)
+	if err != nil {
+		t.Fatalf("check committed-secret preflight: %v", err)
+	}
+	if got := report.Binary(SOPS); got != executable {
+		t.Fatalf("selected SOPS binary = %q, want %q", got, executable)
+	}
+	if observed.Name != executable ||
+		!reflect.DeepEqual(observed.Args, []string{"--version"}) {
+		t.Fatalf("SOPS preflight command = %#v", observed)
+	}
+}
+
+type runnerFunc func(context.Context, process.Command) error
+
+func (run runnerFunc) Run(ctx context.Context, command process.Command) error {
+	return run(ctx, command)
 }
 
 func TestVirshProbeSeparatesConnectionDiagnostics(t *testing.T) {

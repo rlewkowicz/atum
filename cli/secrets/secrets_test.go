@@ -1,77 +1,25 @@
 package secrets
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"sync"
+	"reflect"
 	"testing"
+	"time"
 
 	"atum/cli/config"
+	"atum/cli/fssecure"
 	"atum/cli/progress"
 )
 
-func TestLoadOrCreateLocalMigratesCompleteV1(t *testing.T) {
+func TestLoadOrCreateLocalRejectsUnsupportedSchemaWithoutMutation(t *testing.T) {
 	project := testProject(t)
-	legacy := struct {
-		SchemaVersion string         `json:"schemaVersion"`
-		Forgejo       ForgejoSecrets `json:"forgejo"`
-		Harbor        HarborSecrets  `json:"harbor"`
-	}{
-		SchemaVersion: schemaVersionV1,
-		Forgejo: ForgejoSecrets{
-			Username: "legacy_admin", AdminPassword: "123456789012345678901234",
-		},
-		Harbor: HarborSecrets{
-			AdminPassword: "abcdefghijklmnopqrstuvwx", SecretKey: "0123456789abcdef",
-		},
-	}
-	data, err := json.MarshalIndent(legacy, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(project.Root, project.Desired.Secrets.LocalFile)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(project); !errors.Is(err, ErrMigrationRequired) {
-		t.Fatalf("read-only load error = %v, want migration requirement", err)
-	}
-	document, created, err := LoadOrCreateLocal(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created {
-		t.Fatal("migration was reported as fresh credential creation")
-	}
-	if document.Forgejo != legacy.Forgejo || document.Harbor != legacy.Harbor {
-		t.Fatal("v1 credentials changed during migration")
-	}
-	seed, err := base64.RawStdEncoding.DecodeString(document.Identity.Seed)
-	if err != nil || len(seed) != 32 {
-		t.Fatalf("migrated seed is invalid: length %d, error %v", len(seed), err)
-	}
-	clear(seed)
-	reloaded, err := Load(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reloaded != document {
-		t.Fatal("migrated document was not stable")
-	}
-}
-
-func TestLoadOrCreateLocalSerializesV1Migration(t *testing.T) {
-	project := testProject(t)
-	legacy := []byte(`{
-  "schemaVersion": "atum.dev/secrets/v1",
-  "forgejo": {"username":"legacy_admin","adminPassword":"123456789012345678901234"},
+	data := []byte(`{
+  "schemaVersion": "atum.dev/secrets/v2",
+  "forgejo": {"username":"old_admin","adminPassword":"123456789012345678901234"},
   "harbor": {"adminPassword":"abcdefghijklmnopqrstuvwx","secretKey":"0123456789abcdef"}
 }
 `)
@@ -79,40 +27,34 @@ func TestLoadOrCreateLocalSerializesV1Migration(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	results := make([]Document, 8)
-	errs := make([]error, len(results))
-	var group sync.WaitGroup
-	group.Add(len(results))
-	for index := range results {
-		go func() {
-			defer group.Done()
-			results[index], _, errs[index] = LoadOrCreateLocal(project)
-		}()
+	if _, created, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{}); err == nil {
+		t.Fatal("unsupported schema was accepted")
+	} else if created {
+		t.Fatal("unsupported schema was replaced")
 	}
-	group.Wait()
-	for index, err := range errs {
-		if err != nil {
-			t.Fatalf("migration %d failed: %v", index, err)
-		}
-		if results[index] != results[0] {
-			t.Fatalf("migration %d observed a different canonical document", index)
-		}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(data) {
+		t.Fatal("unsupported schema document changed")
 	}
 }
 
 func TestLoadOrCreateLocal(t *testing.T) {
 	project := testProject(t)
 
-	document, created, err := LoadOrCreateLocal(project)
+	document, created, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !created {
 		t.Fatal("missing local secrets were not created")
 	}
+	defer document.Clear()
 	if err := document.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -126,15 +68,115 @@ func TestLoadOrCreateLocal(t *testing.T) {
 		t.Fatalf("local secrets mode is %04o, want 0600", mode)
 	}
 
-	reloaded, created, err := LoadOrCreateLocal(project)
+	reloaded, created, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created {
 		t.Fatal("existing local secrets were replaced")
 	}
-	if reloaded != document {
+	defer reloaded.Clear()
+	if !reflect.DeepEqual(reloaded, document) {
 		t.Fatal("reloaded local secrets differ from the generated document")
+	}
+}
+
+func TestLoadOrCreateLocalCancellationLeavesValidFileUntouched(t *testing.T) {
+	project := testProject(t)
+	document, _, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Clear()
+	path := filepath.Join(project.Root, project.Desired.Secrets.LocalFile)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(before)
+
+	unlock, err := fssecure.LockContext(
+		t.Context(), project.Root, localSecretsLock, 25*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := LoadOrCreateLocal(ctx, project, SOPSAdapter{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled load error = %v, want context.Canceled", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(after)
+	if !bytes.Equal(after, before) {
+		t.Fatal("canceled local load changed the valid secrets file")
+	}
+}
+
+func TestStatefulProjectionIsStableFormattedAndClearable(t *testing.T) {
+	t.Parallel()
+	document, err := generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := document.DeriveStatefulProjection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := document.DeriveStatefulProjection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstData, err := first.MarshalAnsibleJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondData, err := second.MarshalAnsibleJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstData) != string(secondData) {
+		t.Fatal("unchanged stateful seed produced a different projection")
+	}
+	if value := string(first.values[statefulGarageAccessKeyIDKey]); len(value) != 26 || value[:2] != "GK" {
+		t.Fatalf("Garage access key ID = %q", value)
+	}
+	for _, key := range []string{
+		statefulGarageAdminTokenKey, statefulGarageSecretKeyKey, statefulDigestKey,
+	} {
+		if len(first.values[key]) != 64 {
+			t.Fatalf("%s length = %d", key, len(first.values[key]))
+		}
+	}
+	for _, key := range []string{
+		statefulGitLabSecretKeyBaseKey,
+		statefulGitLabOTPKeyBaseKey,
+		statefulGitLabDBKeyBaseKey,
+		statefulGitLabEncryptedSettingsKeyBaseKey,
+	} {
+		if len(first.values[key]) != 128 {
+			t.Fatalf("%s length = %d", key, len(first.values[key]))
+		}
+	}
+	for _, key := range []string{
+		statefulGitLabActiveRecordPrimaryKey,
+		statefulGitLabActiveRecordDeterministicKey,
+		statefulGitLabActiveRecordSaltKey,
+	} {
+		if len(first.values[key]) != 32 {
+			t.Fatalf("%s length = %d", key, len(first.values[key]))
+		}
+	}
+	clear(firstData)
+	clear(secondData)
+	first.Clear()
+	second.Clear()
+	if len(first.values) != 0 || len(first.digest) != 0 {
+		t.Fatal("stateful projection retained cleartext after Clear")
 	}
 }
 
@@ -149,7 +191,7 @@ func TestLoadOrCreateLocalPreservesInvalidFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, created, err := LoadOrCreateLocal(project); err == nil {
+	if _, created, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{}); err == nil {
 		t.Fatal("invalid local secrets were accepted")
 	} else if created {
 		t.Fatal("invalid local secrets were replaced")
@@ -173,7 +215,7 @@ func TestLoadOrCreateLocalDoesNotMaskInvalidSOPS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, created, err := LoadOrCreateLocal(project); err == nil {
+	if _, created, err := LoadOrCreateLocal(t.Context(), project, SOPSAdapter{}); err == nil {
 		t.Fatal("invalid SOPS secrets were accepted")
 	} else if created {
 		t.Fatal("invalid SOPS secrets were masked by local credentials")
@@ -184,19 +226,45 @@ func TestLoadOrCreateLocalDoesNotMaskInvalidSOPS(t *testing.T) {
 }
 
 func TestLoadReportsNotFound(t *testing.T) {
-	if _, err := Load(testProject(t)); !errors.Is(err, ErrNotFound) {
+	if _, err := Load(t.Context(), testProject(t), SOPSAdapter{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Load() error is %v, want ErrNotFound", err)
+	}
+}
+
+func TestLocalInitDoesNotRequireSOPS(t *testing.T) {
+	project := testProject(t)
+	path, err := Init(
+		t.Context(),
+		project,
+		SOPSAdapter{},
+		InitOptions{Local: true},
+	)
+	if err != nil {
+		t.Fatalf("initialize local secrets without SOPS: %v", err)
+	}
+	if path != project.Desired.Secrets.LocalFile {
+		t.Fatalf("local secrets path = %q, want %q", path, project.Desired.Secrets.LocalFile)
+	}
+	document, err := Load(t.Context(), project, SOPSAdapter{})
+	if err != nil {
+		t.Fatalf("load local-only secrets without SOPS: %v", err)
+	}
+	defer document.Clear()
+	if err := document.Validate(); err != nil {
+		t.Fatalf("validate local-only secrets: %v", err)
 	}
 }
 
 func TestEnsureReportsSavedPath(t *testing.T) {
 	project := testProject(t)
 	reporter := new(eventRecorder)
-	ctx := progress.WithReporter(context.Background(), reporter)
+	ctx := progress.WithReporter(t.Context(), reporter)
 
-	if _, err := Ensure(ctx, project, nil); err != nil {
+	document, err := Ensure(ctx, project, SOPSAdapter{}, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer document.Clear()
 	if len(*reporter) != 2 {
 		t.Fatalf("Ensure() reported %d events, want 2", len(*reporter))
 	}

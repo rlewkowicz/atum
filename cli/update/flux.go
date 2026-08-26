@@ -38,7 +38,7 @@ metadata:
 spec:
   interval: 1m0s
   ref:
-    branch: deployed
+    branch: main
   secretRef:
     name: flux-system
   url: %s
@@ -237,7 +237,11 @@ func (service *Service) resolveFluxAsset(
 		SHA256:       config.SHA256(content),
 	}
 	if sourceGitTag(current) == ref {
-		if len(current.Assets) != 1 || current.Assets[0] != asset {
+		if len(current.Assets) != 1 ||
+			current.Assets[0].ID != asset.ID ||
+			current.Assets[0].URL != asset.URL ||
+			current.Assets[0].File != asset.File ||
+			current.Assets[0].SourceSHA256 != asset.SourceSHA256 {
 			return nil, fmt.Errorf("Flux %s release material changed without a Git tag change (source %s, rendered %s)",
 				ref, asset.SourceSHA256, asset.SHA256)
 		}

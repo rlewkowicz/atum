@@ -21,6 +21,7 @@ import (
 	atumoci "atum/cli/oci"
 	"atum/cli/progress"
 	atumsecrets "atum/cli/secrets"
+	"atum/cli/secretvalue"
 
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/goharbor/go-client/pkg/harbor"
@@ -37,12 +38,31 @@ import (
 
 type registryCredentials struct {
 	Username string
-	Password string
+	Password secretvalue.Value
 	CA       []byte
 }
 
+func (credentials *registryCredentials) Clear() {
+	if credentials == nil {
+		return
+	}
+	credentials.Username = ""
+	credentials.Password.Clear()
+	clear(credentials.CA)
+	credentials.CA = nil
+}
+
 type harborControl struct {
-	client *harborclient.HarborAPI
+	target   config.Registry
+	password secretvalue.Value
+}
+
+func (control *harborControl) Clear() {
+	if control == nil {
+		return
+	}
+	control.target = config.Registry{}
+	control.password.Clear()
 }
 
 func (service Service) configureHarbor(
@@ -57,6 +77,7 @@ func (service Service) configureHarbor(
 	if err != nil {
 		return registryCredentials{}, err
 	}
+	defer control.Clear()
 	if err := control.waitHealthy(ctx, timeout); err != nil {
 		return registryCredentials{}, err
 	}
@@ -76,10 +97,26 @@ func (service Service) configureHarbor(
 	if err := control.ensureChartsImmutable(ctx); err != nil {
 		return registryCredentials{}, err
 	}
-	return registryCredentials{Username: "admin", Password: credentials.Harbor.AdminPassword}, nil
+	return registryCredentials{
+		Username: "admin",
+		Password: credentials.Harbor.AdminPassword.Clone(),
+	}, nil
 }
 
-func newHarborControl(target config.Registry, password string) (*harborControl, error) {
+func newHarborControl(
+	target config.Registry,
+	password secretvalue.Value,
+) (*harborControl, error) {
+	if len(password) == 0 {
+		return nil, errors.New("Harbor administrator password is required")
+	}
+	if _, err := harborEndpoint(target); err != nil {
+		return nil, err
+	}
+	return &harborControl{target: target, password: password.Clone()}, nil
+}
+
+func harborEndpoint(target config.Registry) (*url.URL, error) {
 	scheme := "http"
 	if target.TLSVerify {
 		scheme = "https"
@@ -88,21 +125,35 @@ func newHarborControl(target config.Registry, password string) (*harborControl, 
 	if err != nil || endpoint.Host != target.Host || endpoint.Path != "" {
 		return nil, fmt.Errorf("parse Harbor API endpoint %s: %w", target.Host, err)
 	}
+	return endpoint, nil
+}
+
+func (control *harborControl) apiClient() (*harborclient.HarborAPI, error) {
+	endpoint, err := harborEndpoint(control.target)
+	if err != nil {
+		return nil, err
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ForceAttemptHTTP2 = false
 	transport.ResponseHeaderTimeout = 30 * time.Second
-	if target.TLSVerify {
+	if control.target.TLSVerify {
 		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
+	password := string(control.password.Bytes())
 	configuration := (&harbor.Config{
 		URL: endpoint, Transport: transport, AuthInfo: httptransport.BasicAuth("admin", password),
 	}).ToV2Config()
-	return &harborControl{client: harborclient.New(configuration)}, nil
+	password = ""
+	return harborclient.New(configuration), nil
 }
 
 func (control *harborControl) waitHealthy(ctx context.Context, timeout time.Duration) error {
-	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		response, err := control.client.Health.GetHealth(ctx, health.NewGetHealthParams())
+	client, err := control.apiClient()
+	if err != nil {
+		return err
+	}
+	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		response, err := client.Health.GetHealth(ctx, health.NewGetHealthParams())
 		if err != nil || response == nil || response.Payload == nil || response.Payload.Status != "healthy" {
 			return false, nil
 		}
@@ -120,8 +171,12 @@ func (control *harborControl) waitHealthy(ctx context.Context, timeout time.Dura
 }
 
 func (control *harborControl) ensureProject(ctx context.Context, name string, public bool) error {
+	client, err := control.apiClient()
+	if err != nil {
+		return err
+	}
 	page, pageSize, detail := int64(1), int64(2), true
-	result, err := control.client.Project.ListProjects(ctx, &project.ListProjectsParams{
+	result, err := client.Project.ListProjects(ctx, &project.ListProjectsParams{
 		Name: &name, Page: &page, PageSize: &pageSize, WithDetail: &detail,
 	})
 	if err != nil {
@@ -132,7 +187,7 @@ func (control *harborControl) ensureProject(ctx context.Context, name string, pu
 	for _, current := range result.Payload {
 		if current != nil && current.Name == name && !current.Deleted {
 			isName := true
-			_, err = control.client.Project.UpdateProject(ctx, &project.UpdateProjectParams{
+			_, err = client.Project.UpdateProject(ctx, &project.UpdateProjectParams{
 				ProjectNameOrID: name, XIsResourceName: &isName, Project: request,
 			})
 			if err != nil {
@@ -146,7 +201,7 @@ func (control *harborControl) ensureProject(ctx context.Context, name string, pu
 	}
 	storage := int64(-1)
 	request.StorageLimit = &storage
-	if _, err := control.client.Project.CreateProject(ctx, &project.CreateProjectParams{Project: request}); err != nil {
+	if _, err := client.Project.CreateProject(ctx, &project.CreateProjectParams{Project: request}); err != nil {
 		return fmt.Errorf("create Harbor project %s: %w", name, err)
 	}
 	return nil
@@ -169,14 +224,23 @@ func (service Service) publishBundle(
 	if parallelism <= 0 {
 		parallelism = service.Project.Desired.Updates.Parallelism
 	}
-	parallelism = min(max(parallelism, 1), 32)
+	parallelism = config.EffectiveWorkLimit(
+		parallelism,
+		service.Project.Desired.Updates.Parallelism,
+		config.DefaultWorkLimit,
+	)
 	registryTarget := service.Project.Desired.Delivery.Registry
-	client, err := atumoci.NewClient(registryTarget, atumoci.Credentials{
-		Username: credentials.Username, Password: credentials.Password, CACert: credentials.CA,
-	})
+	nativeCredentials := atumoci.Credentials{
+		Username: credentials.Username,
+		Password: credentials.Password.Clone(),
+		CACert:   append([]byte(nil), credentials.CA...),
+	}
+	defer nativeCredentials.Clear()
+	client, err := atumoci.NewClient(registryTarget, nativeCredentials)
 	if err != nil {
 		return err
 	}
+	defer client.Clear()
 	store, err := bundle.ImageStore()
 	if err != nil {
 		return fmt.Errorf("open verified bundled OCI layout: %w", err)
@@ -214,7 +278,13 @@ func (service Service) publishBundle(
 	if err := group.Wait(); err != nil {
 		return err
 	}
-	return service.publishCharts(ctx, bundle, credentials, func(id string) {
+	progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
+		"publishing immutable chart inventory", 0, len(bundle.Charts))
+	var chartCount atomic.Int64
+	return service.publishCharts(ctx, bundle, credentials, parallelism, func(id string) {
+		chartCurrent := int(chartCount.Add(1))
+		progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
+			"published or reused chart "+id, chartCurrent, len(bundle.Charts))
 		current := int(publishedCount.Add(1))
 		progress.Update(ctx, progress.Platform, "harbor-seed", "Seed Harbor publication",
 			"published chart "+id, current, total)
@@ -225,80 +295,116 @@ func (service Service) publishCharts(
 	ctx context.Context,
 	bundle *delivery.DeploymentBundle,
 	credentials registryCredentials,
+	parallelism int,
 	report func(string),
 ) error {
-	client, err := service.helmRegistryClient(credentials)
-	if err != nil {
-		return err
-	}
-	resolver, err := atumoci.NewClient(service.Project.Desired.Delivery.Registry, atumoci.Credentials{
-		Username: credentials.Username, Password: credentials.Password, CACert: credentials.CA,
-	})
-	if err != nil {
-		return err
-	}
 	charts := append([]delivery.BundleChart(nil), bundle.Charts...)
 	sort.Slice(charts, func(i, j int) bool { return charts[i].ID < charts[j].ID })
-	for _, chart := range charts {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if chart.Size <= 0 || chart.Size > config.ChartArchiveLimit {
-			return fmt.Errorf("chart %s has invalid locked size %d", chart.ID, chart.Size)
-		}
-		data, err := readBounded(chart.Path, config.ChartArchiveLimit)
-		if err != nil {
-			return fmt.Errorf("read chart %s: %w", chart.ID, err)
-		}
-		hash := sha256.Sum256(data)
-		if hex.EncodeToString(hash[:]) != chart.ArchiveSHA256 {
-			clear(data)
-			return fmt.Errorf("chart %s archive changed after bundle verification", chart.ID)
-		}
-		archiveSize := int64(len(data))
-		if archiveSize != chart.Size {
-			clear(data)
-			return fmt.Errorf("chart %s is %d bytes, want %d", chart.ID, archiveSize, chart.Size)
-		}
-		descriptor, resolveErr := resolver.Resolve(ctx, chart.Target)
-		if resolveErr == nil {
-			validationErr := resolver.ValidateHelmChart(ctx, chart.Target, descriptor, chart.ArchiveSHA256, archiveSize)
-			clear(data)
-			if validationErr != nil {
-				return fmt.Errorf("immutable Harbor chart %s differs from the bundle: %w", chart.Target, validationErr)
+	group, groupContext := errgroup.WithContext(ctx)
+	group.SetLimit(config.EffectiveWorkLimit(
+		parallelism,
+		service.Project.Desired.Updates.Parallelism,
+		config.DefaultWorkLimit,
+	))
+	for index := range charts {
+		chart := charts[index]
+		group.Go(func() error {
+			if err := service.publishChart(groupContext, chart, credentials); err != nil {
+				return err
 			}
 			report(chart.ID)
-			continue
+			return nil
+		})
+	}
+	return group.Wait()
+}
+
+func (service Service) publishChart(
+	ctx context.Context,
+	chart delivery.BundleChart,
+	credentials registryCredentials,
+) error {
+	client, err := service.helmRegistryClient(credentials, chart.ArchiveSHA256)
+	if err != nil {
+		return err
+	}
+	nativeCredentials := atumoci.Credentials{
+		Username: credentials.Username,
+		Password: credentials.Password.Clone(),
+		CACert:   append([]byte(nil), credentials.CA...),
+	}
+	defer nativeCredentials.Clear()
+	resolver, err := atumoci.NewClient(
+		service.Project.Desired.Delivery.Registry, nativeCredentials,
+	)
+	if err != nil {
+		return err
+	}
+	defer resolver.Clear()
+	if chart.Size <= 0 || chart.Size > config.ChartArchiveLimit {
+		return fmt.Errorf("chart %s has invalid locked size %d", chart.ID, chart.Size)
+	}
+	data, err := readBounded(chart.Path, config.ChartArchiveLimit)
+	if err != nil {
+		return fmt.Errorf("read chart %s: %w", chart.ID, err)
+	}
+	defer clear(data)
+	hash := sha256.Sum256(data)
+	if hex.EncodeToString(hash[:]) != chart.ArchiveSHA256 {
+		return fmt.Errorf("chart %s archive changed after bundle verification", chart.ID)
+	}
+	archiveSize := int64(len(data))
+	if archiveSize != chart.Size {
+		return fmt.Errorf("chart %s is %d bytes, want %d", chart.ID, archiveSize, chart.Size)
+	}
+	descriptor, resolveErr := resolver.Resolve(ctx, chart.Target)
+	if resolveErr == nil {
+		if err := resolver.ValidateHelmChart(
+			ctx, chart.Target, descriptor, chart.ArchiveSHA256, archiveSize,
+		); err != nil {
+			return fmt.Errorf("immutable Harbor chart %s differs from the bundle: %w", chart.Target, err)
 		}
-		if !errors.Is(resolveErr, errdef.ErrNotFound) {
-			clear(data)
-			return resolveErr
-		}
-		result, err := client.Push(data, chart.Target, registry.PushOptCreationTime(time.Unix(0, 0).UTC().Format(time.RFC3339)))
-		clear(data)
-		if err != nil {
-			return fmt.Errorf("publish chart %s: %w", chart.ID, err)
-		}
-		if result == nil || result.Manifest == nil || result.Manifest.Digest == "" {
-			return fmt.Errorf("publish chart %s returned no manifest digest", chart.ID)
-		}
-		verified, err := resolver.Resolve(ctx, chart.Target)
-		if err != nil {
-			return fmt.Errorf("verify published chart %s: %w", chart.ID, err)
-		}
-		if verified.Digest.String() != result.Manifest.Digest {
-			return fmt.Errorf("published chart %s does not resolve to its exact manifest and archive", chart.ID)
-		}
-		if err := resolver.ValidateHelmChart(ctx, chart.Target, verified, chart.ArchiveSHA256, archiveSize); err != nil {
-			return fmt.Errorf("validate published chart %s: %w", chart.ID, err)
-		}
-		report(chart.ID)
+		return nil
+	}
+	if !errors.Is(resolveErr, errdef.ErrNotFound) {
+		return resolveErr
+	}
+	result, err := client.Push(
+		data,
+		chart.Target,
+		registry.PushOptCreationTime(time.Unix(0, 0).UTC().Format(time.RFC3339)),
+	)
+	if err != nil {
+		return fmt.Errorf("publish chart %s: %w", chart.ID, err)
+	}
+	if result == nil || result.Manifest == nil || result.Manifest.Digest == "" {
+		return fmt.Errorf("publish chart %s returned no manifest digest", chart.ID)
+	}
+	verified, err := resolver.Resolve(ctx, chart.Target)
+	if err != nil {
+		return fmt.Errorf("verify published chart %s: %w", chart.ID, err)
+	}
+	if verified.Digest.String() != result.Manifest.Digest {
+		return fmt.Errorf("published chart %s does not resolve to its exact manifest and archive", chart.ID)
+	}
+	if err := resolver.ValidateHelmChart(
+		ctx, chart.Target, verified, chart.ArchiveSHA256, archiveSize,
+	); err != nil {
+		return fmt.Errorf("validate published chart %s: %w", chart.ID, err)
 	}
 	return nil
 }
 
-func (service Service) helmRegistryClient(credentials registryCredentials) (*registry.Client, error) {
-	credentialRelative := filepath.Join(".atum", "state", "helm-registry.json")
+func (service Service) helmRegistryClient(
+	credentials registryCredentials,
+	identity string,
+) (*registry.Client, error) {
+	if len(identity) != 64 {
+		return nil, errors.New("Helm registry client requires an immutable chart identity")
+	}
+	credentialRelative := filepath.Join(
+		".atum", "state", "helm-registry-"+identity+".json",
+	)
 	if _, err := fssecure.OpenRegular(service.Project.Root, credentialRelative); errors.Is(err, os.ErrNotExist) {
 		if err := fssecure.WriteRegular(service.Project.Root, credentialRelative, []byte("{}\n"), 0o600); err != nil {
 			return nil, err
@@ -306,12 +412,14 @@ func (service Service) helmRegistryClient(credentials registryCredentials) (*reg
 	} else if err != nil {
 		return nil, err
 	}
+	password := string(credentials.Password.Bytes())
 	options := []registry.ClientOption{
-		registry.ClientOptBasicAuth(credentials.Username, credentials.Password),
+		registry.ClientOptBasicAuth(credentials.Username, password),
 		registry.ClientOptHTTPClient(&http.Client{Timeout: 10 * time.Minute}),
 		registry.ClientOptCredentialsFile(filepath.Join(service.Project.Root, credentialRelative)),
 		registry.ClientOptEnableCache(true),
 	}
+	password = ""
 	if !service.Project.Desired.Delivery.Registry.TLSVerify {
 		options = append(options, registry.ClientOptPlainHTTP())
 	}
@@ -323,7 +431,11 @@ func (service Service) helmRegistryClient(credentials registryCredentials) (*reg
 }
 
 func (control *harborControl) ensureChartsImmutable(ctx context.Context) error {
-	current, err := control.chartsImmutable(ctx)
+	client, err := control.apiClient()
+	if err != nil {
+		return err
+	}
+	current, err := control.chartsImmutable(ctx, client)
 	if err != nil || current {
 		return err
 	}
@@ -337,7 +449,7 @@ func (control *harborControl) ensureChartsImmutable(ctx context.Context) error {
 			"repository": {{Kind: "doublestar", Decoration: "repoMatches", Pattern: "**"}},
 		},
 	}
-	_, err = control.client.Immutable.CreateImmuRule(ctx, &immutable.CreateImmuRuleParams{
+	_, err = client.Immutable.CreateImmuRule(ctx, &immutable.CreateImmuRuleParams{
 		ProjectNameOrID: "charts", XIsResourceName: &isName, ImmutableRule: rule,
 	})
 	if err != nil {
@@ -346,10 +458,13 @@ func (control *harborControl) ensureChartsImmutable(ctx context.Context) error {
 	return nil
 }
 
-func (control *harborControl) chartsImmutable(ctx context.Context) (bool, error) {
+func (control *harborControl) chartsImmutable(
+	ctx context.Context,
+	client *harborclient.HarborAPI,
+) (bool, error) {
 	page, pageSize := int64(1), int64(100)
 	isName := true
-	response, err := control.client.Immutable.ListImmuRules(ctx, &immutable.ListImmuRulesParams{
+	response, err := client.Immutable.ListImmuRules(ctx, &immutable.ListImmuRulesParams{
 		ProjectNameOrID: "charts", XIsResourceName: &isName, Page: &page, PageSize: &pageSize,
 	})
 	if err != nil {

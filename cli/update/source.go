@@ -24,6 +24,7 @@ type resolvedGit struct {
 type resolvedPackage struct {
 	Package  config.Package
 	Checkout string
+	ChartName string
 }
 
 type resolvedSupportSource struct {
@@ -153,12 +154,15 @@ func resolvePackages(
 	ctx context.Context,
 	cache *gitcache.Manager,
 	parallelism int,
-	bigBangValues map[string]any,
 	configured []config.Package,
 	previous []config.Package,
 	allowDowngrade bool,
 ) ([]resolvedPackage, error) {
 	resolved := make([]resolvedPackage, len(configured))
+	previousByID := make(map[string]config.Package, len(previous))
+	for index := range previous {
+		previousByID[previous[index].ID] = previous[index]
+	}
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(parallelism)
 	for i := range configured {
@@ -166,44 +170,12 @@ func resolvePackages(
 		group.Go(func() error {
 			current := configured[i]
 			url, version := current.Source.URL, current.Source.Version
-			if current.Integration == "integrated" {
-				packageValues, err := valuesAt(bigBangValues, current.ValuesPath)
-				if err != nil {
-					return fmt.Errorf("resolve Big Bang package %s: %w", current.ID, err)
-				}
-				gitValues, ok := packageValues["git"].(map[string]any)
-				if !ok {
-					return fmt.Errorf("Big Bang package %s has no Git source", current.ID)
-				}
-				defaultURL, _ := gitValues["repo"].(string)
-				defaultVersion, _ := gitValues["tag"].(string)
-				defaultURL, defaultVersion = strings.TrimSpace(defaultURL), strings.TrimSpace(defaultVersion)
-				if defaultURL == "" || defaultVersion == "" {
-					return fmt.Errorf("Big Bang package %s has an incomplete Git source", current.ID)
-				}
-				sameRepository, err := samePackageRepository(defaultURL, url)
-				if err != nil {
-					return fmt.Errorf("compare Big Bang package %s repository: %w", current.ID, err)
-				}
-				if !sameRepository || defaultVersion != version {
-					return fmt.Errorf("Big Bang package %s selection differs from its defaults", current.ID)
-				}
-			}
+			old, hadPrevious := previousByID[current.ID]
 			if !allowDowngrade {
-				if previousVersion := configuredPackageVersion(current.ID, previous); previousVersion != "" {
-					if err := requireNonDowngrade(current.ID, previousVersion, version); err != nil {
+				if hadPrevious && old.Source.Version != "" {
+					if err := requireNonDowngrade(current.ID, old.Source.Version, version); err != nil {
 						return err
 					}
-				}
-			}
-			old, hadPrevious := configuredPackageByID(current.ID, previous)
-			if hadPrevious {
-				sameRepository, err := samePackageRepository(old.Source.URL, url)
-				if err != nil {
-					return fmt.Errorf("compare package %s repository continuity: %w", current.ID, err)
-				}
-				if !sameRepository {
-					return fmt.Errorf("package %s changed repository from %s to %s", current.ID, old.Source.URL, url)
 				}
 			}
 			release, branch, err := cache.ResolveTagWithDefaultBranch(groupContext, url, version)
@@ -222,7 +194,7 @@ func resolvePackages(
 			if err != nil {
 				return fmt.Errorf("inspect package %s: %w", current.ID, err)
 			}
-			if metadata.Version != version {
+			if !tagOwnsChartVersion(version, metadata.Version) {
 				return fmt.Errorf("package %s tag %s contains chart version %s", current.ID, version, metadata.Version)
 			}
 			current.Source = config.GitSource{
@@ -232,7 +204,10 @@ func resolvePackages(
 				Commit:      release.Commit,
 				KubeVersion: metadata.KubeVersion,
 			}
-			resolved[i] = resolvedPackage{Package: current, Checkout: checkout}
+			current.License = packageLicenseReference(checkout, current.Source)
+			resolved[i] = resolvedPackage{
+				Package: current, Checkout: checkout, ChartName: metadata.Name,
+			}
 			return nil
 		})
 	}
@@ -242,34 +217,21 @@ func resolvePackages(
 	return resolved, nil
 }
 
-func configuredPackageVersion(id string, configured []config.Package) string {
-	for index := range configured {
-		if configured[index].ID == id {
-			return configured[index].Source.Version
+func packageLicenseReference(checkout string, source config.GitSource) string {
+	for _, relative := range [...]string{
+		"LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING", "COPYING.md",
+		"chart/LICENSE", "chart/LICENSE.md", "chart/LICENSE.txt",
+	} {
+		info, err := os.Stat(filepath.Join(checkout, filepath.FromSlash(relative)))
+		if err == nil && info.Mode().IsRegular() {
+			return source.URL + " @ " + source.Commit + " / " + relative
 		}
 	}
-	return ""
+	return source.URL + " @ " + source.Commit
 }
 
-func configuredPackageByID(id string, configured []config.Package) (config.Package, bool) {
-	for index := range configured {
-		if configured[index].ID == id {
-			return configured[index], true
-		}
-	}
-	return config.Package{}, false
-}
-
-func samePackageRepository(left, right string) (bool, error) {
-	leftCanonical, err := config.CanonicalPackageRepositoryURL(left)
-	if err != nil {
-		return false, err
-	}
-	rightCanonical, err := config.CanonicalPackageRepositoryURL(right)
-	if err != nil {
-		return false, err
-	}
-	return leftCanonical == rightCanonical, nil
+func tagOwnsChartVersion(tag, chartVersion string) bool {
+	return tag == chartVersion || strings.HasSuffix(tag, "-v"+chartVersion)
 }
 
 func readBigBangValues(bigBangCheckout string) (map[string]any, error) {
@@ -452,13 +414,9 @@ func sourceGitTag(source config.GitSource) string {
 }
 
 func verifyTrackedChartBindings(
-	root string,
 	values map[string]any,
-	registry config.Registry,
 	charts []config.TrackedChart,
-	files map[string][]byte,
 ) error {
-	sources := make(map[string]map[string]any, len(charts))
 	for _, chart := range charts {
 		chartValues, err := valuesAt(values, chart.ValuesPath)
 		if err != nil {
@@ -470,139 +428,68 @@ func verifyTrackedChartBindings(
 		}
 		repositoryName, _ := helmRepository["repoName"].(string)
 		chartName, _ := helmRepository["chartName"].(string)
-		if repositoryName == "" || chartName != chart.Name {
+		version, _ := helmRepository["tag"].(string)
+		sourceType, _ := chartValues["sourceType"].(string)
+		if sourceType != "helmRepo" || repositoryName != "atum" ||
+			chartName != chart.Name || version != chart.Version {
 			return fmt.Errorf("chart %s binds repository %q and chart %q, want chart %q",
 				chart.ID, repositoryName, chartName, chart.Name)
-		}
-		source, exists := sources[chart.FluxSource]
-		if !exists {
-			source, err = readManagedYAML(root, files, chart.FluxSource)
-			if err != nil {
-				return err
-			}
-			sources[chart.FluxSource] = source
-		}
-		kind, _ := source["kind"].(string)
-		metadata, _ := source["metadata"].(map[string]any)
-		name, _ := metadata["name"].(string)
-		namespace, _ := metadata["namespace"].(string)
-		spec, _ := source["spec"].(map[string]any)
-		repositoryURL, _ := spec["url"].(string)
-		repositoryType, _ := spec["type"].(string)
-		insecure, _ := spec["insecure"].(bool)
-		interval, _ := spec["interval"].(string)
-		provider, _ := spec["provider"].(string)
-		expectedURL := "oci://" + registry.Host + "/" + registry.Project
-		if kind != "HelmRepository" || name != repositoryName || namespace != "bigbang" ||
-			repositoryType != "oci" || normalizedChartRepositoryURL(repositoryURL) != expectedURL ||
-			insecure == registry.TLSVerify || interval != "30m" || provider != "generic" || len(spec) != 5 {
-			return fmt.Errorf("chart %s Flux source %s does not bind internal repository %s at %s",
-				chart.ID, chart.FluxSource, repositoryName, expectedURL)
 		}
 	}
 	return nil
 }
 
-func normalizedChartRepositoryURL(value string) string {
-	value = strings.TrimSuffix(strings.TrimSpace(value), "/")
-	return strings.TrimSuffix(value, "/index.yaml")
-}
-
-func bigBangSourceValues(root string, sources config.SourceRegistry, source config.GitSource, files map[string][]byte) (map[string]any, error) {
+func bigBangSourceValues(
+	root string,
+	registry config.Registry,
+	artifact config.ChartArtifact,
+	files map[string][]byte,
+) (map[string]any, error) {
 	const relative = "platform/apps/bigbang/source-bigbang.yaml"
-	current, err := readManagedYAML(root, files, relative)
-	if err != nil {
+	if _, err := readManagedYAML(root, files, relative); err != nil {
 		return nil, err
 	}
-	candidate := cloneMap(current)
-	if err := setScalar(candidate, "spec.url", internalSourceURL(sources, sources.UpstreamOrganization, "bigbang")); err != nil {
-		return nil, err
-	}
-	if err := setScalar(candidate, "spec.ref.tag", sourceGitTag(source)); err != nil {
-		return nil, err
-	}
-	if err := setScalar(candidate, "spec.ref.commit", source.Commit); err != nil {
-		return nil, err
-	}
-	if err := validateBigBangFluxBinding(root, sources, source, candidate, files); err != nil {
-		return nil, err
-	}
-	return candidate, nil
+	return map[string]any{
+		"apiVersion": "source.toolkit.fluxcd.io/v1",
+		"kind":       "OCIRepository",
+		"metadata": map[string]any{
+			"name": "bigbang", "namespace": "bigbang",
+		},
+		"spec": map[string]any{
+			"interval": "10m",
+			"provider": "generic",
+			"insecure": !registry.TLSVerify,
+			"url":      "oci://" + imageRepository(artifact.Target),
+			"ref": map[string]any{
+				"tag": artifact.Version,
+			},
+			"layerSelector": map[string]any{
+				"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+				"operation": "copy",
+			},
+		},
+	}, nil
 }
 
-func validateBigBangFluxBinding(root string, sources config.SourceRegistry, source config.GitSource, repository map[string]any, files map[string][]byte) error {
-	apiVersion, _ := repository["apiVersion"].(string)
-	kind, _ := repository["kind"].(string)
-	metadata, _ := repository["metadata"].(map[string]any)
-	name, _ := metadata["name"].(string)
-	namespace, _ := metadata["namespace"].(string)
-	spec, _ := repository["spec"].(map[string]any)
-	url, _ := spec["url"].(string)
-	ref, _ := spec["ref"].(map[string]any)
-	tag, _ := ref["tag"].(string)
-	commit, _ := ref["commit"].(string)
-	if apiVersion != "source.toolkit.fluxcd.io/v1" || kind != "GitRepository" ||
-		name != "bigbang" || namespace != "bigbang" ||
-		normalizedGitURL(url) != normalizedGitURL(internalSourceURL(sources, sources.UpstreamOrganization, "bigbang")) ||
-		tag != sourceGitTag(source) || commit != source.Commit || len(ref) != 2 {
-		return errors.New("Big Bang GitRepository does not exactly bind the selected URL, tag, and commit")
+func configureBigBangChartRef(
+	release map[string]any,
+	registry config.Registry,
+	version string,
+) error {
+	spec, ok := release["spec"].(map[string]any)
+	if !ok {
+		return errors.New("Big Bang HelmRelease has no spec")
 	}
-	release, err := readManagedYAML(root, files, "platform/apps/bigbang/helmrelease.yaml")
-	if err != nil {
-		return err
+	delete(spec, "chart")
+	spec["chartRef"] = map[string]any{
+		"kind": "OCIRepository", "name": "bigbang", "namespace": "bigbang",
 	}
-	releaseAPI, _ := release["apiVersion"].(string)
-	releaseKind, _ := release["kind"].(string)
-	releaseMetadata, _ := release["metadata"].(map[string]any)
-	releaseName, _ := releaseMetadata["name"].(string)
-	releaseNamespace, _ := releaseMetadata["namespace"].(string)
-	releaseSpec, _ := release["spec"].(map[string]any)
-	chart, _ := releaseSpec["chart"].(map[string]any)
-	chartSpec, _ := chart["spec"].(map[string]any)
-	chartPath, _ := chartSpec["chart"].(string)
-	reconcile, _ := chartSpec["reconcileStrategy"].(string)
-	sourceRef, _ := chartSpec["sourceRef"].(map[string]any)
-	sourceKind, _ := sourceRef["kind"].(string)
-	sourceName, _ := sourceRef["name"].(string)
-	sourceNamespace, _ := sourceRef["namespace"].(string)
-	if releaseAPI != "helm.toolkit.fluxcd.io/v2" || releaseKind != "HelmRelease" ||
-		releaseName != "bigbang" || releaseNamespace != "bigbang" || chartPath != "./chart" || reconcile != "Revision" ||
-		sourceKind != "GitRepository" || sourceName != "bigbang" || sourceNamespace != "bigbang" {
-		return errors.New("Big Bang HelmRelease does not exactly bind the managed GitRepository chart revision")
-	}
-	valuesFrom, _ := releaseSpec["valuesFrom"].([]any)
-	if len(valuesFrom) != 5 || !matchesValuesSource(valuesFrom[0], "ConfigMap", "bigbang-operational-values", "values.yaml", "", false) ||
-		!matchesValuesSource(valuesFrom[1], "ConfigMap", "bigbang-generated-values", "values.yaml", "", false) ||
-		!matchesValuesSource(valuesFrom[2], "ConfigMap", "bigbang-target-values", "values.yaml", "", false) ||
-		!matchesValuesSource(valuesFrom[3], "Secret", "atum-platform-identity-values", "values.yaml", "", true) ||
-		!matchesValuesSource(valuesFrom[4], "Secret", "atum-sso-ca", "ca.crt", "sso.certificateAuthority.cert", true) {
-		return errors.New("Big Bang HelmRelease valuesFrom order does not match operational, generated, target, identity, and SSO CA values")
+	if version == "" || registry.Host == "" || registry.Project == "" {
+		return errors.New("Big Bang OCI chart reference requires version and registry")
 	}
 	return nil
 }
 
 func internalSourceURL(sources config.SourceRegistry, organization, repository string) string {
 	return strings.TrimSuffix(sources.ClusterURL, "/") + "/" + organization + "/" + repository + ".git"
-}
-
-func matchesValuesSource(raw any, kind, name, key, targetPath string, optional bool) bool {
-	value, ok := raw.(map[string]any)
-	if !ok {
-		return false
-	}
-	actualKind, _ := value["kind"].(string)
-	actualName, _ := value["name"].(string)
-	actualKey, _ := value["valuesKey"].(string)
-	actualTarget, targetFound := value["targetPath"].(string)
-	actualOptional, _ := value["optional"].(bool)
-	expectedLength := 3
-	if optional {
-		expectedLength++
-	}
-	if targetPath != "" {
-		expectedLength++
-	}
-	return len(value) == expectedLength && actualKind == kind && actualName == name &&
-		actualKey == key && actualOptional == optional &&
-		targetFound == (targetPath != "") && actualTarget == targetPath
 }

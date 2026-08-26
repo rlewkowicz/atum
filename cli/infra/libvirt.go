@@ -1,16 +1,20 @@
 package infra
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"atum/cli/process"
@@ -19,13 +23,15 @@ import (
 )
 
 const (
-	libvirtRulePath     = "/etc/polkit-1/rules.d/49-atum-libvirt-all-users.rules"
-	forwardingStateDir  = "/etc/atum"
-	forwardingStatePath = forwardingStateDir + "/libvirt-forwarding.bridge"
-	bridgeStateLimit    = 16
-	libvirtURI          = "qemu:///system"
-	libvirtNetwork      = "atum"
-	libvirtRule         = `// WARNING: system libvirt management is effectively root-equivalent host access.
+	libvirtRulePath      = "/etc/polkit-1/rules.d/49-atum-libvirt-all-users.rules"
+	forwardingStateDir   = "/etc/atum"
+	forwardingStatePath  = forwardingStateDir + "/libvirt-forwarding.bridge"
+	libvirtACLStatePath  = forwardingStateDir + "/libvirt-qemu-search.acl"
+	bridgeStateLimit     = 16
+	libvirtACLStateLimit = 64 << 10
+	libvirtURI           = "qemu:///system"
+	libvirtNetwork       = "atum"
+	libvirtRule          = `// WARNING: system libvirt management is effectively root-equivalent host access.
 polkit.addRule(function(action, subject) {
     if (action.id == "org.libvirt.unix.manage") {
         return polkit.Result.YES;
@@ -109,6 +115,9 @@ type LibvirtService struct {
 	VirshBin      string
 	FirewallBin   string
 	RestoreconBin string
+	GetfaclBin    string
+	SetfaclBin    string
+	ProjectRoot   string
 }
 
 func (service LibvirtService) Permissions(ctx context.Context, action string) error {
@@ -128,18 +137,27 @@ func (service LibvirtService) Permissions(ctx context.Context, action string) er
 				return fmt.Errorf("restore libvirt policy context: %w", err)
 			}
 		}
+		if err := service.installQEMUSearchACL(ctx); err != nil {
+			return err
+		}
 		return service.print("installed %s\nall local users may now manage %s without authentication\n", libvirtRulePath, libvirtURI)
 	case "status":
 		_, found, err := readManagedHostFile(libvirtRulePath, 16<<10, 0o644)
-		if err == nil && found {
-			return service.print("installed: %s\n", libvirtRulePath)
-		}
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("not installed: %s", libvirtRulePath)
+		if !found {
+			return fmt.Errorf("not installed: %s", libvirtRulePath)
+		}
+		if err := service.validateQEMUSearchACLState(); err != nil {
+			return err
+		}
+		return service.print("installed: %s\n", libvirtRulePath)
 	case "uninstall":
 		if err := service.requireRoot(action); err != nil {
+			return err
+		}
+		if err := service.restoreQEMUSearchACL(ctx); err != nil {
 			return err
 		}
 		if err := removeHostFile(libvirtRulePath, 0o644); err != nil {
@@ -149,6 +167,140 @@ func (service LibvirtService) Permissions(ctx context.Context, action string) er
 	default:
 		return fmt.Errorf("unsupported libvirt permissions action %q", action)
 	}
+}
+
+func (service LibvirtService) installQEMUSearchACL(ctx context.Context) error {
+	directories, err := restrictedProjectAncestors(service.ProjectRoot)
+	if err != nil {
+		return err
+	}
+	if len(directories) == 0 {
+		return nil
+	}
+	account, err := qemuAccount()
+	if err != nil {
+		return err
+	}
+	state, found, err := readManagedHostFile(libvirtACLStatePath, libvirtACLStateLimit, 0o600)
+	if err != nil {
+		return err
+	}
+	header := libvirtACLStateHeader(service.ProjectRoot)
+	if found {
+		if !bytes.HasPrefix(state, header) {
+			return fmt.Errorf("managed libvirt ACL state belongs to a different project root")
+		}
+	} else {
+		if service.OutputRunner == nil || service.GetfaclBin == "" {
+			return errors.New("validated getfacl identity is required")
+		}
+		arguments := make([]string, 0, len(directories)+2)
+		arguments = append(arguments, "--absolute-names", "--numeric")
+		arguments = append(arguments, directories...)
+		snapshot, err := service.OutputRunner.Output(ctx, process.Command{
+			Name: service.GetfaclBin,
+			Args: arguments,
+		})
+		if err != nil {
+			return fmt.Errorf("snapshot project ancestor ACLs: %w", err)
+		}
+		state = make([]byte, 0, len(header)+len(snapshot))
+		state = append(state, header...)
+		state = append(state, snapshot...)
+		if err := atomicHostFile(libvirtACLStatePath, state, 0o600); err != nil {
+			clear(state)
+			return fmt.Errorf("store project ancestor ACL snapshot: %w", err)
+		}
+		clear(state)
+	}
+	if service.SetfaclBin == "" {
+		return errors.New("validated setfacl identity is required")
+	}
+	arguments := make([]string, 0, len(directories)+3)
+	arguments = append(arguments, "--modify", "user:"+account.Uid+":--x", "--")
+	arguments = append(arguments, directories...)
+	if err := service.Runner.Run(ctx, process.Command{
+		Name: service.SetfaclBin,
+		Args: arguments,
+	}); err != nil {
+		return fmt.Errorf("grant QEMU project search access: %w", err)
+	}
+	return nil
+}
+
+func (service LibvirtService) validateQEMUSearchACLState() error {
+	directories, err := restrictedProjectAncestors(service.ProjectRoot)
+	if err != nil || len(directories) == 0 {
+		return err
+	}
+	state, found, err := readManagedHostFile(libvirtACLStatePath, libvirtACLStateLimit, 0o600)
+	if err != nil {
+		return err
+	}
+	if !found || !bytes.HasPrefix(state, libvirtACLStateHeader(service.ProjectRoot)) {
+		return errors.New("QEMU project search ACL is not installed")
+	}
+	return nil
+}
+
+func (service LibvirtService) restoreQEMUSearchACL(ctx context.Context) error {
+	state, found, err := readManagedHostFile(libvirtACLStatePath, libvirtACLStateLimit, 0o600)
+	if err != nil || !found {
+		return err
+	}
+	if !bytes.HasPrefix(state, libvirtACLStateHeader(service.ProjectRoot)) {
+		return errors.New("managed libvirt ACL state belongs to a different project root")
+	}
+	if service.SetfaclBin == "" {
+		return errors.New("validated setfacl identity is required")
+	}
+	if err := service.Runner.Run(ctx, process.Command{
+		Name: service.SetfaclBin,
+		Args: []string{"--restore=" + libvirtACLStatePath},
+	}); err != nil {
+		return fmt.Errorf("restore project ancestor ACLs: %w", err)
+	}
+	return removeHostFile(libvirtACLStatePath, 0o600)
+}
+
+func libvirtACLStateHeader(projectRoot string) []byte {
+	digest := sha256.Sum256([]byte(filepath.Clean(projectRoot)))
+	return []byte("# atum-project-root-sha256: " + hex.EncodeToString(digest[:]) + "\n")
+}
+
+func restrictedProjectAncestors(projectRoot string) ([]string, error) {
+	if !filepath.IsAbs(projectRoot) || filepath.Clean(projectRoot) != projectRoot {
+		return nil, fmt.Errorf("project root %q must be clean and absolute", projectRoot)
+	}
+	directories := make([]string, 0, 8)
+	for current := projectRoot; current != string(filepath.Separator); current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return nil, fmt.Errorf("inspect project ancestor %s: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return nil, fmt.Errorf("project ancestor %s must be a real directory", current)
+		}
+		if info.Mode().Perm()&0o001 == 0 {
+			directories = append(directories, current)
+		}
+	}
+	slices.Reverse(directories)
+	return directories, nil
+}
+
+func qemuAccount() (*user.User, error) {
+	for _, name := range []string{"qemu", "libvirt-qemu"} {
+		account, err := user.Lookup(name)
+		if err == nil {
+			return account, nil
+		}
+		var unknown user.UnknownUserError
+		if !errors.As(err, &unknown) {
+			return nil, fmt.Errorf("resolve QEMU account %s: %w", name, err)
+		}
+	}
+	return nil, errors.New("resolve QEMU account: neither qemu nor libvirt-qemu exists")
 }
 
 func (service LibvirtService) Forwarding(ctx context.Context, plan ForwardingPlan) error {
@@ -491,8 +643,7 @@ func validateSecureDirectoryFD(descriptor int, path string) error {
 	if err := unix.Fstat(descriptor, &info); err != nil {
 		return err
 	}
-	if info.Mode&unix.S_IFMT != unix.S_IFDIR || info.Uid != 0 || info.Gid != 0 ||
-		info.Mode&0o022 != 0 {
+	if info.Mode&unix.S_IFMT != unix.S_IFDIR || info.Uid != 0 || info.Mode&0o022 != 0 {
 		return fmt.Errorf("host directory %s is not secure root-owned storage", path)
 	}
 	return nil

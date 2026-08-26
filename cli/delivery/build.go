@@ -42,6 +42,7 @@ func (service *Service) publishBuilds(
 	graphSHA string,
 	options PublishOptions,
 	current map[string]config.LockedImage,
+	report func(string, bool),
 ) ([]config.LockedImage, int, int, error) {
 	if len(builds) == 0 {
 		return nil, 0, 0, nil
@@ -59,6 +60,7 @@ func (service *Service) publishBuilds(
 					entries = append(entries, locked)
 					registryReused++
 					service.logger.InfoContext(ctx, "reuse built image", "image", image.Image.ID, "digest", locked.Digest)
+					report(image.Image.ID, true)
 					continue
 				}
 			}
@@ -73,24 +75,23 @@ func (service *Service) publishBuilds(
 		return entries, 0, registryReused, nil
 	}
 	publishedEntries := make([]config.LockedImage, len(outputs))
-	parallelism := options.Parallelism
-	if parallelism <= 0 {
-		parallelism = project.Desired.Updates.Parallelism
-	}
-	if parallelism <= 0 {
-		parallelism = defaultParallelism
-	}
+	parallelism := effectiveParallelism(
+		options.Parallelism, project.Desired.Updates.Parallelism,
+	)
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(parallelism)
 	for index := range outputs {
 		index := index
 		group.Go(func() error {
-			entry, err := service.publishBuildOutput(groupContext, registry, outputs[index])
-			if err != nil {
-				return err
-			}
-			publishedEntries[index] = entry
-			return nil
+			return runDeliveryWorker(groupContext, func() error {
+				entry, err := service.publishBuildOutput(groupContext, registry, outputs[index])
+				if err != nil {
+					return err
+				}
+				publishedEntries[index] = entry
+				report(entry.ID, false)
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {
@@ -141,6 +142,9 @@ func (service *Service) prepareBuildSet(
 	if len(builds) == 0 {
 		return nil, 0, 0, nil
 	}
+	if err := config.ValidateSourceSnapshot(project); err != nil {
+		return nil, 0, 0, fmt.Errorf("validate immutable build source: %w", err)
+	}
 	outputs := make([]buildOutput, len(builds))
 	pending := make([]buildOutput, 0, len(builds))
 	pendingIndexes := make([]int, 0, len(builds))
@@ -175,7 +179,9 @@ func (service *Service) prepareBuildSet(
 	if snapshotGraph != graphSHA {
 		return nil, 0, 0, fmt.Errorf("immutable build source graph is %s, want %s", snapshotGraph, graphSHA)
 	}
-	if err := service.runBake(ctx, project, workspace, pending, options, localCache); err != nil {
+	if err := runExclusiveDeliveryWork(ctx, func() error {
+		return service.runBake(ctx, project, workspace, pending, options, localCache)
+	}); err != nil {
 		return nil, 0, 0, err
 	}
 	currentGraph, err := config.DeliveryGraphSHA256(project, profile)
@@ -186,17 +192,22 @@ func (service *Service) prepareBuildSet(
 		return nil, 0, 0, fmt.Errorf("delivery graph changed during build: found %s, want %s", currentGraph, graphSHA)
 	}
 	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(max(1, project.Desired.Delivery.Policy.BuildParallelism))
+	group.SetLimit(effectiveParallelism(
+		project.Desired.Delivery.Policy.BuildParallelism,
+		options.Parallelism,
+	))
 	for position, outputIndex := range pendingIndexes {
 		position, outputIndex := position, outputIndex
 		group.Go(func() error {
-			store, descriptor, err := openBuildLayout(groupContext, pending[position].absolute)
-			if err != nil {
-				return fmt.Errorf("read build output for %s: %w", pending[position].image.Image.ID, err)
-			}
-			outputs[outputIndex].store = store
-			outputs[outputIndex].descriptor = descriptor
-			return nil
+			return runDeliveryWorker(groupContext, func() error {
+				store, descriptor, err := openBuildLayout(groupContext, pending[position].absolute)
+				if err != nil {
+					return fmt.Errorf("read build output for %s: %w", pending[position].image.Image.ID, err)
+				}
+				outputs[outputIndex].store = store
+				outputs[outputIndex].descriptor = descriptor
+				return nil
+			})
 		})
 	}
 	if err := group.Wait(); err != nil {
@@ -263,7 +274,15 @@ func (service *Service) runBake(
 		return err
 	}
 	defer cleanup()
-	builder, err := service.prepareBuilder(ctx, project, session)
+	builder, err := service.prepareBuilder(
+		ctx,
+		project,
+		session,
+		effectiveParallelism(
+			project.Desired.Delivery.Policy.BuildParallelism,
+			options.Parallelism,
+		),
+	)
 	if err != nil {
 		return err
 	}

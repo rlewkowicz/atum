@@ -112,6 +112,16 @@ type releaseInstanceContract struct {
 	RuntimeSHA string `json:"runtimeSha256"`
 }
 
+type chartValueSelection struct {
+	identity string
+	values   map[string]any
+}
+
+type normalizationRequirement struct {
+	receipt config.ChartNormalization
+	owner   string
+}
+
 func readChartMetadata(path string) (chartInspection, error) {
 	loaded, err := loader.Load(path)
 	if err != nil {
@@ -201,9 +211,12 @@ func renderChart(
 	collector *releaseValueCollector,
 	options common.ReleaseOptions,
 ) (chartInspection, error) {
-	loaded, err := loader.Load(path)
+	loaded, _, err := loadNormalizedChart(path, []chartValueSelection{{
+		identity: options.Namespace + "/" + options.Name,
+		values:   values,
+	}})
 	if err != nil {
-		return chartInspection{}, fmt.Errorf("load Helm chart %s: %w", path, err)
+		return chartInspection{}, err
 	}
 	return inspectLoadedChart(loaded, kubernetesVersion, values, collector, options)
 }
@@ -219,7 +232,6 @@ func inspectLoadedChart(
 		return chartInspection{}, errors.New("Helm chart has no metadata")
 	}
 	values = cloneMap(values)
-	normalizeIgnoredChartDefaults(loaded.Values, values)
 	if err := chartutil.ProcessDependencies(loaded, common.Values(values)); err != nil {
 		return chartInspection{}, fmt.Errorf("resolve Helm dependencies for %s: %w", loaded.Name(), err)
 	}
@@ -261,27 +273,274 @@ func inspectLoadedChart(
 	}, nil
 }
 
-// normalizeIgnoredChartDefaults removes only chart defaults that Helm's
-// coalescer would discard because an explicit value has a different container
-// shape. This preserves Helm's precedence semantics while avoiding warnings
-// from upstream charts whose documented configurable maps default to lists or
-// whose documented scalar replacements default to maps.
-func normalizeIgnoredChartDefaults(defaults, overrides map[string]any) {
-	for key, override := range overrides {
+func loadNormalizedChart(
+	chartPath string,
+	selections []chartValueSelection,
+) (*chart.Chart, []config.ChartNormalization, error) {
+	ordered := append([]chartValueSelection(nil), selections...)
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].identity < ordered[j].identity
+	})
+	if len(ordered) == 0 {
+		ordered = []chartValueSelection{{identity: "default"}}
+	}
+
+	requirements := make(map[string]normalizationRequirement)
+	selectionRequirements := make([]map[string]config.ChartNormalization, len(ordered))
+	chartName := ""
+	for index := range ordered {
+		probe, err := loader.Load(chartPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load Helm chart %s: %w", chartPath, err)
+		}
+		if probe.Metadata == nil {
+			return nil, nil, fmt.Errorf("Helm chart %s has no metadata", chartPath)
+		}
+		chartName = probe.Name()
+		receipts, err := normalizePlaceholderDefaults(
+			probe,
+			cloneMap(ordered[index].values),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"normalize Helm defaults for %s: %w",
+				ordered[index].identity,
+				err,
+			)
+		}
+		selectionRequirements[index] = make(
+			map[string]config.ChartNormalization,
+			len(receipts),
+		)
+		for _, receipt := range receipts {
+			selectionRequirements[index][receipt.Path] = receipt
+			previous, exists := requirements[receipt.Path]
+			if exists && previous.receipt != receipt {
+				return nil, nil, fmt.Errorf(
+					"value %s requires incompatible archive normalizations for %s and %s (%s to %s, %s to %s)",
+					receipt.Path,
+					previous.owner,
+					ordered[index].identity,
+					previous.receipt.From,
+					previous.receipt.To,
+					receipt.From,
+					receipt.To,
+				)
+			}
+			if !exists {
+				requirements[receipt.Path] = normalizationRequirement{
+					receipt: receipt,
+					owner:   ordered[index].identity,
+				}
+			}
+		}
+	}
+	requirementPaths := make([]string, 0, len(requirements))
+	for valuePath := range requirements {
+		requirementPaths = append(requirementPaths, valuePath)
+	}
+	sort.Strings(requirementPaths)
+	for _, valuePath := range requirementPaths {
+		requirement := requirements[valuePath]
+		for index := range ordered {
+			if receipt, exists := selectionRequirements[index][valuePath]; exists {
+				if receipt == requirement.receipt {
+					continue
+				}
+				return nil, nil, fmt.Errorf(
+					"value %s requires incompatible archive normalizations for %s and %s",
+					valuePath,
+					requirement.owner,
+					ordered[index].identity,
+				)
+			}
+			if scalarOverrideCoversNormalization(
+				ordered[index].values,
+				chartName,
+				valuePath,
+			) {
+				continue
+			}
+			return nil, nil, fmt.Errorf(
+				"value %s required by %s changes Helm semantics for %s",
+				valuePath,
+				requirement.owner,
+				ordered[index].identity,
+			)
+		}
+	}
+
+	normalized, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load Helm chart %s: %w", chartPath, err)
+	}
+	for index := range ordered {
+		if _, err := normalizePlaceholderDefaults(
+			normalized,
+			cloneMap(ordered[index].values),
+		); err != nil {
+			return nil, nil, fmt.Errorf(
+				"normalize Helm defaults for %s: %w",
+				ordered[index].identity,
+				err,
+			)
+		}
+	}
+	receipts := make([]config.ChartNormalization, 0, len(requirementPaths))
+	for _, valuePath := range requirementPaths {
+		receipts = append(receipts, requirements[valuePath].receipt)
+	}
+	return normalized, receipts, nil
+}
+
+func scalarOverrideCoversNormalization(
+	values map[string]any,
+	root string,
+	valuePath string,
+) bool {
+	relative := strings.TrimPrefix(valuePath, root+".")
+	var current any = values
+	for _, key := range strings.Split(relative, ".") {
+		mapping, ok := current.(map[string]any)
+		if !ok {
+			return !isCollectionShape(helmValueShape(current))
+		}
+		current, ok = mapping[key]
+		if !ok {
+			return false
+		}
+	}
+	return !isCollectionShape(helmValueShape(current))
+}
+
+// normalizePlaceholderDefaults aligns upstream placeholder defaults with the
+// selected value shape before Helm coalesces a chart and its dependencies.
+// Helm always retains the explicit value in these cases; this only fixes empty
+// container and boolean-sentinel defaults that otherwise produce a warning.
+func normalizePlaceholderDefaults(loaded *chart.Chart, overrides map[string]any) ([]config.ChartNormalization, error) {
+	var receipts []config.ChartNormalization
+	if err := normalizePlaceholderValueMap(loaded.Values, overrides, loaded.Name(), &receipts); err != nil {
+		return nil, err
+	}
+	requirements := make(map[string][]*chart.Dependency, len(loaded.Metadata.Dependencies))
+	for _, requirement := range loaded.Metadata.Dependencies {
+		requirements[requirement.Name] = append(requirements[requirement.Name], requirement)
+	}
+	for _, dependency := range loaded.Dependencies() {
+		for _, requirement := range requirements[dependency.Name()] {
+			if !chartutil.IsCompatibleRange(requirement.Version, dependency.Metadata.Version) {
+				continue
+			}
+			key := requirement.Name
+			if requirement.Alias != "" {
+				key = requirement.Alias
+			}
+			defaults, _ := loaded.Values[key].(map[string]any)
+			selected, _ := overrides[key].(map[string]any)
+			dependencyReceipts, err := normalizePlaceholderDefaults(dependency, mergeValues(defaults, selected))
+			if err != nil {
+				return nil, fmt.Errorf("%s.%s: %w", loaded.Name(), key, err)
+			}
+			for index := range dependencyReceipts {
+				suffix := strings.TrimPrefix(
+					dependencyReceipts[index].Path, dependency.Name(),
+				)
+				dependencyReceipts[index].Path = loaded.Name() + "." + key + suffix
+			}
+			receipts = append(receipts, dependencyReceipts...)
+		}
+	}
+	return receipts, nil
+}
+
+func normalizePlaceholderValueMap(
+	defaults, overrides map[string]any,
+	path string,
+	receipts *[]config.ChartNormalization,
+) error {
+	keys := make([]string, 0, len(overrides))
+	for key := range overrides {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		override := overrides[key]
 		defaultValue, exists := defaults[key]
 		if !exists {
 			continue
 		}
+		valuePath := path + "." + key
+		overrideShape := helmValueShape(override)
+		defaultShape := helmValueShape(defaultValue)
 		overrideMap, overrideIsMap := override.(map[string]any)
 		defaultMap, defaultIsMap := defaultValue.(map[string]any)
 		switch {
 		case overrideIsMap && defaultIsMap:
-			normalizeIgnoredChartDefaults(defaultMap, overrideMap)
-		case overrideIsMap && defaultValue != nil:
-			defaults[key] = map[string]any{}
-		case override != nil && defaultIsMap:
-			delete(defaults, key)
+			if err := normalizePlaceholderValueMap(defaultMap, overrideMap, valuePath, receipts); err != nil {
+				return err
+			}
+		case !isCollectionShape(overrideShape):
+			// Scalar overrides use Helm's ordinary replacement semantics.
+			continue
+		case overrideShape == defaultShape:
+			continue
+		case isSemanticallyEmpty(defaultValue):
+			defaults[key] = emptyValueForShape(overrideShape)
+			*receipts = append(*receipts, config.ChartNormalization{
+				Path: valuePath, From: defaultShape, To: overrideShape,
+			})
+		default:
+			return fmt.Errorf(
+				"value %s selects %s over incompatible non-empty %s default",
+				valuePath, overrideShape, defaultShape,
+			)
 		}
+	}
+	return nil
+}
+
+func isSemanticallyEmpty(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return typed == ""
+	case bool:
+		return !typed
+	case []any:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	default:
+		return false
+	}
+}
+
+func isCollectionShape(shape string) bool {
+	return shape == "map" || shape == "list"
+}
+
+func emptyValueForShape(shape string) any {
+	if shape == "map" {
+		return map[string]any{}
+	}
+	return []any{}
+}
+
+func helmValueShape(value any) string {
+	switch value.(type) {
+	case map[string]any:
+		return "map"
+	case []any:
+		return "list"
+	case bool:
+		return "boolean"
+	case string:
+		return "string"
+	case nil:
+		return "null"
+	default:
+		return fmt.Sprintf("%T", value)
 	}
 }
 
@@ -746,6 +1005,19 @@ func attachMountedConfigFiles(
 	pods []podContract,
 	configMaps map[string][]renderedConfigFile,
 ) error {
+	configMapsByName := make(map[string][]renderedConfigFile, len(configMaps))
+	for key, files := range configMaps {
+		_, name, found := strings.Cut(key, "\x00")
+		if !found {
+			continue
+		}
+		configMapsByName[name] = append(configMapsByName[name], files...)
+	}
+	for name := range configMapsByName {
+		sort.Slice(configMapsByName[name], func(i, j int) bool {
+			return configMapsByName[name][i].key < configMapsByName[name][j].key
+		})
+	}
 	for podIndex := range pods {
 		namespace, _ := pods[podIndex].Metadata["namespace"].(string)
 		volumes, _ := pods[podIndex].Runtime["volumes"].([]any)
@@ -796,7 +1068,12 @@ func attachMountedConfigFiles(
 						return fmt.Errorf("ConfigMap volume %s has non-absolute mountPath", volumeName)
 					}
 					subPath, _ := mount["subPath"].(string)
-					files := renderedConfigMapFiles(configMaps, namespace, volume.name)
+					files := renderedConfigMapFiles(
+						configMaps,
+						configMapsByName,
+						namespace,
+						volume.name,
+					)
 					for _, file := range files {
 						projected := file.key
 						if len(volume.items) != 0 {
@@ -837,6 +1114,7 @@ func attachMountedConfigFiles(
 
 func renderedConfigMapFiles(
 	configMaps map[string][]renderedConfigFile,
+	configMapsByName map[string][]renderedConfigFile,
 	namespace, name string,
 ) []renderedConfigFile {
 	if files := configMaps[namespacedObjectKey(namespace, name)]; len(files) != 0 {
@@ -845,15 +1123,7 @@ func renderedConfigMapFiles(
 	if files := configMaps[namespacedObjectKey("", name)]; len(files) != 0 {
 		return files
 	}
-	suffix := "\x00" + name
-	var result []renderedConfigFile
-	for key, files := range configMaps {
-		if strings.HasSuffix(key, suffix) {
-			result = append(result, files...)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].key < result[j].key })
-	return result
+	return configMapsByName[name]
 }
 
 func cloneMountedConfigFiles(files []mountedConfigFile) []mountedConfigFile {

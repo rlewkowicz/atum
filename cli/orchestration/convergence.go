@@ -45,6 +45,11 @@ func (service Service) orchestrationInputSHA256(inventoryPath string) (string, e
 	if err != nil {
 		return "", err
 	}
+	if err := snapshot.RequireMembers(
+		config.RequiredSourceSnapshotMembers(service.Project.Desired),
+	); err != nil {
+		return "", fmt.Errorf("validate exact source handoff: %w", err)
+	}
 	sourceSHA, err := snapshot.SHA256Prefix(service.Project.Desired.Orchestration.Directory)
 	if err != nil {
 		return "", fmt.Errorf("identify tracked orchestration source: %w", err)

@@ -21,13 +21,6 @@ const SchemaVersion = "atum.dev/identity/v1"
 const (
 	ProfilePrepKustomizationName     = "platform-profile-prep"
 	ProfileAccessKustomizationName   = "platform-profile-access"
-	ProfileIdentityKustomizationName = "platform-profile-identity"
-	KeycloakJobNamespace             = "keycloak"
-	KeycloakJobName                  = "atum-keycloak-reconcile"
-	KeycloakJobOwner                 = "keycloak"
-	OpenBaoJobNamespace              = "vault"
-	OpenBaoJobName                   = "atum-openbao-reconcile"
-	OpenBaoJobOwner                  = "openbao"
 )
 
 var (
@@ -55,7 +48,7 @@ const (
 	GitLab         Application = "gitlab"
 	PolicyReporter Application = "policy-reporter"
 	Harbor         Application = "harbor"
-	OpenBao        Application = "openbao"
+	Vault          Application = "vault"
 	Prometheus     Application = "prometheus"
 	Alertmanager   Application = "alertmanager"
 	OpenSearch     Application = "opensearch"
@@ -70,7 +63,6 @@ const (
 
 type Administrator struct {
 	Username   string `yaml:"username"`
-	Password   string `yaml:"password"`
 	Group      string `yaml:"group"`
 	ServerRole string `yaml:"serverRole"`
 }
@@ -211,8 +203,8 @@ func (contract *Contract) validate() error {
 		}
 	}
 	admin := contract.administrator
-	if admin.Username != "atum" || admin.Password != "atum" || admin.Group != "atum-admins" || admin.ServerRole != "admin" {
-		return errors.New("administrator must be atum/atum in atum-admins with server role admin")
+	if admin.Username != "atum" || admin.Group != "atum-admins" || admin.ServerRole != "admin" {
+		return errors.New("administrator must be atum in atum-admins with server role admin")
 	}
 	callbacks := make(map[string]struct{}, len(contract.clients))
 	purposes := make(map[string]struct{}, len(contract.clients))
@@ -253,7 +245,7 @@ func (contract *Contract) validate() error {
 			return fmt.Errorf("client id %q is duplicated", client.ID)
 		}
 		switch client.Application {
-		case Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, OpenBao,
+		case Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, Vault,
 			Prometheus, Alertmanager, OpenSearch:
 		default:
 			return fmt.Errorf("client %s has unsupported application %q", client.ID, client.Application)
@@ -321,7 +313,7 @@ func (contract *Contract) validate() error {
 		}
 	}
 	for _, required := range [...]Application{
-		Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, OpenBao,
+		Headlamp, Kiali, Grafana, GitLab, PolicyReporter, Harbor, Vault,
 		Prometheus, Alertmanager, OpenSearch,
 	} {
 		if _, exists := applications[required]; !exists {
@@ -351,7 +343,7 @@ func applicationContract(application Application, administratorGroup string) (
 		return Confidential, NativeOIDC, false, "authenticated-ui-admin"
 	case Harbor:
 		return Confidential, NativeOIDC, false, "oidc-admin-group"
-	case OpenBao:
+	case Vault:
 		return Confidential, FluxReconciliation, false, "administrator-policy"
 	case Prometheus, Alertmanager, OpenSearch:
 		return Confidential, Authservice, false, "authenticated"

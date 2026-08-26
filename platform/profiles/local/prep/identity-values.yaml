@@ -144,7 +144,7 @@ stringData:
                                 resolution: DNS
                 networkPolicies:
                     additionalPolicies:
-                        - name: allow-openbao-identity-reconcile
+                        - name: allow-vault-identity-reconcile
                           spec:
                             egress:
                                 - ports:
@@ -178,7 +178,7 @@ stringData:
                                             app: istiod
                             podSelector:
                                 matchLabels:
-                                    atum.dev/identity-job: openbao
+                                    atum.dev/identity-job: vault
                             policyTypes:
                                 - Egress
                     egress:

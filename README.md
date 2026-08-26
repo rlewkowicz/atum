@@ -14,7 +14,7 @@ Atum is a declarative Go CLI for deploying the Department of Defense (War?) plat
 
 Big Bang is a platform in a box. The deployment model is open source and openly licensed, but access to its specialty images is restricted. This repo handles a few things on that front. But it's still just a wrapper around battle-tested software platforms. So if something goes wrong, you're not troubleshooting Atum, you're troubleshooting industry-standard, production-proven deployment platforms.
 
-1. All images are swapped out for their official upstreams and built from scratch where there is no analog or the upstream was sunset. The main PostgreSQL service, for example, now runs through CloudNativePG using its official chart and image.
+1. All images are swapped out for their official upstreams and built from scratch where there is no analog or the upstream was sunset.
 2. It's all fully declarative. Big Bang itself is a Helm chart of Helm charts. Nothing is vendored to this repo. The platform is mostly value overrides with minimal Flux/Kustomize wiring.
 3. As of this writing, it uses Kubespray for the cluster. Lean into it. Own the cluster. I may add support for cloud-native Kubernetes implementations in the future, but this handles upgrades and deployment using Ansible with Mitogen. I'm also out of money in a big way.
 4. It's air-gap ready. It bundles all images into an OCI bundle for deployment. It stands up a provisional [Harbor](https://github.com/goharbor/harbor)/[Forgejo](https://forgejo.org/) combo on the bastion for first-time deployment.

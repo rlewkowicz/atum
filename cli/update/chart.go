@@ -117,14 +117,13 @@ func (temporary *temporaryChart) publish(destination string) error {
 }
 
 type chartRelease struct {
-	Version      string
-	AppVersion   string
-	KubeVersion  string
-	URL          string
-	Digest       string
-	ArchiveSHA   string
-	ArchivePath  string
-	BaselinePath string
+	Version     string
+	AppVersion  string
+	KubeVersion string
+	URL         string
+	Digest      string
+	ArchiveSHA  string
+	ArchivePath string
 }
 
 type indexDocument struct {
@@ -559,14 +558,24 @@ func (c *chartClient) openHTTPS(ctx context.Context, source string) (io.ReadClos
 }
 
 func sortChartReleases(releases []chartRelease) {
-	sort.Slice(releases, func(i, j int) bool {
-		left, _ := semver.NewVersion(strings.TrimPrefix(releases[i].Version, "v"))
-		right, _ := semver.NewVersion(strings.TrimPrefix(releases[j].Version, "v"))
-		if comparison := left.Compare(right); comparison != 0 {
+	type semanticRelease struct {
+		release chartRelease
+		version *semver.Version
+	}
+	semantic := make([]semanticRelease, len(releases))
+	for i := range releases {
+		version, _ := semver.NewVersion(strings.TrimPrefix(releases[i].Version, "v"))
+		semantic[i] = semanticRelease{release: releases[i], version: version}
+	}
+	sort.Slice(semantic, func(i, j int) bool {
+		if comparison := semantic[i].version.Compare(semantic[j].version); comparison != 0 {
 			return comparison > 0
 		}
-		return releases[i].Version < releases[j].Version
+		return semantic[i].release.Version < semantic[j].release.Version
 	})
+	for i := range semantic {
+		releases[i] = semantic[i].release
+	}
 }
 
 func normalizeConstraint(value string) string {

@@ -30,6 +30,34 @@ type repositoryResource struct {
 	refCommit string
 }
 
+type repositoryIdentity struct {
+	kind      string
+	url       string
+	refTag    string
+	refBranch string
+	refCommit string
+}
+
+type repositoryNamedIdentity struct {
+	identity  repositoryIdentity
+	name      string
+	namespace string
+}
+
+type sourceResolution struct {
+	key   resourceKey
+	count int
+}
+
+type releaseBindingKey struct {
+	source           resourceKey
+	chart            string
+	version          string
+	reconcile        string
+	releaseName      string
+	releaseNamespace string
+}
+
 type artifactBinding struct {
 	id                string
 	sourceKind        string
@@ -64,16 +92,8 @@ type releaseValues struct {
 	reconcile       string
 	releaseName     string
 	targetNamespace string
-	dependencies    []resourceKey
 	valuesFrom      []releaseValueSource
 	inline          map[string]any
-	postRenderers   []releasePostRenderer
-}
-
-type releaseDependencyPosition struct {
-	namespace string
-	name      string
-	index     int
 }
 
 type releaseValueInstance struct {
@@ -81,7 +101,6 @@ type releaseValueInstance struct {
 	name      string
 	namespace string
 	values    map[string]any
-	renderers []releasePostRenderer
 }
 
 type renderedResource struct {
@@ -250,30 +269,6 @@ func (collector *releaseValueCollector) observeHelmRelease(key resourceKey, obje
 	if inline, ok := spec["values"].(map[string]any); ok {
 		resolved.inline = cloneMap(inline)
 	}
-	if raw, exists := spec["postRenderers"]; exists {
-		postRenderers, err := decodePostRenderers(raw)
-		if err != nil {
-			return fmt.Errorf("HelmRelease %s/%s has invalid postRenderers: %w", key.namespace, key.name, err)
-		}
-		resolved.postRenderers = postRenderers
-	}
-	dependencies, _ := spec["dependsOn"].([]any)
-	resolved.dependencies = make([]resourceKey, 0, len(dependencies))
-	for i, raw := range dependencies {
-		dependency, ok := raw.(map[string]any)
-		if !ok {
-			return fmt.Errorf("HelmRelease %s/%s has an invalid dependency at index %d", key.namespace, key.name, i)
-		}
-		name, _ := dependency["name"].(string)
-		if name == "" {
-			return fmt.Errorf("HelmRelease %s/%s dependency %d has no name", key.namespace, key.name, i)
-		}
-		namespace, _ := dependency["namespace"].(string)
-		if namespace == "" {
-			namespace = key.namespace
-		}
-		resolved.dependencies = append(resolved.dependencies, resourceKey{namespace: namespace, name: name})
-	}
 	entries, _ := spec["valuesFrom"].([]any)
 	resolved.valuesFrom = make([]releaseValueSource, 0, len(entries))
 	for _, raw := range entries {
@@ -299,63 +294,88 @@ func (collector *releaseValueCollector) observeHelmRelease(key resourceKey, obje
 	return nil
 }
 
-func (collector *releaseValueCollector) dependencyPositions(namespace, name string) []releaseDependencyPosition {
-	positions := make([]releaseDependencyPosition, 0, len(collector.releases))
-	for _, releases := range collector.releases {
-		for _, release := range releases {
-			for i, dependency := range release.dependencies {
-				if dependency.namespace != namespace || dependency.name != name {
-					continue
-				}
-				positions = append(positions, releaseDependencyPosition{
-					namespace: release.key.namespace,
-					name:      release.key.name,
-					index:     i,
-				})
-			}
-		}
-	}
-	sort.Slice(positions, func(i, j int) bool {
-		if positions[i].namespace != positions[j].namespace {
-			return positions[i].namespace < positions[j].namespace
-		}
-		if positions[i].index != positions[j].index {
-			return positions[i].index < positions[j].index
-		}
-		return positions[i].name < positions[j].name
-	})
-	return positions
-}
-
 func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBinding) (map[string][]releaseValueInstance, error) {
 	result := make(map[string][]releaseValueInstance, len(bindings))
 	matched := make(map[string][]releaseValues, len(bindings))
-	sources := make(map[string]resourceKey, len(bindings))
-	for _, binding := range bindings {
-		source, err := collector.artifactSource(binding)
-		if err != nil {
+	byIdentity := make(map[repositoryIdentity]sourceResolution, len(collector.repositories))
+	byName := make(map[repositoryNamedIdentity]sourceResolution, len(collector.repositories))
+	byNamespace := make(map[repositoryNamedIdentity]sourceResolution, len(collector.repositories))
+	byExact := make(map[repositoryNamedIdentity]resourceKey, len(collector.repositories))
+	for key, repository := range collector.repositories {
+		identity := repositoryIdentity{
+			kind:      key.kind,
+			url:       normalizedSourceURL(repository.url),
+			refTag:    repository.refTag,
+			refBranch: repository.refBranch,
+			refCommit: repository.refCommit,
+		}
+		addSourceResolution(byIdentity, identity, key)
+		addSourceResolution(byName, repositoryNamedIdentity{
+			identity: identity, name: key.name,
+		}, key)
+		addSourceResolution(byNamespace, repositoryNamedIdentity{
+			identity: identity, namespace: key.namespace,
+		}, key)
+		byExact[repositoryNamedIdentity{
+			identity: identity, name: key.name, namespace: key.namespace,
+		}] = key
+	}
+	bindingIndex := make(map[releaseBindingKey]int, len(bindings)*2)
+	for index := range bindings {
+		binding := bindings[index]
+		identity := repositoryIdentity{
+			kind:      binding.sourceKind,
+			url:       normalizedSourceURL(binding.sourceURL),
+			refTag:    binding.sourceTag,
+			refBranch: binding.sourceBranch,
+			refCommit: binding.sourceCommit,
+		}
+		source, found, ambiguous := resolveSourceResource(
+			identity, binding.sourceName, binding.sourceNamespace,
+			byIdentity, byName, byNamespace, byExact,
+		)
+		if ambiguous {
+			return nil, fmt.Errorf("rendered source for artifact %s is ambiguous", binding.id)
+		}
+		if !found {
+			return nil, fmt.Errorf(
+				"Big Bang rendered no exact %s source url=%q tag=%q branch=%q commit=%q for artifact %s",
+				binding.sourceKind,
+				binding.sourceURL,
+				binding.sourceTag,
+				binding.sourceBranch,
+				binding.sourceCommit,
+				binding.id,
+			)
+		}
+		key := releaseBindingKey{
+			source: source, chart: binding.chart, version: binding.version,
+			reconcile: binding.reconcileStrategy,
+			releaseName: binding.releaseName,
+			releaseNamespace: binding.releaseNamespace,
+		}
+		if err := addReleaseBinding(bindingIndex, key, index, bindings); err != nil {
 			return nil, err
 		}
-		sources[binding.id] = source
+		if binding.defaultReconcile {
+			key.reconcile = ""
+			if err := addReleaseBinding(bindingIndex, key, index, bindings); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for _, candidates := range collector.releases {
 		for _, candidate := range candidates {
-			for _, binding := range bindings {
-				if candidate.source != sources[binding.id] {
-					continue
-				}
-				if binding.releaseName != "" &&
-					(candidate.key.name != binding.releaseName ||
-						candidate.key.namespace != binding.releaseNamespace) {
-					continue
-				}
-				reconcileMatches := candidate.reconcile == binding.reconcileStrategy ||
-					(binding.defaultReconcile && candidate.reconcile == "")
-				if candidate.chart != binding.chart || candidate.version != binding.version || !reconcileMatches {
-					continue
-				}
+			index, found, ambiguous := resolveReleaseBinding(bindingIndex, candidate)
+			if ambiguous {
+				return nil, fmt.Errorf(
+					"rendered HelmRelease %s/%s matches multiple artifact bindings",
+					candidate.key.namespace, candidate.key.name,
+				)
+			}
+			if found {
+				binding := bindings[index]
 				matched[binding.id] = append(matched[binding.id], candidate)
-				break
 			}
 		}
 	}
@@ -386,7 +406,6 @@ func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBi
 				name:      matches[i].releaseName,
 				namespace: matches[i].targetNamespace,
 				values:    values,
-				renderers: matches[i].postRenderers,
 			}
 		}
 		result[binding.id] = instances
@@ -394,31 +413,102 @@ func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBi
 	return result, nil
 }
 
-func (collector *releaseValueCollector) artifactSource(binding artifactBinding) (resourceKey, error) {
-	var match resourceKey
-	found := false
-	for key, repository := range collector.repositories {
-		if key.kind != binding.sourceKind ||
-			(binding.sourceName != "" && key.name != binding.sourceName) ||
-			(binding.sourceNamespace != "" && key.namespace != binding.sourceNamespace) ||
-			normalizedSourceURL(repository.url) != normalizedSourceURL(binding.sourceURL) ||
-			repository.refTag != binding.sourceTag || repository.refBranch != binding.sourceBranch ||
-			repository.refCommit != binding.sourceCommit {
-			continue
-		}
-		if found {
-			return resourceKey{}, fmt.Errorf("rendered source for artifact %s is ambiguous", binding.id)
-		}
-		match = key
-		found = true
+func addSourceResolution[K comparable](
+	index map[K]sourceResolution,
+	identity K,
+	key resourceKey,
+) {
+	resolution := index[identity]
+	if resolution.count == 0 {
+		resolution.key = key
 	}
-	if !found {
-		return resourceKey{}, fmt.Errorf(
-			"Big Bang rendered no exact %s source url=%q tag=%q branch=%q commit=%q for artifact %s",
-			binding.sourceKind, binding.sourceURL, binding.sourceTag, binding.sourceBranch, binding.sourceCommit, binding.id,
+	resolution.count++
+	index[identity] = resolution
+}
+
+func resolveSourceResource(
+	identity repositoryIdentity,
+	name string,
+	namespace string,
+	byIdentity map[repositoryIdentity]sourceResolution,
+	byName map[repositoryNamedIdentity]sourceResolution,
+	byNamespace map[repositoryNamedIdentity]sourceResolution,
+	byExact map[repositoryNamedIdentity]resourceKey,
+) (resourceKey, bool, bool) {
+	if name != "" && namespace != "" {
+		key, found := byExact[repositoryNamedIdentity{
+			identity: identity, name: name, namespace: namespace,
+		}]
+		return key, found, false
+	}
+	var resolution sourceResolution
+	switch {
+	case name != "":
+		resolution = byName[repositoryNamedIdentity{identity: identity, name: name}]
+	case namespace != "":
+		resolution = byNamespace[repositoryNamedIdentity{
+			identity: identity, namespace: namespace,
+		}]
+	default:
+		resolution = byIdentity[identity]
+	}
+	return resolution.key, resolution.count == 1, resolution.count > 1
+}
+
+func addReleaseBinding(
+	index map[releaseBindingKey]int,
+	key releaseBindingKey,
+	bindingIndex int,
+	bindings []artifactBinding,
+) error {
+	if previous, exists := index[key]; exists && previous != bindingIndex {
+		return fmt.Errorf(
+			"artifact bindings %s and %s have the same rendered release identity",
+			bindings[previous].id,
+			bindings[bindingIndex].id,
 		)
 	}
-	return match, nil
+	index[key] = bindingIndex
+	return nil
+}
+
+func resolveReleaseBinding(
+	index map[releaseBindingKey]int,
+	release releaseValues,
+) (int, bool, bool) {
+	base := releaseBindingKey{
+		source: release.source, chart: release.chart, version: release.version,
+		reconcile: release.reconcile,
+	}
+	keys := [...]releaseBindingKey{
+		{
+			source: base.source, chart: base.chart, version: base.version,
+			reconcile: base.reconcile,
+			releaseName: release.key.name, releaseNamespace: release.key.namespace,
+		},
+		{
+			source: base.source, chart: base.chart, version: base.version,
+			reconcile: base.reconcile, releaseName: release.key.name,
+		},
+		{
+			source: base.source, chart: base.chart, version: base.version,
+			reconcile: base.reconcile, releaseNamespace: release.key.namespace,
+		},
+		base,
+	}
+	selected := 0
+	found := false
+	for _, key := range keys {
+		candidate, exists := index[key]
+		if !exists {
+			continue
+		}
+		if found && candidate != selected {
+			return 0, false, true
+		}
+		selected, found = candidate, true
+	}
+	return selected, found, false
 }
 
 func normalizedSourceURL(value string) string {

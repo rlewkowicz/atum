@@ -354,10 +354,8 @@ func (graph *bakeGraph) validateDeliveryTargets(problems *[]string, project *Pro
 		visited:     make(map[string]bool), visiting: make(map[string]bool),
 	}
 	for _, image := range project.Desired.Delivery.Images {
-		for _, name := range []string{image.Delivery.Default.BakeTarget, image.Delivery.FullBuildTarget} {
-			if name != "" {
-				validator.validateTarget(problems, name)
-			}
+		if name := image.Delivery.Default.BakeTarget; name != "" {
+			validator.validateTarget(problems, name)
 		}
 	}
 }

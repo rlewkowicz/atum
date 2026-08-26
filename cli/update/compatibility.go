@@ -38,6 +38,10 @@ func validateKubesprayOIDCLifecycle(checkout, kubernetes string) error {
 	if _, err := orchestration.AuthenticationConfigAPIVersion(kubernetes); err != nil {
 		return err
 	}
+	return validateKubesprayOIDCImplementation(checkout)
+}
+
+func validateKubesprayOIDCImplementation(checkout string) error {
 	type contractFile struct {
 		name     string
 		relative string
@@ -145,6 +149,7 @@ func readKubesprayMatrix(checkout string) ([]kubernetesRelease, error) {
 		return nil, errors.New("invalid Kubespray checksum matrix: incomplete amd64 Kubernetes checksums")
 	}
 	releases := make([]kubernetesRelease, 0, len(kubelet))
+	semanticVersions := make(map[string]*semver.Version, len(kubelet))
 	for version, kubeletSHA := range kubelet {
 		semantic, parseErr := semver.NewVersion(strings.TrimPrefix(version, "v"))
 		if parseErr != nil || semantic.Prerelease() != "" {
@@ -155,19 +160,21 @@ func readKubesprayMatrix(checkout string) ([]kubernetesRelease, error) {
 		if !hasKubeadm || !hasKubectl || !validChecksum(kubeletSHA) || !validChecksum(kubeadmSHA) || !validChecksum(kubectlSHA) {
 			continue
 		}
-		releases = append(releases, kubernetesRelease{
+		release := kubernetesRelease{
 			Version: strings.TrimPrefix(version, "v"),
 			Checksums: config.KubernetesChecksums{
 				Kubelet: kubeletSHA,
 				Kubeadm: kubeadmSHA,
 				Kubectl: kubectlSHA,
 			},
-		})
+		}
+		releases = append(releases, release)
+		semanticVersions[release.Version] = semantic
 	}
 	sort.Slice(releases, func(i, j int) bool {
-		left, _ := semver.NewVersion(releases[i].Version)
-		right, _ := semver.NewVersion(releases[j].Version)
-		return left.GreaterThan(right)
+		return semanticVersions[releases[i].Version].GreaterThan(
+			semanticVersions[releases[j].Version],
+		)
 	})
 	if len(releases) == 0 {
 		return nil, errors.New("invalid Kubespray checksum matrix: no complete stable amd64 Kubernetes release")

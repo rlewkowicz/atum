@@ -1,12 +1,52 @@
 ARG ATUM_DEBIAN_IMAGE
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_SOURCE
 
-FROM atum_go AS atum-cli-build
-WORKDIR /src/atum
-COPY --from=atum_source /go.mod /go.sum ./
-COPY --from=atum_source /cli ./cli
-RUN --mount=type=cache,id=atum-go-mod,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=atum-go-build,target=/root/.cache/go-build,sharing=shared \
-    CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/atum ./cli/atum
+FROM ${ATUM_DEBIAN_IMAGE} AS garage-init-helper
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_VERSION
+COPY compat/debian/debian.sources /etc/apt/sources.list.d/debian.sources
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bash \
+      ca-certificates \
+      coreutils \
+      curl \
+      jq; \
+    rm -rf /var/lib/apt/lists/*
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="garage-init-helper" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+USER 1000:1000
+
+FROM ${ATUM_DEBIAN_IMAGE} AS kubectl-helper
+ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_VERSION
+COPY compat/debian/debian.sources /etc/apt/sources.list.d/debian.sources
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      bash \
+      ca-certificates \
+      coreutils \
+      grep \
+      mawk; \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=atum_kubectl_upstream /bin/kubectl /usr/local/bin/kubectl
+LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="kubectl-helper" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
+USER 1000:1000
+ENTRYPOINT ["kubectl"]
 
 FROM ${ATUM_DEBIAN_IMAGE} AS grafana-plugin-unpack
 COPY compat/debian/debian.sources /etc/apt/sources.list.d/debian.sources
@@ -22,7 +62,6 @@ ADD --checksum=sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f5
     /tmp/redis-datasource.zip
 RUN set -eux; \
     install -d \
-      /out/bb-plugins/piechart-panel \
       /out/bb-plugins/polystat-panel \
       /out/bb-plugins/redis-datasource; \
     unzip -q /tmp/grafana-polystat-panel.zip -d /out/bb-plugins/polystat-panel; \
@@ -30,80 +69,24 @@ RUN set -eux; \
 
 FROM atum_grafana_upstream AS grafana-plugins
 ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
-ARG ATUM_IMAGE_REVISION=1d5a436945aa24316b21b88f74d555e9d3559655
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_REVISION
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_VERSION
 USER root
 COPY --from=grafana-plugin-unpack --chown=472:0 /out/bb-plugins /var/lib/bb-plugins
 LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
-      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
       org.opencontainers.image.revision="${ATUM_IMAGE_REVISION}" \
-      org.opencontainers.image.source="https://github.com/grafana/grafana-polystat-panel;https://github.com/RedisGrafana/grafana-redis-datasource" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
       org.opencontainers.image.title="grafana-plugins" \
-      org.opencontainers.image.version="13.0.1-atum1"
-USER 472
-
-FROM atum_redis_upstream AS redis-compat
-ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
-ARG ATUM_IMAGE_VERSION=8.4.0-atum1
-USER root
-RUN set -eux; \
-    install -d -o 1001 -g 1001 \
-      /data \
-      /opt/bitnami/redis/bin \
-      /opt/bitnami/redis/etc \
-      /opt/bitnami/redis/mounted-etc \
-      /opt/bitnami/redis-sentinel/etc \
-      /opt/bitnami/scripts/redis \
-      /opt/bitnami/scripts/redis-sentinel; \
-    ln -s /usr/local/bin/redis-server /opt/bitnami/redis/bin/redis-server; \
-    ln -s /usr/local/bin/redis-cli /opt/bitnami/redis/bin/redis-cli
-COPY --chmod=0755 compat/lib/atum.sh /usr/local/lib/atum/atum.sh
-COPY --chmod=0755 compat/redis/libfile.sh /opt/bitnami/scripts/libfile.sh
-COPY --chmod=0755 compat/redis/liblog.sh /opt/bitnami/scripts/liblog.sh
-COPY --chmod=0755 compat/redis/libos.sh /opt/bitnami/scripts/libos.sh
-COPY --chmod=0755 compat/redis/libvalidations.sh /opt/bitnami/scripts/libvalidations.sh
-COPY --chmod=0755 compat/redis/entrypoint.sh /opt/bitnami/scripts/redis/entrypoint.sh
-COPY --chmod=0755 compat/redis/run.sh /opt/bitnami/scripts/redis/run.sh
-COPY --chmod=0755 compat/redis/sentinel-run.sh /opt/bitnami/scripts/redis-sentinel/run.sh
-RUN chown -R 1001:1001 /opt/bitnami /usr/local/lib/atum
-ENV PATH=/opt/bitnami/redis/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-WORKDIR /data
-LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
-      org.opencontainers.image.licenses="AGPL-3.0-only" \
-      org.opencontainers.image.source="https://github.com/redis/docker-library-redis;https://github.com/bitnami/charts" \
-      org.opencontainers.image.title="redis-bitnami-chart-compat" \
       org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
-USER 1001:1001
-ENTRYPOINT ["/opt/bitnami/scripts/redis/entrypoint.sh"]
-CMD ["/opt/bitnami/scripts/redis/run.sh"]
-
-FROM atum_debian_runtime AS redis-exporter-compat
-ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
-USER root
-COPY compat/debian/debian.sources /etc/apt/sources.list.d/debian.sources
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
-      bash \
-      ca-certificates \
-      tini; \
-    rm -rf /var/lib/apt/lists/*; \
-    groupadd --gid 1001 redis-exporter; \
-    useradd --no-create-home --home-dir /opt/bitnami/redis-exporter --shell /usr/sbin/nologin \
-      --uid 1001 --gid 1001 redis-exporter; \
-    install -d -o 1001 -g 1001 /opt/bitnami/redis-exporter/bin
-COPY --from=atum_redis_exporter_upstream --chown=1001:1001 --chmod=0755 \
-    /redis_exporter /opt/bitnami/redis-exporter/bin/redis_exporter
-ENV PATH=/opt/bitnami/redis-exporter/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/oliver006/redis_exporter;https://github.com/bitnami/charts" \
-      org.opencontainers.image.title="redis-exporter-bitnami-chart-compat" \
-      org.opencontainers.image.version="1.86.0"
-USER 1001:1001
-ENTRYPOINT ["/usr/bin/tini", "--", "/opt/bitnami/redis-exporter/bin/redis_exporter"]
+USER 472
 
 FROM atum_postgresql_upstream AS postgresql-compat
 ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_SOURCE
 ARG ATUM_IMAGE_VERSION
 USER root
 RUN set -eux; \
@@ -113,40 +96,29 @@ RUN set -eux; \
       /bitnami/postgresql \
       /opt/bitnami/postgresql/conf/conf.d \
       /opt/bitnami/postgresql/tmp \
-      /usr/local/lib/atum \
       /var/lib/postgresql; \
-    chown -R 1001:1001 /bitnami /opt/bitnami /usr/local/lib/atum /var/lib/postgresql
-COPY --chmod=0755 compat/lib/atum.sh /usr/local/lib/atum/atum.sh
+    chown -R 1001:1001 /bitnami /opt/bitnami /var/lib/postgresql
 COPY --chmod=0755 compat/postgresql/entrypoint.sh /usr/local/bin/atum-postgresql-entrypoint
 LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
-      org.opencontainers.image.licenses="PostgreSQL" \
-      org.opencontainers.image.source="https://github.com/docker-library/postgres;https://github.com/bitnami/charts" \
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
       org.opencontainers.image.title="postgresql-bitnami-chart-compat" \
       org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
 USER 1001:1001
 ENTRYPOINT ["/usr/local/bin/atum-postgresql-entrypoint"]
 CMD ["postgres"]
 
-FROM atum_debian_runtime AS delivery-build-job
+FROM atum_vault_upstream AS vault-curl-compat
 ARG ATUM_IMAGE_CREATED=1970-01-01T00:00:00Z
+ARG ATUM_IMAGE_LICENSE
+ARG ATUM_IMAGE_SOURCE
+ARG ATUM_IMAGE_VERSION
 USER root
-COPY compat/debian/debian.sources /etc/apt/sources.list.d/debian.sources
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
-      bash \
-      ca-certificates \
-      git \
-      openssh-client; \
-    rm -rf /var/lib/apt/lists/*; \
-    install -d /usr/local/lib/docker/cli-plugins /workspace
-COPY --from=atum_docker_cli /usr/local/bin/docker /usr/local/bin/docker
-COPY --from=atum_docker_cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
-COPY --from=atum-cli-build /out/atum /usr/local/bin/atum
-WORKDIR /workspace
+COPY --from=atum_curl_upstream /usr/bin/curl /usr/local/lib/atum-curl/curl
+COPY --from=atum_curl_upstream /usr/lib/ /usr/local/lib/atum-curl/
+COPY --chmod=0755 compat/vault/curl /usr/bin/curl
 LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
-      org.opencontainers.image.licenses="Apache-2.0 AND BSD-3-Clause" \
-      org.opencontainers.image.source="https://github.com/docker/cli;https://github.com/docker/buildx;https://github.com/atum" \
-      org.opencontainers.image.title="build-job" \
-      org.opencontainers.image.version="1"
-CMD ["bash"]
+      org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
+      org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \
+      org.opencontainers.image.title="vault-official-curl-compat" \
+      org.opencontainers.image.version="${ATUM_IMAGE_VERSION}"
