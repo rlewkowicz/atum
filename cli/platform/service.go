@@ -54,34 +54,58 @@ type ResourceStatus struct {
 }
 
 type ReconciliationStatus struct {
-	Kustomizations []ResourceStatus `json:"kustomizations"`
-	BigBangSource  ResourceStatus   `json:"bigBangSource"`
-	BigBangRelease ResourceStatus   `json:"bigBangRelease"`
+	GitRepositories       []ResourceStatus `json:"gitRepositories"`
+	Kustomizations        []ResourceStatus `json:"kustomizations"`
+	OCIRepositories       []ResourceStatus `json:"ociRepositories"`
+	HelmReleases          []ResourceStatus `json:"helmReleases"`
+	Certificates          []ResourceStatus `json:"certificates"`
+	PlatformConfigurations []ResourceStatus `json:"platformConfigurations"`
 }
 
 func (status ReconciliationStatus) Complete() bool {
-	if len(status.Kustomizations) == 0 ||
-		!status.BigBangSource.Ready ||
-		!status.BigBangRelease.Ready {
+	return resourcesReady(status.GitRepositories) &&
+		resourcesReady(status.Kustomizations) &&
+		resourcesReady(status.OCIRepositories) &&
+		resourcesReady(status.HelmReleases) &&
+		resourcesReady(status.Certificates) &&
+		resourcesReady(status.PlatformConfigurations)
+}
+
+func (status ReconciliationStatus) resourceSets() [][]ResourceStatus {
+	return [][]ResourceStatus{
+		status.GitRepositories,
+		status.Kustomizations,
+		status.OCIRepositories,
+		status.HelmReleases,
+		status.Certificates,
+		status.PlatformConfigurations,
+	}
+}
+
+type DeliveryComplianceStatus struct {
+	PublicationExact bool     `json:"publicationExact"`
+	ForgejoExact     bool     `json:"forgejoExact"`
+	HarborImagesExact bool    `json:"harborImagesExact"`
+	HarborChartsExact bool    `json:"harborChartsExact"`
+	Issues           []string `json:"issues,omitempty"`
+}
+
+func (status DeliveryComplianceStatus) Compliant() bool {
+	return status.PublicationExact && status.ForgejoExact &&
+		status.HarborImagesExact && status.HarborChartsExact &&
+		len(status.Issues) == 0
+}
+
+func resourcesReady(resources []ResourceStatus) bool {
+	if len(resources) == 0 {
 		return false
 	}
-	for _, condition := range status.Kustomizations {
-		if !condition.Ready {
+	for index := range resources {
+		if !resources[index].Ready {
 			return false
 		}
 	}
 	return true
-}
-
-type DeliveryComplianceStatus struct {
-	SourcesInternal    bool     `json:"sourcesInternal"`
-	RuntimeImagesExact bool     `json:"runtimeImagesExact"`
-	Issues             []string `json:"issues,omitempty"`
-}
-
-func (status DeliveryComplianceStatus) Compliant() bool {
-	return status.SourcesInternal && status.RuntimeImagesExact &&
-		len(status.Issues) == 0
 }
 
 type LocalIntegrationStatus struct {

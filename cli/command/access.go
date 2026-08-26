@@ -344,9 +344,11 @@ func (a *app) requireNativePlatformForLocalAccess(ctx context.Context) error {
 		detail := strings.Join(status.Delivery.Issues, "; ")
 		if detail == "" {
 			detail = fmt.Sprintf(
-				"sourcesInternal=%t runtimeImagesExact=%t",
-				status.Delivery.SourcesInternal,
-				status.Delivery.RuntimeImagesExact,
+				"publicationExact=%t forgejoExact=%t harborImagesExact=%t harborChartsExact=%t",
+				status.Delivery.PublicationExact,
+				status.Delivery.ForgejoExact,
+				status.Delivery.HarborImagesExact,
+				status.Delivery.HarborChartsExact,
 			)
 		}
 		return fmt.Errorf(
@@ -360,7 +362,7 @@ func (a *app) requireNativePlatformForLocalAccess(ctx context.Context) error {
 func nativeReconciliationDiagnostics(
 	status platform.ReconciliationStatus,
 ) string {
-	issues := make([]string, 0, len(status.Kustomizations)+2)
+	issues := make([]string, 0)
 	appendIssue := func(resource platform.ResourceStatus) {
 		if resource.Ready {
 			return
@@ -371,11 +373,18 @@ func nativeReconciliationDiagnostics(
 		}
 		issues = append(issues, resource.Name+": "+detail)
 	}
-	for _, resource := range status.Kustomizations {
-		appendIssue(resource)
+	for _, resources := range [][]platform.ResourceStatus{
+		status.GitRepositories,
+		status.Kustomizations,
+		status.OCIRepositories,
+		status.HelmReleases,
+		status.Certificates,
+		status.PlatformConfigurations,
+	} {
+		for _, resource := range resources {
+			appendIssue(resource)
+		}
 	}
-	appendIssue(status.BigBangSource)
-	appendIssue(status.BigBangRelease)
 	if len(issues) == 0 {
 		return "required native resources are absent"
 	}

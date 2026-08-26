@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -371,9 +372,32 @@ func (parser *outputParser) observeSeedPlane(session *Session, line string) bool
 		}
 		reportSeedService(report, "seed-forgejo", "Forgejo", forgejo)
 		reportSeedService(report, "seed-harbor", "Seed Harbor", harbor)
-	case strings.Contains(lower, "loading exact forgejo and harbor images"):
-		report("seed-forgejo", "Forgejo", "loading exact image", progress.Running)
-		report("seed-harbor", "Seed Harbor", "loading exact images", progress.Running)
+	case strings.Contains(lower, "loading exact forgejo and harbor images"),
+		strings.Contains(lower, "loaded exact forgejo and harbor images"):
+		total := seedPlaneBytes(lower)
+		current := int64(0)
+		message := "loading exact seed images"
+		if strings.Contains(lower, "loaded exact") {
+			current = total
+			message = "loaded exact seed images"
+		}
+		for _, item := range []struct {
+			id    string
+			label string
+		}{
+			{id: "seed-forgejo", label: "Forgejo"},
+			{id: "seed-harbor", label: "Seed Harbor"},
+		} {
+			session.reportUnlocked(progress.Event{
+				Phase: progress.Infrastructure,
+				ID: item.id,
+				Label: item.label,
+				Detail: message,
+				State: progress.Running,
+				BytesCurrent: current,
+				BytesTotal: total,
+			})
+		}
 	case strings.HasPrefix(lower, "preparing harbor"):
 		report("seed-harbor", "Seed Harbor", detail, progress.Running)
 	case strings.Contains(lower, "reconciling forgejo administrator"):
@@ -383,6 +407,20 @@ func (parser *outputParser) observeSeedPlane(session *Session, line string) bool
 		report("seed-harbor", "Seed Harbor", detail, progress.Failed)
 	}
 	return true
+}
+
+func seedPlaneBytes(detail string) int64 {
+	for _, field := range strings.Fields(detail) {
+		raw, found := strings.CutPrefix(field, "bytes=")
+		if !found {
+			continue
+		}
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err == nil && value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func reportSeedService(

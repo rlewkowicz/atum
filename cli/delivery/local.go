@@ -26,20 +26,14 @@ type localDelivery struct {
 func (service *Service) resolveLocalDelivery(
 	ctx context.Context,
 	project *config.Project,
-	options PublishOptions,
+	options PreparationOptions,
 ) (localDelivery, error) {
-	profile := options.Profile
-	if profile == "" {
-		profile = project.Desired.Delivery.Policy.DefaultProfile
-	}
+	profile := project.Desired.Delivery.Policy.DefaultProfile
 	graphSHA, err := config.DeliveryGraphSHA256(project, profile)
 	if err != nil {
 		return localDelivery{}, fmt.Errorf("resolve delivery graph: %w", err)
 	}
-	selectionOptions := options
-	selectionOptions.Group = "platform"
-	selectionOptions.Targets = nil
-	selected, selectedIDs, err := resolveSelection(project, selectionOptions, graphSHA)
+	selected, err := resolveSelection(project, graphSHA)
 	if err != nil {
 		return localDelivery{}, err
 	}
@@ -66,6 +60,7 @@ func (service *Service) resolveLocalDelivery(
 	results := make(map[string]config.LockedImage, len(selected))
 	var resultMu sync.Mutex
 	var resolved atomic.Int64
+	var copiedBytes atomic.Int64
 	var buildOutputs map[string]buildOutput
 	var buildEntries map[string]config.LockedImage
 	mirrorOutputs := make(map[string]mirrorOutput, len(mirrors))
@@ -87,7 +82,25 @@ func (service *Service) resolveLocalDelivery(
 		image := image
 		group.Go(func() error {
 			return runDeliveryWorker(groupContext, func() error {
-				output, err := service.prepareMirrorOutput(groupContext, project, registry, image)
+				output, err := service.prepareMirrorOutput(
+					groupContext,
+					project,
+					registry,
+					image,
+					func(delta int64) {
+						progress.UpdateBytes(
+							groupContext,
+							progress.Platform,
+							"publication",
+							"Publication inputs",
+							"caching exact upstream OCI content",
+							int(resolved.Load()),
+							len(selected),
+							copiedBytes.Add(delta),
+							0,
+						)
+					},
+				)
 				if err != nil {
 					return err
 				}
@@ -101,8 +114,17 @@ func (service *Service) resolveLocalDelivery(
 				mirrorOutputs[entry.ID] = output
 				resultMu.Unlock()
 				current := int(resolved.Add(1))
-				progress.Update(groupContext, progress.Platform, "publication", "Publication inputs",
-					"verified upstream image "+entry.ID, current, len(selected))
+				progress.UpdateBytes(
+					groupContext,
+					progress.Platform,
+					"publication",
+					"Publication inputs",
+					"verified upstream image "+entry.ID,
+					current,
+					len(selected),
+					copiedBytes.Load(),
+					0,
+				)
 				return nil
 			})
 		})
@@ -115,7 +137,7 @@ func (service *Service) resolveLocalDelivery(
 	for id, entry := range buildEntries {
 		results[id] = entry
 	}
-	imageLock, err := assembleImageLock(project, profile, project.DeliverySHA256, graphSHA, selectedIDs, results)
+	imageLock, err := assembleImageLock(project, profile, project.DeliverySHA256, graphSHA, results)
 	if err != nil {
 		return localDelivery{}, err
 	}

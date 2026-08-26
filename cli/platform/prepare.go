@@ -35,6 +35,37 @@ func (service Service) Prepare(ctx context.Context, options PrepareOptions) erro
 	return service.preparePlatform(ctx, handoff, options)
 }
 
+// PublishArtifacts performs the same canonical preparation and seed-service
+// publication handoff used by full apply, stopping before Flux bootstrap.
+func (service Service) PublishArtifacts(
+	ctx context.Context,
+	options PrepareOptions,
+) error {
+	if err := service.Validate(); err != nil {
+		return err
+	}
+	if service.DryRun {
+		service.logger().InfoContext(
+			ctx,
+			"artifact publication would prepare and publish the canonical graph",
+			"parallelism",
+			options.Parallelism,
+		)
+		return nil
+	}
+	credentials, publication, err := service.platformInputs(ctx)
+	if err != nil {
+		return err
+	}
+	handoff, err := service.Seed(ctx, publication, credentials, options)
+	credentials.Clear()
+	if err != nil {
+		return err
+	}
+	handoff.Clear()
+	return nil
+}
+
 // Handoff carries one verified source and registry publication through the
 // potentially long Kubespray convergence without repeating it. Its fields are
 // deliberately private so callers cannot weaken the verified identities.
@@ -326,6 +357,7 @@ func (service Service) waitForPlatformReconciliation(
 			waitContext,
 			client,
 			service.Project,
+			handoffSourceCommit(service.Publication),
 		)
 		if observeErr == nil && status.Complete() {
 			return nil
@@ -339,16 +371,12 @@ func (service Service) waitForPlatformReconciliation(
 					observeErr,
 				)
 			}
-			pending := make([]string, 0, len(status.Kustomizations))
-			if !status.BigBangSource.Ready {
-				pending = append(pending, status.BigBangSource.Name)
-			}
-			if !status.BigBangRelease.Ready {
-				pending = append(pending, status.BigBangRelease.Name)
-			}
-			for _, condition := range status.Kustomizations {
-				if !condition.Ready {
-					pending = append(pending, condition.Name)
+			pending := make([]string, 0)
+			for _, resources := range status.resourceSets() {
+				for _, condition := range resources {
+					if !condition.Ready {
+						pending = append(pending, condition.Name)
+					}
 				}
 			}
 			return fmt.Errorf(
@@ -359,4 +387,11 @@ func (service Service) waitForPlatformReconciliation(
 		case <-ticker.C:
 		}
 	}
+}
+
+func handoffSourceCommit(publication *delivery.Publication) string {
+	if publication == nil {
+		return ""
+	}
+	return publication.SourceCommit
 }

@@ -2,8 +2,6 @@ package platform
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,8 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-const platformStatusIssueLimit = 128
-
 var platformKustomizationGraph = [...]string{
 	"flux-system",
 	"platform-secrets",
@@ -29,6 +25,7 @@ var platformKustomizationGraph = [...]string{
 	"bigbang",
 	"platform-certificates",
 	"platform-profile-access",
+	"atum-operator",
 }
 
 // Status reports three independent dimensions. Flux owns reconciliation
@@ -52,22 +49,21 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 			service.Project.Desired.Infrastructure.Active,
 		)
 	}
-	receipt, err := delivery.LoadReceipt(service.Project)
-	if err != nil {
-		return Status{}, fmt.Errorf("load local publication receipt: %w", err)
-	}
+	receipt, receiptErr := delivery.LoadReceipt(service.Project)
+	compliance := publicationCompliance(receipt, receiptErr)
 	client, err := service.cluster()
 	if err != nil {
 		return Status{}, err
 	}
 
-	reconciliation, err := observeFluxReconciliation(ctx, client, service.Project)
+	reconciliation, err := observeFluxReconciliation(
+		ctx,
+		client,
+		service.Project,
+		receipt.SourceCommit,
+	)
 	if err != nil {
 		return Status{}, fmt.Errorf("observe native Flux conditions: %w", err)
-	}
-	compliance, err := service.observeDeliveryCompliance(ctx, client, receipt)
-	if err != nil {
-		return Status{}, fmt.Errorf("observe delivery compliance: %w", err)
 	}
 	local, err := service.observeLocalIntegration(ctx, client)
 	if err != nil {
@@ -87,6 +83,7 @@ func observeFluxReconciliation(
 	ctx context.Context,
 	client *kube.Observer,
 	project *config.Project,
+	sourceCommit string,
 ) (ReconciliationStatus, error) {
 	objects, err := client.Resources(ctx, kube.Kustomization, "flux-system", "")
 	if apierrors.IsNotFound(err) {
@@ -106,74 +103,178 @@ func observeFluxReconciliation(
 		byName[objects[index].Name] = &objects[index]
 	}
 	result := ReconciliationStatus{
-		Kustomizations: make([]ResourceStatus, 0, len(platformKustomizationGraph)),
+		Kustomizations: make([]ResourceStatus, 0, max(
+			len(objects),
+			len(platformKustomizationGraph),
+		)),
+	}
+	for index := range objects {
+		result.Kustomizations = append(
+			result.Kustomizations,
+			resourceStatus(&objects[index]),
+		)
 	}
 	for _, name := range platformKustomizationGraph {
-		object := byName[name]
-		condition := ResourceStatus{Name: "flux-system/" + name}
-		if object == nil {
-			condition.Message = "Kustomization is absent"
-		} else {
-			condition.Ready = object.Ready
-			if !condition.Ready {
-				condition.Message = readyConditionMessage(object.Object)
-			}
+		if byName[name] == nil {
+			result.Kustomizations = append(
+				result.Kustomizations,
+				ResourceStatus{
+					Name: "flux-system/" + name,
+					Message: "Kustomization is absent",
+				},
+			)
 		}
-		result.Kustomizations = append(result.Kustomizations, condition)
 	}
-	source, release, err := observeBigBangRoot(ctx, client, project)
+	sortResourceStatuses(result.Kustomizations)
+	result.GitRepositories, err = observeGitRepositories(
+		ctx,
+		client,
+		project,
+		sourceCommit,
+	)
 	if err != nil {
 		return ReconciliationStatus{}, err
 	}
-	result.BigBangSource = source
-	result.BigBangRelease = release
+	result.OCIRepositories, err = observeResourceStatuses(
+		ctx,
+		client,
+		kube.OCIRepository,
+	)
+	if err != nil {
+		return ReconciliationStatus{}, err
+	}
+	result.HelmReleases, err = observeResourceStatuses(
+		ctx,
+		client,
+		kube.HelmRelease,
+	)
+	if err != nil {
+		return ReconciliationStatus{}, err
+	}
+	if err := requireCurrentBigBangRoot(
+		ctx,
+		client,
+		project,
+		&result.OCIRepositories,
+		&result.HelmReleases,
+	); err != nil {
+		return ReconciliationStatus{}, err
+	}
+	result.Certificates, err = observeResourceStatuses(
+		ctx,
+		client,
+		kube.Certificate,
+	)
+	if err != nil {
+		return ReconciliationStatus{}, err
+	}
+	result.PlatformConfigurations, err = observeResourceStatuses(
+		ctx,
+		client,
+		kube.PlatformConfiguration,
+	)
+	if err != nil {
+		return ReconciliationStatus{}, err
+	}
+	requireSingleton(
+		&result.PlatformConfigurations,
+		"atum-system/atum",
+		"required PlatformConfiguration singleton is absent",
+	)
 	return result, nil
 }
 
-func observeBigBangRoot(
+func requireCurrentBigBangRoot(
 	ctx context.Context,
 	client *kube.Observer,
 	project *config.Project,
-) (ResourceStatus, ResourceStatus, error) {
+	sources *[]ResourceStatus,
+	releases *[]ResourceStatus,
+) error {
 	artifact, err := project.BigBangArtifact()
 	if err != nil {
-		return ResourceStatus{}, ResourceStatus{}, err
+		return err
 	}
 	url, tag, err := artifact.FluxOCITarget()
 	if err != nil {
-		return ResourceStatus{}, ResourceStatus{}, err
+		return err
 	}
-	observation, err := client.ObserveFluxHelmRoot(
+	sourceObject, sourceFound, err := client.GetResource(
 		ctx,
+		kube.OCIRepository,
 		"bigbang",
 		"bigbang",
-		kube.FluxRootTarget{URL: url, Tag: tag},
 	)
 	if err != nil {
-		return ResourceStatus{}, ResourceStatus{}, err
+		return err
 	}
-	source := ResourceStatus{Name: "bigbang/bigbang OCIRepository"}
-	release := ResourceStatus{Name: "bigbang/bigbang HelmRelease"}
-	if !observation.Found {
-		source.Message = "OCIRepository is absent"
-		release.Message = "HelmRelease is absent"
-		return source, release, nil
+	releaseObject, releaseFound, err := client.GetResource(
+		ctx,
+		kube.HelmRelease,
+		"bigbang",
+		"bigbang",
+	)
+	if err != nil {
+		return err
 	}
-	if !observation.TargetCurrent {
-		message := fmt.Sprintf(
-			"observed prior tag %s; waiting for %s",
-			observation.ObservedTag,
+	source := ensureResourceStatus(
+		sources,
+		"bigbang/bigbang",
+		"required Big Bang OCIRepository is absent",
+	)
+	release := ensureResourceStatus(
+		releases,
+		"bigbang/bigbang",
+		"required Big Bang HelmRelease is absent",
+	)
+	if !sourceFound || !releaseFound {
+		return nil
+	}
+	observedURL, _, _ := unstructured.NestedString(
+		sourceObject.Object,
+		"spec",
+		"url",
+	)
+	observedTag, _, _ := unstructured.NestedString(
+		sourceObject.Object,
+		"spec",
+		"ref",
+		"tag",
+	)
+	if observedURL != url || observedTag != tag {
+		source.Ready = false
+		source.Message = fmt.Sprintf(
+			"observed %s:%s; waiting for %s:%s",
+			observedURL,
+			observedTag,
+			url,
 			tag,
 		)
-		source.Message = message
-		release.Message = message
-		return source, release, nil
 	}
-	source.Ready = observation.SourceReady
-	source.Message = observation.SourceMessage
-	release.Ready = observation.HelmReleaseReady
-	release.Message = observation.HelmMessage
-	return source, release, nil
+	kind, _, _ := unstructured.NestedString(
+		releaseObject.Object,
+		"spec",
+		"chartRef",
+		"kind",
+	)
+	name, _, _ := unstructured.NestedString(
+		releaseObject.Object,
+		"spec",
+		"chartRef",
+		"name",
+	)
+	namespace, _, _ := unstructured.NestedString(
+		releaseObject.Object,
+		"spec",
+		"chartRef",
+		"namespace",
+	)
+	if kind != "OCIRepository" || name != "bigbang" ||
+		(namespace != "" && namespace != "bigbang") {
+		release.Ready = false
+		release.Message = "HelmRelease does not reference the required Big Bang OCIRepository"
+	}
+	return nil
 }
 
 func readyConditionMessage(object map[string]any) string {
@@ -204,96 +305,69 @@ func firstLine(value string) string {
 	return strings.TrimSpace(value)
 }
 
-func (service Service) observeDeliveryCompliance(
+func observeGitRepositories(
 	ctx context.Context,
 	client *kube.Observer,
-	receipt delivery.Receipt,
-) (DeliveryComplianceStatus, error) {
-	result := DeliveryComplianceStatus{}
-	sourceIssues, err := service.sourceComplianceIssues(ctx, client, receipt)
-	if err != nil {
-		return result, err
-	}
-	result.SourcesInternal = len(sourceIssues) == 0
-	result.Issues = append(result.Issues, sourceIssues...)
-
-	imageIssues, err := runtimeImageIssues(ctx, client, receipt.Delivery)
-	if err != nil {
-		return result, err
-	}
-	result.RuntimeImagesExact = len(imageIssues) == 0
-	result.Issues = append(result.Issues, imageIssues...)
-	sort.Strings(result.Issues)
-	if len(result.Issues) > platformStatusIssueLimit {
-		result.Issues = result.Issues[:platformStatusIssueLimit]
-	}
-	return result, nil
-}
-
-type expectedGitSource struct {
-	id     string
-	commit string
-}
-
-func (service Service) sourceComplianceIssues(
-	ctx context.Context,
-	client *kube.Observer,
-	receipt delivery.Receipt,
-) ([]string, error) {
+	project *config.Project,
+	sourceCommit string,
+) ([]ResourceStatus, error) {
 	objects, err := client.Resources(ctx, kube.GitRepository, "", "")
 	if apierrors.IsNotFound(err) {
-		return []string{"Flux GitRepository API is absent"}, nil
+		return []ResourceStatus{{
+			Name: "flux-system/flux-system",
+			Message: "GitRepository API is absent",
+		}}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	sources := service.Project.Desired.Platform.Sources
-	expected := make(map[string]expectedGitSource, 1)
+	sources := project.Desired.Platform.Sources
 	rootURL := internalRepositoryURL(
 		sources.ClusterURL, sources.Organization, sources.Repository,
 	)
-	expected[normalizedRepositoryURL(rootURL)] = expectedGitSource{
-		id: "platform", commit: receipt.SourceCommit,
-	}
-
-	seen := make(map[string]struct{}, len(expected))
-	issues := make([]string, 0)
+	statuses := make([]ResourceStatus, 0, max(1, len(objects)))
+	rootFound := false
 	for index := range objects {
+		object := &objects[index]
+		name := object.Namespace + "/" + object.Name
+		status := resourceStatus(object)
 		url, _, _ := unstructured.NestedString(objects[index].Object, "spec", "url")
-		normalized := normalizedRepositoryURL(url)
-		source, known := expected[normalized]
-		if !known {
-			issues = append(issues, fmt.Sprintf(
-				"GitRepository %s/%s uses unapproved source %s",
-				objects[index].Namespace, objects[index].Name, url,
-			))
-			continue
-		}
-		if _, duplicate := seen[normalized]; duplicate {
-			issues = append(issues, "published source "+source.id+" is rendered more than once")
-			continue
-		}
-		seen[normalized] = struct{}{}
-		revision, _, _ := unstructured.NestedString(
-			objects[index].Object, "status", "artifact", "revision",
-		)
-		if !strings.Contains(revision, source.commit) {
-			issues = append(issues, "published source "+source.id+" has not reconciled its exact commit")
-		}
 		branch, _, _ := unstructured.NestedString(
 			objects[index].Object, "spec", "ref", "branch",
 		)
-		if branch != "main" {
-			issues = append(issues, "platform source does not select main")
+		if name != "flux-system/flux-system" ||
+			normalizedRepositoryURL(url) != normalizedRepositoryURL(rootURL) {
+			status.Ready = false
+			status.Message = "unapproved Git source " + url
+		} else {
+			rootFound = true
+			switch {
+			case branch != "main":
+				status.Ready = false
+				status.Message = "platform source does not select main"
+			case sourceCommit != "":
+				revision, _, _ := unstructured.NestedString(
+					object.Object,
+					"status",
+					"artifact",
+					"revision",
+				)
+				if !strings.HasSuffix(revision, ":"+sourceCommit) {
+					status.Ready = false
+					status.Message = "platform source has not reconciled its exact published commit"
+				}
+			}
 		}
+		statuses = append(statuses, status)
 	}
-	for url, source := range expected {
-		if _, found := seen[url]; !found {
-			issues = append(issues, "published source "+source.id+" is absent")
-		}
+	if !rootFound {
+		statuses = append(statuses, ResourceStatus{
+			Name: "flux-system/flux-system",
+			Message: "required Forgejo main GitRepository is absent",
+		})
 	}
-	sort.Strings(issues)
-	return issues, nil
+	sortResourceStatuses(statuses)
+	return statuses, nil
 }
 
 func internalRepositoryURL(base, organization, repository string) string {
@@ -304,70 +378,158 @@ func normalizedRepositoryURL(value string) string {
 	return strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(value), "/"), ".git")
 }
 
-func runtimeImageIssues(
+func observeResourceStatuses(
 	ctx context.Context,
 	client *kube.Observer,
-	lock config.ImageLock,
-) ([]string, error) {
-	locked := make(map[string]map[string]struct{}, len(lock.Images))
-	for _, image := range lock.Images {
-		if _, duplicate := locked[image.Target]; duplicate {
-			return nil, fmt.Errorf("publication target %s is duplicated", image.Target)
-		}
-		locked[image.Target] = map[string]struct{}{image.Digest: {}}
+	resource kube.Resource,
+) ([]ResourceStatus, error) {
+	objects, err := client.Resources(ctx, resource, "", "")
+	if apierrors.IsNotFound(err) {
+		return []ResourceStatus{{
+			Name: resourceKind(resource),
+			Message: resourceKind(resource) + " API is absent",
+		}}, nil
 	}
-	pods, err := client.Pods(ctx, "", "")
 	if err != nil {
 		return nil, err
 	}
-	issues := make([]string, 0)
-	for index := range pods {
-		if pods[index].Terminal() {
-			continue
-		}
-		if issue := podLockedImageIssue(&pods[index], locked); issue != "" {
-			issues = append(issues, issue)
-		}
+	if len(objects) == 0 {
+		return []ResourceStatus{{
+			Name: resourceKind(resource),
+			Message: "no " + resourceKind(resource) + " resources are present",
+		}}, nil
 	}
-	sort.Strings(issues)
-	return issues, nil
+	statuses := make([]ResourceStatus, len(objects))
+	for index := range objects {
+		statuses[index] = resourceStatus(&objects[index])
+	}
+	sortResourceStatuses(statuses)
+	return statuses, nil
 }
 
-func podLockedImageIssue(pod *kube.Pod, locked map[string]map[string]struct{}) string {
-	for _, container := range pod.Containers {
-		digests, tracked := locked[container.Image]
-		digest := imageIDDigest(container.ImageID)
-		if tracked {
-			if _, accepted := digests[digest]; accepted {
-				continue
-			}
-		}
-		identity := pod.Namespace + "/" + pod.Name + " container " + container.Name
-		if !tracked {
-			return identity + " uses untracked image " + container.Image
-		}
-		if digest == "" {
-			return identity + " has no verified runtime digest for " + container.Image
-		}
-		return identity + " resolved " + container.Image + " to " + digest
+func resourceStatus(object *kube.Object) ResourceStatus {
+	status := ResourceStatus{
+		Name: object.Namespace + "/" + object.Name,
+		Ready: object.Ready,
 	}
-	return ""
+	if !status.Ready {
+		status.Message = resourceReadinessMessage(object)
+	}
+	return status
 }
 
-func imageIDDigest(imageID string) string {
-	index := strings.LastIndex(imageID, "sha256:")
-	if index < 0 {
-		return ""
+func resourceReadinessMessage(object *kube.Object) string {
+	if object == nil {
+		return "resource is absent"
 	}
-	digest := imageID[index:]
-	if len(digest) != len("sha256:")+sha256.Size*2 {
-		return ""
+	if object.DeletionTimestamp != nil {
+		return "resource is deleting"
 	}
-	decoded, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
-	if err != nil || len(decoded) != sha256.Size {
-		return ""
+	observed, found, err := unstructured.NestedInt64(
+		object.Object,
+		"status",
+		"observedGeneration",
+	)
+	if err != nil {
+		return "status observedGeneration is invalid"
 	}
-	return digest
+	if found && observed != object.Generation {
+		return fmt.Sprintf(
+			"status observedGeneration %d is stale for generation %d",
+			observed,
+			object.Generation,
+		)
+	}
+	return readyConditionMessage(object.Object)
+}
+
+func resourceKind(resource kube.Resource) string {
+	switch resource {
+	case kube.GitRepository:
+		return "GitRepository"
+	case kube.Kustomization:
+		return "Kustomization"
+	case kube.OCIRepository:
+		return "OCIRepository"
+	case kube.HelmRelease:
+		return "HelmRelease"
+	case kube.Certificate:
+		return "Certificate"
+	case kube.PlatformConfiguration:
+		return "PlatformConfiguration"
+	default:
+		return "resource"
+	}
+}
+
+func sortResourceStatuses(statuses []ResourceStatus) {
+	sort.Slice(statuses, func(left, right int) bool {
+		return statuses[left].Name < statuses[right].Name
+	})
+}
+
+func findResourceStatus(
+	statuses []ResourceStatus,
+	name string,
+) *ResourceStatus {
+	for index := range statuses {
+		if statuses[index].Name == name {
+			return &statuses[index]
+		}
+	}
+	return nil
+}
+
+func ensureResourceStatus(
+	statuses *[]ResourceStatus,
+	name string,
+	message string,
+) *ResourceStatus {
+	if status := findResourceStatus(*statuses, name); status != nil {
+		return status
+	}
+	*statuses = append(*statuses, ResourceStatus{Name: name, Message: message})
+	sortResourceStatuses(*statuses)
+	return findResourceStatus(*statuses, name)
+}
+
+func requireSingleton(
+	statuses *[]ResourceStatus,
+	name string,
+	absentMessage string,
+) {
+	expected := findResourceStatus(*statuses, name)
+	if expected == nil {
+		*statuses = append(
+			*statuses,
+			ResourceStatus{Name: name, Message: absentMessage},
+		)
+		sortResourceStatuses(*statuses)
+		return
+	}
+	if len(*statuses) != 1 {
+		expected.Ready = false
+		expected.Message = "PlatformConfiguration must be the sole atum-system/atum singleton"
+	}
+}
+
+func publicationCompliance(
+	receipt delivery.Receipt,
+	err error,
+) DeliveryComplianceStatus {
+	if err != nil {
+		return DeliveryComplianceStatus{
+			Issues: []string{"local immutable publication receipt: " + err.Error()},
+		}
+	}
+	return DeliveryComplianceStatus{
+		PublicationExact: true,
+		ForgejoExact: receipt.SourceCommit != "" &&
+			receipt.SourceSHA256 != "" &&
+			receipt.SourceTag != "",
+		HarborImagesExact: len(receipt.Delivery.Images) != 0,
+		HarborChartsExact: len(receipt.Charts) != 0,
+	}
 }
 
 func (service Service) observeLocalIntegration(

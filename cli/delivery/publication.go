@@ -76,7 +76,7 @@ type Receipt struct {
 	Seed           ArtifactIdentity   `json:"seed"`
 }
 
-func (service *Service) Prepare(ctx context.Context, options PublishOptions) (*config.Project, *Publication, error) {
+func (service *Service) Prepare(ctx context.Context, options PreparationOptions) (*config.Project, *Publication, error) {
 	unlock, err := update.LockProject(ctx, service.root)
 	if err != nil {
 		return nil, nil, fmt.Errorf("lock project state: %w", err)
@@ -396,7 +396,7 @@ func PublishImages(
 	client *atumoci.Client,
 	publication *Publication,
 	parallelism int,
-	report func(string),
+	report func(string, int64, bool),
 ) error {
 	if publication == nil || len(publication.Images) == 0 {
 		return errors.New("canonical image publication inputs are absent")
@@ -409,7 +409,7 @@ func publishPreparedImages(
 	client *atumoci.Client,
 	images []Image,
 	parallelism int,
-	report func(string),
+	report func(string, int64, bool),
 ) error {
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(config.EffectiveWorkLimit(
@@ -442,7 +442,7 @@ func publishPreparedImages(
 					return err
 				}
 				if report != nil {
-					report(image.ID)
+					report(image.ID, 0, true)
 				}
 				return nil
 			}
@@ -454,6 +454,11 @@ func publishPreparedImages(
 				image.Store,
 				image.Digest,
 				image.Target,
+				func(delta int64) {
+					if report != nil {
+						report(image.ID, delta, false)
+					}
+				},
 			)
 			if err != nil {
 				return err
@@ -475,7 +480,7 @@ func publishPreparedImages(
 				return err
 			}
 			if report != nil {
-				report(image.ID)
+				report(image.ID, 0, true)
 			}
 			return nil
 		})

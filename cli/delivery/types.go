@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	defaultGroup       = "platform"
 	defaultParallelism = 8
 	buildDirectory     = "platform/build"
 	bakeFilename       = "docker-bake.hcl"
@@ -27,18 +26,8 @@ type Service struct {
 	docker string
 }
 
-type PublishOptions struct {
-	Profile     string
-	Group       string
-	Targets     []string
-	Force       bool
+type PreparationOptions struct {
 	Parallelism int
-}
-
-type PublishResult struct {
-	Lock      config.ImageLock
-	Published int
-	Reused    int
 }
 
 func NewService(

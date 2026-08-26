@@ -37,6 +37,8 @@ type Event struct {
 	Restart bool
 	Current int
 	Total   int
+	BytesCurrent int64
+	BytesTotal   int64
 	Time    time.Time
 }
 
@@ -81,6 +83,20 @@ func Update(ctx context.Context, phase Phase, id, label, detail string, current,
 	Report(ctx, Event{
 		Phase: phase, ID: id, Label: label, Detail: detail,
 		State: Running, Current: current, Total: total,
+	})
+}
+
+func UpdateBytes(
+	ctx context.Context,
+	phase Phase,
+	id, label, detail string,
+	current, total int,
+	bytesCurrent, bytesTotal int64,
+) {
+	Report(ctx, Event{
+		Phase: phase, ID: id, Label: label, Detail: detail,
+		State: Running, Current: current, Total: total,
+		BytesCurrent: bytesCurrent, BytesTotal: bytesTotal,
 	})
 }
 

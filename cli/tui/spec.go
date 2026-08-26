@@ -78,7 +78,10 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 	if scope&ScopePlatform != 0 {
 		items := []itemSpec{
 			{id: "publication", label: "Publication inputs"},
+			{id: "seed-artifacts", label: "Seed artifacts"},
 			{id: "compatibility-builds", label: "Compatibility builds"},
+			{id: "image-publication", label: "Image publication"},
+			{id: "chart-publication", label: "Chart publication"},
 			{id: "harbor-publication", label: "Harbor publication"},
 			{id: "forgejo", label: "Forgejo sources"},
 			{id: "flux", label: "Flux"},
@@ -90,7 +93,8 @@ func projectPhases(project *config.Project, scope Scope) []phaseSpec {
 			{id: "platform-profile-access", label: "Platform profile access"},
 		}
 		seen := map[string]struct{}{
-			"publication": {}, "compatibility-builds": {}, "harbor-publication": {}, "forgejo": {}, "flux": {}, "prep": {},
+			"publication": {}, "seed-artifacts": {}, "compatibility-builds": {}, "image-publication": {},
+			"chart-publication": {}, "harbor-publication": {}, "forgejo": {}, "flux": {}, "prep": {},
 			"sources": {}, "images": {}, "bigbang": {}, "platform-profile-prep": {},
 			"platform-profile-access": {},
 		}

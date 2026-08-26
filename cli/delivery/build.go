@@ -33,84 +33,16 @@ type buildOutput struct {
 	descriptor ocispec.Descriptor
 }
 
-func (service *Service) publishBuilds(
-	ctx context.Context,
-	project *config.Project,
-	registry *atumoci.Client,
-	builds []selectedImage,
-	profile string,
-	graphSHA string,
-	options PublishOptions,
-	current map[string]config.LockedImage,
-	report func(string, bool),
-) ([]config.LockedImage, int, int, error) {
-	if len(builds) == 0 {
-		return nil, 0, 0, nil
-	}
-	entries := make([]config.LockedImage, 0, len(builds))
-	remaining := make([]selectedImage, 0, len(builds))
-	registryReused := 0
-	for _, image := range builds {
-		if !options.Force {
-			if locked, exists := reusableEntry(project, profile, image, current); exists {
-				if descriptor, err := registry.Resolve(ctx, image.Image.Target); err == nil && descriptor.Digest.String() == locked.Digest {
-					if err := registry.ValidateLinuxAMD64(ctx, image.Image.Target, descriptor); err != nil {
-						return nil, 0, 0, err
-					}
-					entries = append(entries, locked)
-					registryReused++
-					service.logger.InfoContext(ctx, "reuse built image", "image", image.Image.ID, "digest", locked.Digest)
-					report(image.Image.ID, true)
-					continue
-				}
-			}
-		}
-		remaining = append(remaining, image)
-	}
-	outputs, built, localReused, err := service.prepareBuildSet(ctx, project, remaining, profile, graphSHA, options, false)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	if len(outputs) == 0 {
-		return entries, 0, registryReused, nil
-	}
-	publishedEntries := make([]config.LockedImage, len(outputs))
-	parallelism := effectiveParallelism(
-		options.Parallelism, project.Desired.Updates.Parallelism,
-	)
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(parallelism)
-	for index := range outputs {
-		index := index
-		group.Go(func() error {
-			return runDeliveryWorker(groupContext, func() error {
-				entry, err := service.publishBuildOutput(groupContext, registry, outputs[index])
-				if err != nil {
-					return err
-				}
-				publishedEntries[index] = entry
-				report(entry.ID, false)
-				return nil
-			})
-		})
-	}
-	if err := group.Wait(); err != nil {
-		return nil, 0, 0, err
-	}
-	entries = append(entries, publishedEntries...)
-	return entries, built, registryReused + localReused, nil
-}
-
 func (service *Service) buildLocally(
 	ctx context.Context,
 	project *config.Project,
 	builds []selectedImage,
 	profile, graphSHA string,
-	options PublishOptions,
+	options PreparationOptions,
 ) (map[string]buildOutput, map[string]config.LockedImage, int, int, error) {
 	progress.Start(ctx, progress.Platform, "compatibility-builds", "Compatibility builds",
 		fmt.Sprintf("resolving %d build outputs", len(builds)))
-	prepared, built, reused, err := service.prepareBuildSet(ctx, project, builds, profile, graphSHA, options, true)
+	prepared, built, reused, err := service.prepareBuildSet(ctx, project, builds, profile, graphSHA, options)
 	if err != nil {
 		progress.Fail(ctx, progress.Platform, "compatibility-builds", "Compatibility builds", err)
 		return nil, nil, 0, 0, err
@@ -136,8 +68,7 @@ func (service *Service) prepareBuildSet(
 	project *config.Project,
 	builds []selectedImage,
 	profile, graphSHA string,
-	options PublishOptions,
-	localCache bool,
+	options PreparationOptions,
 ) ([]buildOutput, int, int, error) {
 	if len(builds) == 0 {
 		return nil, 0, 0, nil
@@ -150,7 +81,7 @@ func (service *Service) prepareBuildSet(
 	pendingIndexes := make([]int, 0, len(builds))
 	reused := 0
 	for index, image := range builds {
-		output, cached, err := service.prepareBuildOutput(ctx, project, image, graphSHA, options.Force)
+		output, cached, err := service.prepareBuildOutput(ctx, project, image, graphSHA)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -180,7 +111,7 @@ func (service *Service) prepareBuildSet(
 		return nil, 0, 0, fmt.Errorf("immutable build source graph is %s, want %s", snapshotGraph, graphSHA)
 	}
 	if err := runExclusiveDeliveryWork(ctx, func() error {
-		return service.runBake(ctx, project, workspace, pending, options, localCache)
+		return service.runBake(ctx, project, workspace, pending, options)
 	}); err != nil {
 		return nil, 0, 0, err
 	}
@@ -221,7 +152,6 @@ func (service *Service) prepareBuildOutput(
 	project *config.Project,
 	image selectedImage,
 	graphSHA string,
-	force bool,
 ) (buildOutput, bool, error) {
 	if !fssecure.ValidName(image.Delivery.BakeTarget) {
 		return buildOutput{}, false, fmt.Errorf("image %s has unsafe Bake target %q", image.Image.ID, image.Delivery.BakeTarget)
@@ -236,17 +166,15 @@ func (service *Service) prepareBuildOutput(
 		return buildOutput{}, false, err
 	}
 	output := buildOutput{image: image, relative: relative, absolute: absolute}
-	if !force {
-		store, descriptor, openErr := openBuildLayout(ctx, absolute)
-		if openErr == nil {
-			output.store = store
-			output.descriptor = descriptor
-			service.logger.InfoContext(ctx, "reuse local build output", "image", image.Image.ID, "digest", descriptor.Digest)
-			return output, true, nil
-		}
-		if !errors.Is(openErr, os.ErrNotExist) {
-			service.logger.WarnContext(ctx, "discard invalid local build output", "image", image.Image.ID, "error", openErr)
-		}
+	store, descriptor, openErr := openBuildLayout(ctx, absolute)
+	if openErr == nil {
+		output.store = store
+		output.descriptor = descriptor
+		service.logger.InfoContext(ctx, "reuse local build output", "image", image.Image.ID, "digest", descriptor.Digest)
+		return output, true, nil
+	}
+	if !errors.Is(openErr, os.ErrNotExist) {
+		service.logger.WarnContext(ctx, "discard invalid local build output", "image", image.Image.ID, "error", openErr)
 	}
 	if info, statErr := os.Lstat(absolute); statErr == nil {
 		if !info.IsDir() {
@@ -266,10 +194,9 @@ func (service *Service) runBake(
 	project *config.Project,
 	workspace string,
 	outputs []buildOutput,
-	options PublishOptions,
-	localCache bool,
+	options PreparationOptions,
 ) error {
-	session, cleanup, err := service.dockerConfig(project, !localCache)
+	session, cleanup, err := service.dockerConfig(project)
 	if err != nil {
 		return err
 	}
@@ -315,32 +242,29 @@ func (service *Service) runBake(
 			"--set", target+".output=type=oci,dest="+output.absolute+",tar=false,oci-mediatypes=true,rewrite-timestamp=true",
 		)
 	}
-	cachePaths := make(map[string]string)
-	if localCache {
-		reachable, err := config.ReachableBakeTargets(project, targets)
-		if err != nil {
-			return fmt.Errorf("resolve local cache graph: %w", err)
-		}
-		cacheRootRelative := filepath.Join(".atum", "cache", "buildkit")
-		if _, err := fssecure.EnsureDirectory(project.Root, cacheRootRelative, 0o700); err != nil {
-			return fmt.Errorf("create local BuildKit cache: %w", err)
-		}
-		cachePaths = make(map[string]string, len(reachable))
-		cacheOverrides = make([]string, 0, len(reachable)*4)
-		for _, target := range reachable {
-			cacheRelative := filepath.Join(cacheRootRelative, target)
-			cachePath, err := fssecure.EnsureDirectory(project.Root, cacheRelative, 0o700)
-			if err != nil {
-				return fmt.Errorf("create local cache for %s: %w", target, err)
-			}
-			cachePaths[target] = cachePath
-			cacheOverrides = append(cacheOverrides,
-				"--set", target+".cache-from=type=local,src="+cachePath,
-				"--set", target+".cache-to=",
-			)
-		}
-		arguments = append(arguments, cacheOverrides...)
+	reachable, err := config.ReachableBakeTargets(project, targets)
+	if err != nil {
+		return fmt.Errorf("resolve local cache graph: %w", err)
 	}
+	cacheRootRelative := filepath.Join(".atum", "cache", "buildkit")
+	if _, err := fssecure.EnsureDirectory(project.Root, cacheRootRelative, 0o700); err != nil {
+		return fmt.Errorf("create local BuildKit cache: %w", err)
+	}
+	cachePaths := make(map[string]string, len(reachable))
+	cacheOverrides = make([]string, 0, len(reachable)*4)
+	for _, target := range reachable {
+		cacheRelative := filepath.Join(cacheRootRelative, target)
+		cachePath, err := fssecure.EnsureDirectory(project.Root, cacheRelative, 0o700)
+		if err != nil {
+			return fmt.Errorf("create local cache for %s: %w", target, err)
+		}
+		cachePaths[target] = cachePath
+		cacheOverrides = append(cacheOverrides,
+			"--set", target+".cache-from=type=local,src="+cachePath,
+			"--set", target+".cache-to=",
+		)
+	}
+	arguments = append(arguments, cacheOverrides...)
 	arguments = append(arguments, targets...)
 	sbom, err := bootstrapMirrorReference(project, "sbom-scanner")
 	if err != nil {
@@ -411,29 +335,6 @@ func lockedBuildOutput(ctx context.Context, output buildOutput) (config.LockedIm
 		InputSHA256: output.image.InputSHA,
 		Delivery:    output.image.Delivery,
 	}, nil
-}
-
-func (service *Service) publishBuildOutput(
-	ctx context.Context,
-	registry *atumoci.Client,
-	output buildOutput,
-) (config.LockedImage, error) {
-	entry, err := lockedBuildOutput(ctx, output)
-	if err != nil {
-		return config.LockedImage{}, err
-	}
-	service.logger.InfoContext(ctx, "publish built image", "image", output.image.Image.ID, "digest", entry.Digest)
-	if _, err := registry.CopyFromStore(ctx, output.store, entry.Digest, output.image.Image.Target); err != nil {
-		return config.LockedImage{}, err
-	}
-	resolved, err := registry.Resolve(ctx, output.image.Image.Target)
-	if err != nil {
-		return config.LockedImage{}, err
-	}
-	if resolved.Digest != output.descriptor.Digest {
-		return config.LockedImage{}, fmt.Errorf("published image %s resolved to %s, want %s", output.image.Image.ID, resolved.Digest, output.descriptor.Digest)
-	}
-	return entry, nil
 }
 
 func openBuildLayout(ctx context.Context, directory string) (*ocistore.Store, ocispec.Descriptor, error) {

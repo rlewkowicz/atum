@@ -429,6 +429,8 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 		return requirementSet{velero: true}, nil
 	case CommittedSecrets:
 		return requirementSet{sops: true}, nil
+	case ArtifactPublication:
+		return requirementSet{docker: true, python: true, ssh: true, sops: true}, nil
 	case Platform:
 		return requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}, nil
 	case Full:

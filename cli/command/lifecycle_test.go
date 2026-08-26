@@ -2,6 +2,9 @@ package command
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -17,7 +20,7 @@ func TestConfirmDestroyRequiresExactYes(t *testing.T) {
 		confirmed bool
 	}{
 		{name: "line", input: "yes\n", confirmed: true},
-		{name: "end of input", input: "yes", confirmed: true},
+		{name: "end of input", input: "yes"},
 		{name: "CRLF", input: "yes\r\n", confirmed: true},
 		{name: "uppercase", input: "YES\n"},
 		{name: "leading whitespace", input: " yes\n"},
@@ -45,6 +48,106 @@ func TestConfirmDestroyRequiresExactYes(t *testing.T) {
 	}
 }
 
+func TestDestroyCancellationStopsBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		input string
+	}{
+		{name: "end of input"},
+		{name: "explicit rejection", input: "no\n"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+			mutations := 0
+			application := &app{
+				in:  strings.NewReader(test.input),
+				out: &output,
+			}
+			command := application.destroyCommandWithMutation(
+				func(context.Context) error {
+					mutations++
+					return nil
+				},
+			)
+			command.SetArgs([]string{})
+			command.SilenceErrors = true
+			command.SilenceUsage = true
+
+			err := command.Execute()
+			if !errors.Is(err, errDestroyCancelled) {
+				t.Fatalf("execute error = %v, want %v", err, errDestroyCancelled)
+			}
+			if mutations != 0 {
+				t.Fatalf("lifecycle mutations = %d, want 0", mutations)
+			}
+			wantOutput := destroyConfirmationPrompt + "Destroy cancelled.\n"
+			if output.String() != wantOutput {
+				t.Fatalf("output = %q, want %q", output.String(), wantOutput)
+			}
+		})
+	}
+}
+
+func TestDestroyCancellationPreservesOutputError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("cancellation output unavailable")
+	output := &failOnWrite{
+		remaining: 1,
+		err:       writeErr,
+	}
+	mutations := 0
+	application := &app{
+		in:  strings.NewReader("no\n"),
+		out: output,
+	}
+	command := application.destroyCommandWithMutation(func(context.Context) error {
+		mutations++
+		return nil
+	})
+	command.SetArgs([]string{})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+
+	err := command.Execute()
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("execute error = %v, want write error %v", err, writeErr)
+	}
+	if mutations != 0 {
+		t.Fatalf("lifecycle mutations = %d, want 0", mutations)
+	}
+}
+
+func TestDestroyForceBypassesOnlyConfirmation(t *testing.T) {
+	t.Parallel()
+
+	mutationErr := errors.New("lifecycle mutation failed")
+	mutations := 0
+	application := &app{
+		in:  errReader{err: errors.New("confirmation input must not be read")},
+		out: io.Discard,
+	}
+	command := application.destroyCommandWithMutation(func(context.Context) error {
+		mutations++
+		return mutationErr
+	})
+	command.SetArgs([]string{"--force"})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+
+	if err := command.Execute(); !errors.Is(err, mutationErr) {
+		t.Fatalf("execute error = %v, want lifecycle error %v", err, mutationErr)
+	}
+	if mutations != 1 {
+		t.Fatalf("lifecycle mutations = %d, want 1", mutations)
+	}
+}
+
 func TestLifecycleCommandsAreTopLevelAndForceIsShorthand(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +172,27 @@ func TestLifecycleCommandsAreTopLevelAndForceIsShorthand(t *testing.T) {
 	}
 }
 
+type failOnWrite struct {
+	remaining int
+	err       error
+}
+
+func (writer *failOnWrite) Write(payload []byte) (int, error) {
+	if writer.remaining == 0 {
+		return 0, writer.err
+	}
+	writer.remaining--
+	return len(payload), nil
+}
+
+type errReader struct {
+	err error
+}
+
+func (reader errReader) Read([]byte) (int, error) {
+	return 0, reader.err
+}
+
 func TestApplyUsesPlatformReadinessBudget(t *testing.T) {
 	t.Parallel()
 
@@ -83,5 +207,36 @@ func TestApplyUsesPlatformReadinessBudget(t *testing.T) {
 	}
 	if timeout != platform.DefaultReadinessTimeout {
 		t.Fatalf("apply timeout = %s, want %s", timeout, platform.DefaultReadinessTimeout)
+	}
+	deploy, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("find deploy alias: %v", err)
+	}
+	if deploy != apply {
+		t.Fatal("deploy must resolve to the canonical apply command")
+	}
+}
+
+func TestArtifactsPublishExposesOnlyCanonicalPublicationControls(t *testing.T) {
+	t.Parallel()
+
+	root := New(Options{})
+	publish, _, err := root.Find([]string{"artifacts", "publish"})
+	if err != nil {
+		t.Fatalf("find artifacts publish: %v", err)
+	}
+	for _, name := range []string{"profile", "group", "targets", "force"} {
+		if flag := publish.Flags().Lookup(name); flag != nil {
+			t.Errorf("artifacts publish unexpectedly exposes --%s", name)
+		}
+	}
+	for _, name := range []string{"parallelism", "timeout"} {
+		if flag := publish.Flags().Lookup(name); flag == nil {
+			t.Errorf("artifacts publish omits --%s", name)
+		}
+	}
+	if command, _, err := root.Find([]string{"images", "publish"});
+		err == nil && command.Name() == "images" {
+		t.Fatal("stale images publish command remains available")
 	}
 }

@@ -27,6 +27,7 @@ func (service *Service) prepareMirrorOutput(
 	project *config.Project,
 	registry *atumoci.Client,
 	image selectedImage,
+	report func(int64),
 ) (mirrorOutput, error) {
 	digest, found := strings.CutPrefix(image.Delivery.Digest, "sha256:")
 	decoded, decodeErr := hex.DecodeString(digest)
@@ -68,7 +69,12 @@ func (service *Service) prepareMirrorOutput(
 	}
 	service.logger.InfoContext(ctx, "cache official image", "image", image.Image.ID, "source", image.Delivery.Source)
 	descriptor, err := registry.CopyToStore(
-		ctx, image.Delivery.Source, image.Delivery.Digest, store, atumoci.SeedReference(image.Image.ID),
+		ctx,
+		image.Delivery.Source,
+		image.Delivery.Digest,
+		store,
+		atumoci.SeedReference(image.Image.ID),
+		report,
 	)
 	if err != nil {
 		return mirrorOutput{}, err

@@ -78,8 +78,10 @@ else
   )
 fi
 
-printf 'seed plane: loading exact Forgejo and Harbor images\n'
+seed_image_bytes="$(stat -c '%s' "${release_root}/images.tar")"
+printf 'seed plane: loading exact Forgejo and Harbor images bytes=%s\n' "${seed_image_bytes}"
 docker load --input "${release_root}/images.tar"
+printf 'seed plane: loaded exact Forgejo and Harbor images bytes=%s\n' "${seed_image_bytes}"
 
 configuration_sha="$({
   sha256sum "${incoming}/harbor.yml"

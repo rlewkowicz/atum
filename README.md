@@ -28,9 +28,9 @@ Converging three planes:
 - Flux-managed Big Bang platform software.
 
 The repository contains the Atum-owned configuration, overlays, compatibility
-entrypoints, and build graph. It does not require root `bigbang`, `kubespray`,
-or `bitnamilegacy-charts` checkouts. Immutable upstream snapshots are hydrated
-into the ignored `.atum/cache` tree from the commits in [`atum.json`](atum.json).
+entrypoints, and build graph. It does not require root `bigbang` or `kubespray`
+checkouts. Immutable upstream snapshots are hydrated into the ignored
+`.atum/cache` tree from the commits in [`atum.json`](atum.json).
 
 ### One command, an entire enterprise-grade platform
 
@@ -117,6 +117,8 @@ sudo "$(command -v atum)" infra libvirt forwarding install
 atum --raw apply
 ```
 
+`deploy` is an alias for `apply`.
+
 Destroy prompts for the exact response `yes`; `--force` bypasses the prompt:
 
 ```sh
@@ -144,12 +146,16 @@ atum platform status
 atum platform flux <flux-args...>
 ```
 
-## Image delivery
+## Artifact delivery
 
 ```sh
 jq -r '.delivery.images[] | [.id, .delivery.default.type, .target] | @tsv' atum.json
-atum images publish
+atum artifacts publish
 ```
+
+Full `atum apply` runs that same Forgejo and Harbor publication path
+automatically. GitLab's PostgreSQL is managed by CloudNativePG, not a Bitnami
+PostgreSQL subchart.
 
 ## Status
 

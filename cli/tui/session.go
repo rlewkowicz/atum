@@ -40,6 +40,7 @@ type eventSignature struct {
 	state          progress.State
 	detail         string
 	current, total int
+	bytesCurrent, bytesTotal int64
 }
 
 type terminalProgram interface {
@@ -287,7 +288,11 @@ func (session *Session) reportUnlocked(event progress.Event) {
 	}
 	event.Detail = boundedDetail(event.Detail)
 	key := string(event.Phase) + "/" + event.ID
-	signature := eventSignature{state: event.State, detail: event.Detail, current: event.Current, total: event.Total}
+	signature := eventSignature{
+		state: event.State, detail: event.Detail,
+		current: event.Current, total: event.Total,
+		bytesCurrent: event.BytesCurrent, bytesTotal: event.BytesTotal,
+	}
 	session.reportMu.Lock()
 	if session.closed {
 		session.reportMu.Unlock()
@@ -313,9 +318,9 @@ func (session *Session) reportUnlocked(event progress.Event) {
 	detail := singleLineReplacer.Replace(event.Detail)
 	_, _ = fmt.Fprintf(
 		session.log,
-		"%s progress phase=%s item=%s state=%s current=%d total=%d detail=%q\n",
+		"%s progress phase=%s item=%s state=%s current=%d total=%d bytes_current=%d bytes_total=%d detail=%q\n",
 		event.Time.UTC().Format(time.RFC3339Nano), event.Phase, event.ID, stateName(event.State),
-		event.Current, event.Total, detail,
+		event.Current, event.Total, event.BytesCurrent, event.BytesTotal, detail,
 	)
 	interactive := session.interactive
 	if interactive {
@@ -443,7 +448,11 @@ func boundedDetail(detail string) string {
 func (session *Session) compactChanged(key string, signature eventSignature) bool {
 	previous, found := session.compactState[key]
 	session.compactState[key] = signature
-	if !found || previous.state != signature.state || previous.current != signature.current || previous.total != signature.total {
+	if !found || previous.state != signature.state ||
+		previous.current != signature.current ||
+		previous.total != signature.total ||
+		previous.bytesCurrent != signature.bytesCurrent ||
+		previous.bytesTotal != signature.bytesTotal {
 		return true
 	}
 	return false
@@ -469,11 +478,38 @@ func compactEvent(event progress.Event) string {
 			detail = count + " " + detail
 		}
 	}
+	if event.BytesCurrent > 0 || event.BytesTotal > 0 {
+		bytes := formatBytes(event.BytesCurrent)
+		if event.BytesTotal > 0 {
+			bytes += "/" + formatBytes(event.BytesTotal)
+		}
+		if detail == "" {
+			detail = bytes
+		} else {
+			detail = bytes + " · " + detail
+		}
+	}
 	line := icon + " " + displayName(string(event.Phase)) + " / " + label
 	if detail != "" {
 		line += " — " + singleLineReplacer.Replace(detail)
 	}
 	return line
+}
+
+func formatBytes(value int64) string {
+	const unit = int64(1024)
+	if value < unit {
+		return fmt.Sprintf("%d B", value)
+	}
+	divisor, suffix := unit, "KiB"
+	for _, next := range []string{"MiB", "GiB", "TiB"} {
+		if value < divisor*unit {
+			break
+		}
+		divisor *= unit
+		suffix = next
+	}
+	return fmt.Sprintf("%.1f %s", float64(value)/float64(divisor), suffix)
 }
 
 func stateName(state progress.State) string {

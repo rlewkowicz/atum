@@ -16,7 +16,7 @@ func (a *app) platformCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:     "platform",
 		Aliases: []string{"plat"},
-		Short:   "Prepare, reconcile, and inspect the Flux platform",
+		Short:   "Publish, hand off to Flux, and inspect the platform",
 	}
 	var prepareOptions platform.PrepareOptions
 	prepare := &cobra.Command{
@@ -50,7 +50,7 @@ func (a *app) platformCommand() *cobra.Command {
 	var applyOptions platform.ApplyOptions
 	apply := &cobra.Command{
 		Use:   "apply",
-		Short: "Converge preparation services and the complete Big Bang platform",
+		Short: "Publish artifacts, bootstrap Flux, and wait for platform readiness",
 		Args:  cobra.NoArgs,
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			if err := a.checkPreflight(cmd.Context(), preflight.Platform); err != nil {

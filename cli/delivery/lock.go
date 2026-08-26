@@ -8,33 +8,6 @@ import (
 	"atum/cli/config"
 )
 
-func currentEntries(project *config.Project) map[string]config.LockedImage {
-	entries := make(map[string]config.LockedImage, len(project.Lock.Delivery.Images))
-	for _, entry := range project.Lock.Delivery.Images {
-		entries[entry.ID] = entry
-	}
-	return entries
-}
-
-func reusableEntry(
-	project *config.Project,
-	profile string,
-	selected selectedImage,
-	entries map[string]config.LockedImage,
-) (config.LockedImage, bool) {
-	lock := project.Lock.Delivery
-	if lock.Profile != profile {
-		return config.LockedImage{}, false
-	}
-	entry, exists := entries[selected.Image.ID]
-	if exists && entry.Target == selected.Image.Target &&
-		entry.InputSHA256 == selected.InputSHA &&
-		reflect.DeepEqual(entry.Delivery, selected.Delivery) {
-		return entry, true
-	}
-	return config.LockedImage{}, false
-}
-
 // matchesCommittedDelivery compares the updater-owned immutable selection
 // while leaving compatibility-build output digests under local publication
 // ownership. Mirror digests remain immutable inputs and are compared exactly.
@@ -62,29 +35,23 @@ func assembleImageLock(
 	profile string,
 	inventorySHA string,
 	graphSHA string,
-	selectedIDs map[string]struct{},
 	results map[string]config.LockedImage,
 ) (config.ImageLock, error) {
-	partial := len(selectedIDs) != len(project.Desired.Delivery.Images)
-	if partial && (project.Lock.Delivery.Profile != profile ||
-		project.Lock.Delivery.InventorySHA256 != inventorySHA ||
-		project.Lock.Delivery.GraphSHA256 != graphSHA ||
-		len(project.Lock.Delivery.Images) != len(project.Desired.Delivery.Images)) {
-		return config.ImageLock{}, fmt.Errorf("partial publication requires a complete current %s image lock", profile)
+	if len(results) != len(project.Desired.Delivery.Images) {
+		return config.ImageLock{}, fmt.Errorf(
+			"canonical publication resolved %d images, want %d",
+			len(results),
+			len(project.Desired.Delivery.Images),
+		)
 	}
 	images := make([]config.LockedImage, 0, len(project.Desired.Delivery.Images))
-	old := currentEntries(project)
 	for _, desired := range project.Desired.Delivery.Images {
-		entry, published := results[desired.ID]
-		if !published {
-			if _, selected := selectedIDs[desired.ID]; selected {
-				return config.ImageLock{}, fmt.Errorf("selected image %s has no publication result", desired.ID)
-			}
-			var exists bool
-			entry, exists = old[desired.ID]
-			if !exists {
-				return config.ImageLock{}, fmt.Errorf("unselected image %s has no prior lock entry", desired.ID)
-			}
+		entry, found := results[desired.ID]
+		if !found {
+			return config.ImageLock{}, fmt.Errorf(
+				"canonical publication has no result for image %s",
+				desired.ID,
+			)
 		}
 		images = append(images, entry)
 	}

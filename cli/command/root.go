@@ -144,7 +144,7 @@ func New(options Options) *cobra.Command {
 		a.validateCommand(),
 		a.secretsCommand(),
 		a.pullCommand(),
-		a.imagesCommand(),
+		a.artifactsCommand(),
 		a.infraCommand(),
 		a.orchestrationCommand(),
 		a.platformCommand(),
@@ -180,71 +180,56 @@ func (a *app) ensureCommandAllowed(command *cobra.Command) error {
 	return nil
 }
 
-func (a *app) imagesCommand() *cobra.Command {
-	images := &cobra.Command{
-		Use:   "images",
-		Short: "Publish locked images to Harbor",
+func (a *app) artifactsCommand() *cobra.Command {
+	artifacts := &cobra.Command{
+		Use:   "artifacts",
+		Short: "Prepare and publish the exact deployment artifacts",
 	}
-	var publishOptions delivery.PublishOptions
+	var options platform.PrepareOptions
 	publish := &cobra.Command{
-		Use:         "publish",
-		Short:       "Mirror official images and build selected compatibility images",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{"atum.dev/allow-stale": "true"},
+		Use:   "publish",
+		Short: "Publish the canonical source, image, and chart graph to Forgejo and Harbor",
+		Args:  cobra.NoArgs,
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
-			return a.withDashboard(cmd.Context(), "image publication", tui.ScopePlatform, func(ctx context.Context) error {
+			if err := a.checkPreflight(cmd.Context(), preflight.ArtifactPublication); err != nil {
+				return err
+			}
+			return a.withDashboard(cmd.Context(), "artifact publication", tui.ScopePlatform, func(ctx context.Context) error {
+				if err := a.ensurePublication(ctx, preflight.ArtifactPublication); err != nil {
+					return err
+				}
+				service := a.platformService()
 				if a.dryRun {
-					a.logger.InfoContext(ctx, "image publication would run", "profile", publishOptions.Profile, "group", publishOptions.Group)
+					a.logger.InfoContext(ctx, "canonical artifact publication would run")
 					return nil
 				}
-				service, err := a.deliveryService(ctx)
-				if err != nil {
+				if err := service.PublishArtifacts(ctx, options); err != nil {
 					return err
 				}
-				result, err := service.Publish(ctx, publishOptions)
-				if err != nil {
-					return err
-				}
-				a.logger.InfoContext(ctx, "image publication complete",
-					"profile", result.Lock.Profile,
-					"published", result.Published,
-					"reused", result.Reused,
+				a.logger.InfoContext(ctx, "canonical artifact publication complete",
+					"source", a.publication.SourceSHA256,
+					"images", len(a.publication.Images),
+					"charts", len(a.publication.Charts),
 				)
 				return nil
 			})
 		}),
 	}
-	bindPublishFlags(publish, &publishOptions)
-
-	images.AddCommand(publish)
-	return images
-}
-
-func (a *app) deliveryService(ctx context.Context) (*delivery.Service, error) {
-	docker, err := a.checkDeliveryPreflight(ctx)
-	if err != nil {
-		return nil, err
-	}
-	service, err := delivery.NewService(a.root, a.logger, a.runner, a.env, docker)
-	if err != nil {
-		return nil, err
-	}
-	a.preflight = preflight.Report{}
-	a.unlockProject()
-	return service, nil
-}
-
-func bindPublishFlags(command *cobra.Command, options *delivery.PublishOptions) {
-	command.Flags().StringVar(&options.Profile, "profile", "", "delivery profile (defaults to atum.json)")
-	command.Flags().StringVar(
-		&options.Group,
-		"group",
-		defaultImageGroup,
-		"image scope: platform, prep, bigbang, build-system, or kubespray",
+	publish.Flags().DurationVar(
+		&options.Timeout,
+		"timeout",
+		platform.DefaultReadinessTimeout,
+		"bounded seed-service readiness timeout",
 	)
-	command.Flags().StringSliceVar(&options.Targets, "targets", nil, "specific image ids to publish")
-	command.Flags().BoolVar(&options.Force, "force", false, "replace matching build and mirror results")
-	command.Flags().IntVar(&options.Parallelism, "parallelism", 0, "maximum concurrent registry transfers (defaults to atum.json)")
+	publish.Flags().IntVar(
+		&options.Parallelism,
+		"parallelism",
+		0,
+		"maximum concurrent OCI publications",
+	)
+
+	artifacts.AddCommand(publish)
+	return artifacts
 }
 
 func (a *app) configureLogger() error {
@@ -553,9 +538,10 @@ func (a *app) orchestrationConvergeCommand(name string, mode orchestration.Conve
 func (a *app) applyCommand() *cobra.Command {
 	var applyOptions platform.ApplyOptions
 	command := &cobra.Command{
-		Use:   "apply",
-		Short: "Converge infrastructure, Kubernetes, and the platform",
-		Args:  cobra.NoArgs,
+		Use:     "apply",
+		Aliases: []string{"deploy"},
+		Short:   "Converge infrastructure, Kubernetes, and the platform",
+		Args:    cobra.NoArgs,
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			if err := a.checkPreflight(cmd.Context(), preflight.Full); err != nil {
 				return err
@@ -711,7 +697,7 @@ func (a *app) ensurePublication(ctx context.Context, scope preflight.Scope) erro
 	}
 	a.preflight = preflight.Report{}
 	a.unlockProject()
-	runtimeProject, publication, err := service.Prepare(ctx, delivery.PublishOptions{})
+	runtimeProject, publication, err := service.Prepare(ctx, delivery.PreparationOptions{})
 	if err != nil {
 		err = fmt.Errorf("resolve local publication inputs: %w", err)
 		progress.Fail(ctx, progress.Platform, "publication", "Publication inputs", err)

@@ -28,6 +28,8 @@ const (
 	Kustomization
 	OCIRepository
 	HelmRelease
+	Certificate
+	PlatformConfiguration
 )
 
 type ListOptions struct {
@@ -373,6 +375,10 @@ func resourceGVR(resource Resource) (schema.GroupVersionResource, error) {
 		return schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "ocirepositories"}, nil
 	case HelmRelease:
 		return schema.GroupVersionResource{Group: "helm.toolkit.fluxcd.io", Version: "v2", Resource: "helmreleases"}, nil
+	case Certificate:
+		return schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "certificates"}, nil
+	case PlatformConfiguration:
+		return schema.GroupVersionResource{Group: "platform.atum.dev", Version: "v1alpha1", Resource: "platformconfigurations"}, nil
 	default:
 		return schema.GroupVersionResource{}, fmt.Errorf("unsupported observed resource %d", resource)
 	}

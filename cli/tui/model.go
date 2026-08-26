@@ -35,6 +35,8 @@ type itemModel struct {
 	state   progress.State
 	current int
 	total   int
+	bytesCurrent int64
+	bytesTotal   int64
 	updated time.Time
 }
 
@@ -237,6 +239,8 @@ func (model *model) apply(event progress.Event) {
 	item.detail = event.Detail
 	item.current = event.Current
 	item.total = event.Total
+	item.bytesCurrent = event.BytesCurrent
+	item.bytesTotal = event.BytesTotal
 	item.updated = event.Time
 }
 
@@ -413,6 +417,17 @@ func (model *model) renderItem(item *itemModel) string {
 			detail = count
 		} else {
 			detail = count + " " + detail
+		}
+	}
+	if item.bytesCurrent > 0 || item.bytesTotal > 0 {
+		bytes := formatBytes(item.bytesCurrent)
+		if item.bytesTotal > 0 {
+			bytes += "/" + formatBytes(item.bytesTotal)
+		}
+		if detail == "" {
+			detail = bytes
+		} else {
+			detail = bytes + " · " + detail
 		}
 	}
 	if item.state == progress.Running && !item.updated.IsZero() {

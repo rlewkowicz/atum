@@ -108,12 +108,16 @@ func exactCompletionStatus() platform.Status {
 	}
 	return platform.Status{
 		Reconciliation: platform.ReconciliationStatus{
+			GitRepositories: []platform.ResourceStatus{{Name: "source", Ready: true}},
 			Kustomizations: kustomizations,
-			BigBangSource: platform.ResourceStatus{Name: "source", Ready: true},
-			BigBangRelease: platform.ResourceStatus{Name: "release", Ready: true},
+			OCIRepositories: []platform.ResourceStatus{{Name: "oci", Ready: true}},
+			HelmReleases: []platform.ResourceStatus{{Name: "release", Ready: true}},
+			Certificates: []platform.ResourceStatus{{Name: "certificate", Ready: true}},
+			PlatformConfigurations: []platform.ResourceStatus{{Name: "configuration", Ready: true}},
 		},
 		Delivery: platform.DeliveryComplianceStatus{
-			SourcesInternal: true, RuntimeImagesExact: true,
+			PublicationExact: true, ForgejoExact: true,
+			HarborImagesExact: true, HarborChartsExact: true,
 		},
 		Local: platform.LocalIntegrationStatus{
 			Required: true, LoadBalancerReady: true,

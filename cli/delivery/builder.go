@@ -3,10 +3,8 @@ package delivery
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -139,12 +137,7 @@ func bootstrapMirrorReference(project *config.Project, id string) (string, error
 	return "", fmt.Errorf("delivery inventory has no %s image", id)
 }
 
-func (service *Service) dockerConfig(project *config.Project, requireCredentials bool) (dockerSession, func(), error) {
-	username := service.env("HARBOR_USERNAME")
-	password := service.env("HARBOR_PASSWORD")
-	if (username == "") != (password == "") || (requireCredentials && username == "") {
-		return dockerSession{}, nil, errors.New("HARBOR_USERNAME and HARBOR_PASSWORD are required to build images")
-	}
+func (service *Service) dockerConfig(project *config.Project) (dockerSession, func(), error) {
 	buildxConfig, err := fssecure.EnsureDirectory(project.Root, filepath.Join(".atum", "state", "buildx"), 0o700)
 	if err != nil {
 		return dockerSession{}, nil, fmt.Errorf("create persistent Buildx state: %w", err)
@@ -164,13 +157,7 @@ func (service *Service) dockerConfig(project *config.Project, requireCredentials
 	cleanup := func() { _ = os.RemoveAll(directory) }
 	auths := make(map[string]struct {
 		Auth string `json:"auth"`
-	}, 1)
-	if username != "" {
-		encoded := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-		auths[project.Desired.Delivery.Registry.Host] = struct {
-			Auth string `json:"auth"`
-		}{Auth: encoded}
-	}
+	})
 	data, err := json.Marshal(struct {
 		Auths map[string]struct {
 			Auth string `json:"auth"`

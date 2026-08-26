@@ -24,6 +24,7 @@ const (
 	FluxDirect
 	VeleroDirect
 	CommittedSecrets
+	ArtifactPublication
 	Platform
 	Full
 	AccessDNS

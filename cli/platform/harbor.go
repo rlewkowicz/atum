@@ -244,21 +244,30 @@ func (service Service) publishPublication(
 	defer client.Clear()
 	total := len(publication.Images) + len(publication.Charts)
 	var publishedCount atomic.Int64
+	var publishedBytes atomic.Int64
 	if err := delivery.PublishImages(
 		ctx,
 		client,
 		publication,
 		parallelism,
-		func(id string) {
-			current := int(publishedCount.Add(1))
-			progress.Update(
+		func(id string, delta int64, complete bool) {
+			current := int(publishedCount.Load())
+			bytes := publishedBytes.Add(delta)
+			detail := "publishing runtime image " + id
+			if complete {
+				current = int(publishedCount.Add(1))
+				detail = "published or reused runtime image " + id
+			}
+			progress.UpdateBytes(
 				ctx,
 				progress.Platform,
 				"harbor-publication",
 				"Harbor publication",
-				"published runtime image "+id,
+				detail,
 				current,
 				total,
+				bytes,
+				0,
 			)
 		},
 	); err != nil {
@@ -266,14 +275,28 @@ func (service Service) publishPublication(
 	}
 	progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
 		"publishing immutable chart inventory", 0, len(publication.Charts))
+	chartSizes := make(map[string]int64, len(publication.Charts))
+	for index := range publication.Charts {
+		chartSizes[publication.Charts[index].ID] = publication.Charts[index].Size
+	}
 	var chartCount atomic.Int64
 	return service.publishCharts(ctx, publication, credentials, parallelism, func(id string) {
 		chartCurrent := int(chartCount.Add(1))
 		progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
 			"published or reused chart "+id, chartCurrent, len(publication.Charts))
 		current := int(publishedCount.Add(1))
-		progress.Update(ctx, progress.Platform, "harbor-publication", "Harbor publication",
-			"published chart "+id, current, total)
+		bytes := publishedBytes.Add(chartSizes[id])
+		progress.UpdateBytes(
+			ctx,
+			progress.Platform,
+			"harbor-publication",
+			"Harbor publication",
+			"published or reused chart "+id,
+			current,
+			total,
+			bytes,
+			0,
+		)
 	})
 }
 

@@ -16,7 +16,18 @@ const (
 	destroyConfirmationLimit  = 16
 )
 
+var errDestroyCancelled = errors.New("destroy cancelled")
+
 func (a *app) destroyCommand() *cobra.Command {
+	return a.destroyCommandWithMutation(func(ctx context.Context) error {
+		if err := a.uninstallActiveLocalAccess(ctx); err != nil {
+			return fmt.Errorf("remove local workstation access: %w", err)
+		}
+		return a.runInfrastructureAction(ctx, "destroy", nil)
+	})
+}
+
+func (a *app) destroyCommandWithMutation(mutate func(context.Context) error) *cobra.Command {
 	var force bool
 	command := &cobra.Command{
 		Use:         "destroy",
@@ -30,14 +41,13 @@ func (a *app) destroyCommand() *cobra.Command {
 					return err
 				}
 				if !confirmed {
-					_, err = fmt.Fprintln(a.out, "Destroy cancelled.")
-					return err
+					if _, err := fmt.Fprintln(a.out, "Destroy cancelled."); err != nil {
+						return err
+					}
+					return errDestroyCancelled
 				}
 			}
-			if err := a.uninstallActiveLocalAccess(cmd.Context()); err != nil {
-				return fmt.Errorf("remove local workstation access: %w", err)
-			}
-			return a.runInfrastructureAction(cmd.Context(), "destroy", nil)
+			return mutate(cmd.Context())
 		}),
 	}
 	command.Flags().BoolVarP(
@@ -79,7 +89,10 @@ func confirmDestroy(input io.Reader, output io.Writer) (bool, error) {
 		destroyConfirmationLimit,
 	)
 	answer, err := reader.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	if errors.Is(err, io.EOF) {
+		return false, nil
+	}
+	if err != nil {
 		return false, fmt.Errorf("read destroy confirmation: %w", err)
 	}
 	answer = strings.TrimSuffix(answer, "\n")

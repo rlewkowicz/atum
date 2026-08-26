@@ -237,6 +237,7 @@ func (client *Client) CopyToStore(
 	digest string,
 	target oras.Target,
 	tag string,
+	report func(int64),
 ) (ocispec.Descriptor, error) {
 	_, repository, err := client.repository(source)
 	if err != nil {
@@ -245,6 +246,7 @@ func (client *Client) CopyToStore(
 	options := oras.DefaultCopyOptions
 	options.CopyGraphOptions.Concurrency = copyConcurrency
 	options.CopyGraphOptions.MaxMetadataBytes = metadataLimit
+	options.CopyGraphOptions.PostCopy = descriptorProgress(report)
 	descriptor, err := oras.Copy(ctx, repository, digest, target, tag, options)
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("copy %s@%s into OCI layout: %w", source, digest, err)
@@ -260,6 +262,7 @@ func (client *Client) CopyFromStore(
 	source oras.ReadOnlyTarget,
 	digest string,
 	target string,
+	report func(int64),
 ) (ocispec.Descriptor, error) {
 	targetReference, repository, err := client.repository(target)
 	if err != nil {
@@ -271,6 +274,7 @@ func (client *Client) CopyFromStore(
 	options := oras.DefaultCopyOptions
 	options.CopyGraphOptions.Concurrency = copyConcurrency
 	options.CopyGraphOptions.MaxMetadataBytes = metadataLimit
+	options.CopyGraphOptions.PostCopy = descriptorProgress(report)
 	descriptor, err := oras.Copy(ctx, source, digest, repository, targetReference.Identifier, options)
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("publish OCI layout to %s: %w", target, err)
@@ -279,6 +283,18 @@ func (client *Client) CopyFromStore(
 		return ocispec.Descriptor{}, fmt.Errorf("publish %s produced %s, want %s", target, descriptor.Digest, digest)
 	}
 	return descriptor, nil
+}
+
+func descriptorProgress(report func(int64)) func(context.Context, ocispec.Descriptor) error {
+	if report == nil {
+		return nil
+	}
+	return func(_ context.Context, descriptor ocispec.Descriptor) error {
+		if descriptor.Size > 0 {
+			report(descriptor.Size)
+		}
+		return nil
+	}
 }
 
 // CopyTargetToStore copies an exact graph from an already-open content target

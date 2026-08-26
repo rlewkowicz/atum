@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	atumoci "atum/cli/oci"
+	"atum/cli/progress"
 	"atum/cli/update"
 
 	"golang.org/x/sync/errgroup"
@@ -269,6 +271,28 @@ func (service *Service) prepareSeedImages(
 		return archiveIdentity{}, fmt.Errorf("create seed OCI stage: %w", err)
 	}
 	inputs := make([]dockerArchiveImage, len(images))
+	progress.Start(
+		ctx,
+		progress.Platform,
+		"seed-artifacts",
+		"Seed artifacts",
+		fmt.Sprintf("preparing %d bastion-only images", len(images)),
+	)
+	var completed atomic.Int64
+	var copiedBytes atomic.Int64
+	reportComplete := func(id string) {
+		progress.UpdateBytes(
+			ctx,
+			progress.Platform,
+			"seed-artifacts",
+			"Seed artifacts",
+			"prepared seed image "+id,
+			int(completed.Add(1)),
+			len(images),
+			copiedBytes.Load(),
+			0,
+		)
+	}
 	lockedByID := make(map[string]config.LockedImage, len(project.Lock.Delivery.Images))
 	for _, image := range project.Lock.Delivery.Images {
 		lockedByID[image.ID] = image
@@ -287,6 +311,7 @@ func (service *Service) prepareSeedImages(
 					inputs[index] = dockerArchiveImage{
 						Reference: image.Source, Descriptor: output.descriptor, Store: output.store,
 					}
+					reportComplete(image.ID)
 					return nil
 				}
 			}
@@ -296,6 +321,19 @@ func (service *Service) prepareSeedImages(
 				image.Digest,
 				extraStore,
 				"atum-seed.local/"+image.ID+":seed",
+				func(delta int64) {
+					progress.UpdateBytes(
+						groupContext,
+						progress.Platform,
+						"seed-artifacts",
+						"Seed artifacts",
+						"caching seed image "+image.ID,
+						int(completed.Load()),
+						len(images),
+						copiedBytes.Add(delta),
+						0,
+					)
+				},
 			)
 			if err != nil {
 				return err
@@ -304,6 +342,7 @@ func (service *Service) prepareSeedImages(
 				return fmt.Errorf("validate seed image %s: %w", image.ID, err)
 			}
 			inputs[index] = dockerArchiveImage{Reference: image.Source, Descriptor: descriptor, Store: extraStore}
+			reportComplete(image.ID)
 				return nil
 			})
 		})
@@ -322,6 +361,13 @@ func (service *Service) prepareSeedImages(
 	if err := fssecure.RemoveTree(project.Root, extraRelative); err != nil {
 		return archiveIdentity{}, fmt.Errorf("remove seed OCI stage: %w", err)
 	}
+	progress.Done(
+		ctx,
+		progress.Platform,
+		"seed-artifacts",
+		"Seed artifacts",
+		fmt.Sprintf("%d images archived in %d bytes", len(images), identity.Size),
+	)
 	return identity, nil
 }
 
