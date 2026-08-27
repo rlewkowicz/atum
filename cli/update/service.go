@@ -19,7 +19,7 @@ import (
 	"atum/cli/fssecure"
 	"atum/cli/gitcache"
 	"atum/cli/identity"
-	"atum/cli/orchestration"
+	"atum/cli/kube"
 	"atum/cli/process"
 	"atum/cli/progress"
 
@@ -77,6 +77,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	project, err := config.LoadWithOptions(service.root, config.LoadOptions{
 		AllowStale: true, AllowMissingGeneratedIdentity: true,
+		AllowMissingFluxSecrets: true,
 	})
 	if err != nil {
 		return Result{}, err
@@ -126,10 +127,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, errors.New("declarative state changed while the updater was loading it; retry without discarding the concurrent edit")
 	}
 	managedFiles := tree.filesView()
-	obsoleteChartPaths, err := canonicalizeGenericChartInventory(&desired)
-	if err != nil {
-		return Result{}, err
-	}
 	identityContract, err := loadCandidateIdentity(tree, desired)
 	if err != nil {
 		return Result{}, err
@@ -151,6 +148,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	operational := platformValues.Operational
+	obsoleteChartPaths, err := canonicalizeGenericChartInventory(
+		&desired,
+		operational,
+	)
+	if err != nil {
+		return Result{}, err
+	}
 	currentGenerated := platformValues.Generated
 	generated := make(map[string]any)
 	profileValues := platformValues.Profile
@@ -345,6 +349,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		selection.clusterReleases,
 		selection.kubespray,
 		parallelism,
+		previousImages,
 	)
 	if err != nil {
 		return Result{}, err
@@ -774,13 +779,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	if err := removeKustomizationResources(
 		tree,
-		"platform/apps/bigbang/kustomization.yaml",
-		[]string{"source-opensearch.yaml", "source-opensearch-operator.yaml"},
-	); err != nil {
-		return Result{}, err
-	}
-	if err := removeKustomizationResources(
-		tree,
 		"platform/apps/prep/kustomization.yaml",
 		[]string{"cert-manager"},
 	); err != nil {
@@ -877,15 +875,29 @@ func trackedChartDiscoveryValues(charts []config.TrackedChart) (map[string]any, 
 	return values, nil
 }
 
-func canonicalizeGenericChartInventory(desired *config.Document) ([]string, error) {
+func canonicalizeGenericChartInventory(
+	desired *config.Document,
+	operational map[string]any,
+) ([]string, error) {
 	if desired == nil {
 		return nil, errors.New("desired state is required")
 	}
-	obsolete := []string{
-		"platform/apps/bigbang/source-opensearch.yaml",
-		"platform/apps/bigbang/source-opensearch-operator.yaml",
-	}
+	var obsolete []string
 	certManagerIndex := -1
+	charts := desired.Platform.Charts[:0]
+	for index := range desired.Platform.Charts {
+		chart := desired.Platform.Charts[index]
+		if chart.ID != "cert-manager" {
+			if _, err := valuesAt(operational, chart.ValuesPath); err != nil {
+				continue
+			}
+		}
+		if chart.ValuesPath == "" {
+			continue
+		}
+		charts = append(charts, chart)
+	}
+	desired.Platform.Charts = charts
 	for index := range desired.Platform.Charts {
 		chart := &desired.Platform.Charts[index]
 		if chart.ID == "cert-manager" {
@@ -947,6 +959,7 @@ func projectGenericChartDefaults(values map[string]any, chart config.TrackedChar
 		return fmt.Errorf("prepare chart %s generic values: %w", chart.ID, err)
 	}
 	entry["enabled"] = true
+	entry["bbCommonValues"] = false
 	entry["namespace"] = map[string]any{
 		"name": "cert-manager",
 	}
@@ -1154,7 +1167,7 @@ func (service *Service) resolveKubernetesCandidates(
 			return nil, err
 		}
 		for _, kubernetes := range compatible {
-			_, apiErr := orchestration.AuthenticationConfigAPIVersion(
+			_, apiErr := kube.AuthenticationConfigAPIVersion(
 				kubernetes.Version,
 			)
 			if err := errors.Join(apiErr, oidcImplementationErr); err != nil {
@@ -1599,11 +1612,13 @@ func updateGeneratedVersions(
 		"name":       "atum",
 		"repository": "oci://" + registry.Host + "/" + registry.Project,
 		"type":       "oci",
+		"username":   "",
+		"password":   "",
 	}}
 	for _, pkg := range packages {
 		if err := pinChartRepository(
 			generated, pkg.Package.ValuesPath,
-			pkg.ChartName, pkg.Package.Source.Version,
+			pkg.ChartName, pkg.ChartVersion,
 		); err != nil {
 			return fmt.Errorf("update generated package %s source: %w", pkg.Package.ID, err)
 		}
@@ -1643,9 +1658,9 @@ func pinChartRepository(
 	delete(entry, "git")
 	entry["sourceType"] = "helmRepo"
 	entry["helmRepo"] = map[string]any{
-		"repoName": "atum",
+		"repoName":  "atum",
 		"chartName": chartName,
-		"tag": version,
+		"tag":       version,
 	}
 	return nil
 }

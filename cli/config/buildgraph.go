@@ -188,7 +188,9 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	sort.Strings(repositoryFiles)
 	for _, relative := range repositoryFiles {
 		data, mode, err := graphFile(project, relative, files)
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		digest := sha256.Sum256(data)
 		_, _ = fmt.Fprintf(hash, "%s\x00%o\n%s  %s\n", relative, mode.Perm(), hex.EncodeToString(digest[:]), relative)
 	}
@@ -208,7 +210,8 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 	operatorBuilder := ""
 	operatorBuild := false
 	for _, image := range project.Desired.Delivery.Images {
-		if image.ID == "atum-operator" && image.Delivery.Default.Type == "build" {
+		if image.ID == "atum-operator" &&
+			image.Delivery.Default.Type == "build" {
 			operatorBuild = true
 		}
 		if image.Delivery.Default.Type != "mirror" ||
@@ -290,13 +293,23 @@ func localGraphMaterialFiles(project *Project, relative string) ([]string, error
 
 func repositoryGraphMaterialFiles(project *Project, relative string) ([]string, error) {
 	clean, err := fssecure.Relative(relative)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	path, err := fssecure.Resolve(project.Root, clean, false)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	info, err := os.Lstat(path)
-	if err != nil { return nil, err }
-	if info.Mode().IsRegular() { return []string{filepath.ToSlash(clean)}, nil }
-	if !info.IsDir() { return nil, errors.New("material is not a regular file or directory") }
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode().IsRegular() {
+		return []string{filepath.ToSlash(clean)}, nil
+	}
+	if !info.IsDir() {
+		return nil, errors.New("material is not a regular file or directory")
+	}
 	result := make([]string, 0, 16)
 	err = fssecure.WalkRegularFiles(path, func(_ string, child string, _ os.FileInfo) error {
 		result = append(result, filepath.ToSlash(filepath.Join(clean, child)))

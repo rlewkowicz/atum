@@ -31,6 +31,7 @@ const maxOfficialEntrypointBytes int64 = 1 << 20
 const maxOfficialFilesystemEntries = 2_000_000
 const maxMountedScriptDepth = 16
 const boundedMountedGlob = "__ATUM_MOUNTED_GLOB__"
+const imageAdmissionContract = "atum.dev/image-admission/v3"
 
 type finalImageUse struct {
 	artifact            string
@@ -41,10 +42,11 @@ type finalImageUse struct {
 }
 
 type filesystemObligation struct {
-	Path       string
-	Origin     string
-	Executable bool
-	SearchPATH bool
+	Path        string
+	Origin      string
+	Executable  bool
+	SearchPATH  bool
+	Interpreter string
 }
 
 type officialImageInspection struct {
@@ -141,52 +143,76 @@ type officialInspectionResult struct {
 }
 
 type configuredOfficialIdentity struct {
+	id         string
+	family     string
 	provenance string
 	license    string
 }
 
 var configuredOfficialImages = map[string]configuredOfficialIdentity{
 	"docker.io/docker/buildkit-syft-scanner": {
+		id:         "sbom-scanner",
+		family:     "build-system",
 		provenance: "docker.io/docker/buildkit-syft-scanner",
 		license:    "Apache-2.0",
 	},
 	"docker.io/moby/buildkit": {
+		id:         "buildkit",
+		family:     "build-system",
 		provenance: "https://github.com/moby/buildkit",
 		license:    "Apache-2.0",
 	},
 	"docker.io/library/golang": {
+		id:         "operator-builder",
+		family:     "build-system",
 		provenance: "docker.io/library/golang",
 		license:    "BSD-3-Clause",
 	},
 	"docker.io/rancher/local-path-provisioner": {
+		id:         "local-path-provisioner",
+		family:     "storage",
 		provenance: "https://github.com/rancher/local-path-provisioner",
 		license:    "Apache-2.0",
 	},
 	"ghcr.io/kube-vip/kube-vip": {
+		id:         "kube-vip",
+		family:     "cluster",
 		provenance: "https://github.com/kube-vip/kube-vip",
 		license:    "Apache-2.0",
 	},
 	"ghcr.io/kube-vip/kube-vip-cloud-provider": {
+		id:         "kube-vip-cloud-provider",
+		family:     "cluster",
 		provenance: "https://github.com/kube-vip/kube-vip-cloud-provider",
 		license:    "Apache-2.0",
 	},
 	"quay.io/jetstack/cert-manager-acmesolver": {
+		id:         "cert-manager-acmesolver",
+		family:     "cert-manager",
 		provenance: "https://github.com/cert-manager/cert-manager",
 		license:    "Apache-2.0",
 	},
 	"quay.io/jetstack/cert-manager-cainjector": {
+		id:         "cert-manager-cainjector",
+		family:     "cert-manager",
 		provenance: "https://github.com/cert-manager/cert-manager",
 		license:    "Apache-2.0",
 	},
 	"quay.io/jetstack/cert-manager-controller": {
+		id:         "cert-manager-controller",
+		family:     "cert-manager",
 		provenance: "https://github.com/cert-manager/cert-manager",
 		license:    "Apache-2.0",
 	},
 	"quay.io/jetstack/cert-manager-startupapicheck": {
+		id:         "cert-manager-startupapicheck",
+		family:     "cert-manager",
 		provenance: "https://github.com/cert-manager/cert-manager",
 		license:    "Apache-2.0",
 	},
 	"quay.io/jetstack/cert-manager-webhook": {
+		id:         "cert-manager-webhook",
+		family:     "cert-manager",
 		provenance: "https://github.com/cert-manager/cert-manager",
 		license:    "Apache-2.0",
 	},
@@ -357,12 +383,15 @@ func admitFinalRenderedImages(
 					return nil
 				}
 			}
-			cached, err := reusableCompatibility(
-				groupContext,
-				source,
-				request.uses,
-				previousImage.Compatibility,
-			)
+			var cached *config.ImageCompatibility
+			var err error
+			if reusableCompatibilityCandidate(image, previousImage) {
+				cached, err = reusableCompatibility(
+					source,
+					request.uses,
+					previousImage.Compatibility,
+				)
+			}
 			if err != nil {
 				return fmt.Errorf(
 					"inspect official candidate for %s: %w",
@@ -412,12 +441,15 @@ func admitFinalRenderedImages(
 				mismatches,
 			)
 			if err != nil {
-				admissionErrors = append(admissionErrors, fmt.Errorf(
-					"cached official candidate %s does not satisfy its final render (%s): %w",
-					image.ID,
-					strings.Join(mismatches, "; "),
-					err,
-				))
+				admissionErrors = append(
+					admissionErrors,
+					officialCandidateCompatibilityError(
+						"cached ",
+						image.ID,
+						mismatches,
+						err,
+					),
+				)
 				continue
 			}
 			applyCompatibilityIdentity(image, bakeTarget)
@@ -459,12 +491,15 @@ func admitFinalRenderedImages(
 			mismatches,
 		)
 		if err != nil {
-			admissionErrors = append(admissionErrors, fmt.Errorf(
-				"official candidate %s does not satisfy its final render (%s): %w",
-				image.ID,
-				strings.Join(mismatches, "; "),
-				err,
-			))
+			admissionErrors = append(
+				admissionErrors,
+				officialCandidateCompatibilityError(
+					"",
+					image.ID,
+					mismatches,
+					err,
+				),
+			)
 			continue
 		}
 		applyCompatibilityIdentity(image, bakeTarget)
@@ -490,6 +525,7 @@ func admitFinalRenderedImages(
 			return observations[i].RenderedLocation < observations[j].RenderedLocation
 		})
 		image.Compatibility = &config.ImageCompatibility{
+			Contract:         imageAdmissionContract,
 			Observations:     observations,
 			Incompatibility:  strings.Join(mismatches, "; "),
 			OfficialMaterial: inspection.material,
@@ -507,6 +543,21 @@ func admitFinalRenderedImages(
 	return errors.Join(admissionErrors...)
 }
 
+func officialCandidateCompatibilityError(
+	prefix string,
+	imageID string,
+	mismatches []string,
+	err error,
+) error {
+	return fmt.Errorf(
+		"%sofficial candidate %s does not satisfy its final render (%s): %w",
+		prefix,
+		imageID,
+		strings.Join(mismatches, "; "),
+		err,
+	)
+}
+
 func reusableMirrorDigest(candidate, previous config.Image) (string, bool) {
 	if previous.Delivery.Default.Type != "mirror" ||
 		previous.Delivery.Default.Source != candidate.Delivery.Default.Source ||
@@ -522,6 +573,23 @@ func reusableMirrorDigest(candidate, previous config.Image) (string, bool) {
 		return "", false
 	}
 	return digest, true
+}
+
+func reusableCompatibilityCandidate(candidate, previous config.Image) bool {
+	if previous.Delivery.Default.Type != "build" ||
+		previous.Delivery.Default.BakeTarget == "" ||
+		previous.Compatibility == nil {
+		return false
+	}
+	applyCompatibilityIdentity(
+		&candidate,
+		previous.Delivery.Default.BakeTarget,
+	)
+	candidate.Delivery = config.ImageDelivery{}
+	candidate.Compatibility = nil
+	previous.Delivery = config.ImageDelivery{}
+	previous.Compatibility = nil
+	return reflect.DeepEqual(candidate, previous)
 }
 
 func applyCompatibilityIdentity(image *config.Image, bakeTarget string) {
@@ -597,12 +665,12 @@ func configuredImageIdentity(image config.Image) (configuredOfficialIdentity, er
 }
 
 func reusableCompatibility(
-	ctx context.Context,
 	source string,
 	uses []finalImageUse,
 	previous *config.ImageCompatibility,
 ) (*config.ImageCompatibility, error) {
 	if previous == nil ||
+		previous.Contract != imageAdmissionContract ||
 		previous.Incompatibility == "" ||
 		!compatibilityObservationsMatch(uses, previous.Observations) {
 		return nil, nil
@@ -614,32 +682,21 @@ func reusableCompatibility(
 	if err != nil {
 		return nil, fmt.Errorf("parse official image %s: %w", source, err)
 	}
-	descriptor, err := remote.Get(
-		reference,
-		remote.WithContext(ctx),
-		remote.WithPlatform(linuxAMD64),
-		remote.WithAuthFromKeychain(authn.DefaultKeychain),
-	)
+	material, err := name.ParseReference(previous.OfficialMaterial)
 	if err != nil {
-		return nil, fmt.Errorf("resolve official image %s: %w", source, err)
+		return nil, fmt.Errorf(
+			"parse prior official material %s: %w",
+			previous.OfficialMaterial,
+			err,
+		)
 	}
-	resolved, err := descriptor.Image()
-	if err != nil {
-		return nil, fmt.Errorf("read official image %s: %w", source, err)
+	if _, immutable := material.(name.Digest); !immutable {
+		return nil, fmt.Errorf(
+			"prior official material %s is not immutable",
+			previous.OfficialMaterial,
+		)
 	}
-	manifestDigest, err := resolved.Digest()
-	if err != nil {
-		return nil, fmt.Errorf("resolve official manifest %s: %w", source, err)
-	}
-	material := imageRepository(source) + "@" + manifestDigest.String()
-	if material != previous.OfficialMaterial {
-		return nil, nil
-	}
-	configDigest, err := resolved.ConfigName()
-	if err != nil {
-		return nil, fmt.Errorf("resolve official config %s: %w", source, err)
-	}
-	if configDigest.String() != previous.OfficialConfig.SHA256 {
+	if reference.Context().Name() != material.Context().Name() {
 		return nil, nil
 	}
 	return previous, nil
@@ -715,7 +772,11 @@ func inspectOfficialCandidate(
 	}
 	manifestDigest, err := image.Digest()
 	if err != nil {
-		return officialImageInspection{}, fmt.Errorf("resolve official manifest %s: %w", source, err)
+		return officialImageInspection{}, fmt.Errorf(
+			"resolve official manifest %s: %w",
+			source,
+			err,
+		)
 	}
 	configDigest, err := image.ConfigName()
 	if err != nil {
@@ -1377,6 +1438,19 @@ func compareOfficialCandidate(
 				compatible = compatible || inspection.pathExists[candidate]
 			}
 			if compatible {
+				if obligation.Interpreter != "" &&
+					!interpreterCompatible(
+						inspection,
+						candidates,
+						obligation.Interpreter,
+					) {
+					mismatches = append(
+						mismatches,
+						prefix+obligation.Origin+" requires official "+
+							obligation.Interpreter+"-compatible interpreter "+
+							obligation.Path,
+					)
+				}
 				continue
 			}
 			kind := "path "
@@ -1387,6 +1461,14 @@ func compareOfficialCandidate(
 				mismatches,
 				prefix+obligation.Origin+" requires official "+kind+obligation.Path,
 			)
+			if obligation.Interpreter != "" {
+				mismatches = append(
+					mismatches,
+					prefix+obligation.Origin+" requires official "+
+						obligation.Interpreter+"-compatible interpreter "+
+						obligation.Path,
+				)
+			}
 		}
 		environment := use.requiredEnvironment
 		if environment == nil {
@@ -1402,6 +1484,23 @@ func compareOfficialCandidate(
 		}
 	}
 	return compactSorted(mismatches)
+}
+
+func interpreterCompatible(
+	inspection officialImageInspection,
+	candidates []string,
+	interpreter string,
+) bool {
+	if interpreter != "bash" {
+		return false
+	}
+	for _, candidate := range candidates {
+		state := inspection.pathStates[candidate]
+		if state.present && path.Base(state.resolved) == "bash" {
+			return true
+		}
+	}
+	return false
 }
 
 func executablePathCompatible(
@@ -1666,6 +1765,7 @@ func appendCommandObligations(
 			mounts,
 			obligations,
 			depth+1,
+			true,
 		)
 	}
 	obligation, err := executableObligation(executable, origin, invocation)
@@ -1711,6 +1811,7 @@ func appendCommandObligations(
 					mounts,
 					obligations,
 					depth+1,
+					false,
 				); err != nil {
 					return err
 				}
@@ -1746,6 +1847,7 @@ func appendCommandObligations(
 				mounts,
 				obligations,
 				depth+1,
+				false,
 			); err != nil {
 				return err
 			}
@@ -1767,6 +1869,7 @@ func appendMountedScriptObligations(
 	mounts []string,
 	obligations *[]filesystemObligation,
 	depth int,
+	useShebang bool,
 ) error {
 	if bytes.IndexByte(file.Content, 0) >= 0 {
 		return fmt.Errorf("%s mounted executable %q is not text", origin, file.Destination)
@@ -1777,6 +1880,12 @@ func appendMountedScriptObligations(
 	)
 	if err != nil {
 		return fmt.Errorf("%s mounted executable %q: %w", origin, file.Destination, err)
+	}
+	if useShebang {
+		interpreter, found := mountedScriptInterpreter(file.Content, origin)
+		if found {
+			*obligations = append(*obligations, interpreter)
+		}
 	}
 	for _, call := range commands {
 		if call.boundedGlob {
@@ -1809,6 +1918,7 @@ func appendMountedScriptObligations(
 				mounts,
 				obligations,
 				depth+1,
+				false,
 			); err != nil {
 				return err
 			}
@@ -1857,6 +1967,7 @@ func appendBoundedMountedScripts(
 			mounts,
 			obligations,
 			depth,
+			true,
 		); err != nil {
 			return err
 		}
@@ -1865,6 +1976,73 @@ func appendBoundedMountedScripts(
 		return fmt.Errorf("%s dynamic mounted-script glob has no bounded scripts", origin)
 	}
 	return nil
+}
+
+func mountedScriptInterpreter(
+	content []byte,
+	origin string,
+) (filesystemObligation, bool) {
+	firstLine, _, _ := strings.Cut(string(content), "\n")
+	firstLine = strings.TrimSuffix(firstLine, "\r")
+	var obligation filesystemObligation
+	switch firstLine {
+	case "#!/bin/sh":
+		obligation.Path = "/bin/sh"
+	case "#!/bin/bash":
+		obligation.Path = "/bin/bash"
+		obligation.Interpreter = "bash"
+	case "#!/usr/bin/env sh":
+		obligation.Path = "sh"
+		obligation.SearchPATH = true
+	case "#!/usr/bin/env bash":
+		obligation.Path = "bash"
+		obligation.SearchPATH = true
+		obligation.Interpreter = "bash"
+	default:
+		return filesystemObligation{}, false
+	}
+	obligation.Origin = origin + " shebang"
+	obligation.Executable = true
+	if path.Base(obligation.Path) == "sh" && scriptRequiresBash(content) {
+		obligation.Interpreter = "bash"
+	}
+	return obligation, true
+}
+
+func scriptRequiresBash(content []byte) bool {
+	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).
+		Parse(bytes.NewReader(content), "mounted-script")
+	if err != nil {
+		return false
+	}
+	requiresBash := false
+	syntax.Walk(program, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.ArithmCmd,
+			*syntax.ArrayExpr,
+			*syntax.CStyleLoop,
+			*syntax.CoprocClause,
+			*syntax.ExtGlob,
+			*syntax.LetClause,
+			*syntax.ProcSubst,
+			*syntax.TestClause:
+			requiresBash = true
+			return false
+		}
+		switch typed := node.(type) {
+		case *syntax.FuncDecl:
+			requiresBash = typed.RsrvWord
+		case *syntax.SglQuoted:
+			requiresBash = typed.Dollar
+		}
+		return !requiresBash
+	})
+	if requiresBash {
+		return true
+	}
+	_, err = syntax.NewParser(syntax.Variant(syntax.LangPOSIX)).
+		Parse(bytes.NewReader(content), "mounted-script")
+	return err != nil
 }
 
 func executableObligation(
@@ -1939,6 +2117,9 @@ func compactObligations(obligations []filesystemObligation) []filesystemObligati
 		if obligations[i].SearchPATH != obligations[j].SearchPATH {
 			return !obligations[i].SearchPATH
 		}
+		if obligations[i].Interpreter != obligations[j].Interpreter {
+			return obligations[i].Interpreter < obligations[j].Interpreter
+		}
 		return obligations[i].Origin < obligations[j].Origin
 	})
 	result := obligations[:0]
@@ -1947,7 +2128,8 @@ func compactObligations(obligations []filesystemObligation) []filesystemObligati
 			previous := result[len(result)-1]
 			if previous.Path == obligation.Path &&
 				previous.Executable == obligation.Executable &&
-				previous.SearchPATH == obligation.SearchPATH {
+				previous.SearchPATH == obligation.SearchPATH &&
+				previous.Interpreter == obligation.Interpreter {
 				continue
 			}
 		}
@@ -2669,6 +2851,13 @@ func compatibilityBuildRecipe(
 	buildBase string,
 	mismatches []string,
 ) (string, []string, error) {
+	if image.ID == "opensearch" ||
+		image.ID == "opensearch-dashboards" {
+		return "", nil, fmt.Errorf(
+			"direct-chart image %s requires an official immutable mirror; compatibility builds are forbidden",
+			image.ID,
+		)
+	}
 	requirements, err := parseCompatibilityRequirements(mismatches)
 	if err != nil {
 		return "", nil, err
@@ -2695,9 +2884,9 @@ func compatibilityBuildRecipe(
 			"platform/build/compat/postgresql",
 		}, nil
 	}
-	if requirementsOnlyExecutableBase(requirements, map[string]struct{}{
+	if kubectlHelperRequirements(requirements, map[string]struct{}{
 		"awk": {}, "bash": {}, "chmod": {}, "cp": {}, "grep": {},
-		"ls": {}, "sleep": {},
+		"ls": {}, "sh": {}, "sleep": {},
 	}) && requirementsContainExecutableBase(requirements, "bash") &&
 		len(requirements) > 1 {
 		versionID := strings.NewReplacer(".", "-", "_", "-").Replace(image.Version)
@@ -2753,6 +2942,7 @@ func parseCompatibilityRequirements(
 				"official entrypoint does not implement final environment contract ",
 				"environment",
 			},
+			{" requires official bash-compatible interpreter ", "bash-interpreter"},
 		} {
 			index := strings.LastIndex(mismatch, marker.text)
 			if index < 0 {
@@ -2776,6 +2966,28 @@ func parseCompatibilityRequirements(
 		return nil, errors.New("compatibility mismatch set is empty")
 	}
 	return requirements, nil
+}
+
+func kubectlHelperRequirements(
+	requirements []compatibilityRequirement,
+	allowedExecutables map[string]struct{},
+) bool {
+	for _, requirement := range requirements {
+		switch requirement.kind {
+		case "executable":
+			if _, exists := allowedExecutables[path.Base(requirement.value)]; !exists {
+				return false
+			}
+		case "bash-interpreter":
+			base := path.Base(requirement.value)
+			if base != "bash" && base != "sh" {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func requirementsOnly(

@@ -455,6 +455,13 @@ func directOfficialImage(repository, tag string) (officialImageSpec, error) {
 		id: id, source: sourceRepository + ":" + tag,
 		provenance: sourceRepository,
 	}
+	if identity, found := configuredOfficialImages[sourceRepository]; found {
+		spec.id = identity.id
+		spec.family = identity.family
+		spec.license = identity.license
+		spec.provenance = identity.provenance
+		return spec, nil
+	}
 	switch {
 	case strings.HasPrefix(sourceRepository, "ghcr.io/fluxcd/"):
 		spec.id, spec.family, spec.license = id, "flux", "Apache-2.0"
@@ -462,8 +469,7 @@ func directOfficialImage(repository, tag string) (officialImageSpec, error) {
 		spec.id, spec.family, spec.license = "postgresql-"+strings.TrimPrefix(tag, "v"), "data", "PostgreSQL"
 		spec.provenance = "https://github.com/cloudnative-pg/postgres-containers"
 	case sourceRepository == "docker.io/opensearchproject/opensearch" ||
-		sourceRepository == "docker.io/opensearchproject/opensearch-dashboards" ||
-		sourceRepository == "docker.io/opensearchproject/opensearch-operator":
+		sourceRepository == "docker.io/opensearchproject/opensearch-dashboards":
 		spec.family, spec.license = "search", "Apache-2.0"
 		spec.provenance = "https://github.com/opensearch-project"
 	default:

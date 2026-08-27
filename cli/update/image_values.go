@@ -142,7 +142,6 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		repositoryTag("chart/cert-manager", "quay.io/jetstack/cert-manager-acmesolver", "packages.cert-manager.values.acmesolver.image"),
 		repositoryTag("chart/opensearch", "docker.io/opensearchproject/opensearch", "packages.opensearch.values.image"),
 		repositoryTag("chart/opensearch-dashboards", "docker.io/opensearchproject/opensearch-dashboards", "packages.opensearch-dashboards.values.image"),
-		repositoryTag("chart/opensearch-operator", "docker.io/opensearchproject/opensearch-operator", "packages.opensearch-operator.values.manager.image"),
 	}
 
 	seenPaths := make(map[string]struct{}, len(projections))

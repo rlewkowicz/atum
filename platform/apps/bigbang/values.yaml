@@ -254,15 +254,6 @@ packages:
         environment:
           - name: GARAGE_ADMIN_TOKEN
 
-  opensearch-operator:
-    enabled: true
-    namespace:
-      name: opensearch-operator
-    wrapper:
-      enabled: true
-    istio:
-      injection: enabled
-
   opensearch:
     enabled: true
     namespace:
@@ -310,9 +301,6 @@ packages:
                 ports:
                   - port: 9200
                     protocol: TCP
-    dependsOn:
-      - name: opensearch-operator
-        namespace: opensearch-operator
     values:
       singleNode: true
       replicas: 1

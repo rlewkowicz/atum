@@ -221,12 +221,23 @@ as a workload coordinator.
 			decision = "direct immutable mirror"
 			input = choice.Source + " @ " + locked.Delivery.Digest
 		case "build":
-			if image.Compatibility == nil ||
-				strings.TrimSpace(image.Compatibility.Incompatibility) == "" ||
-				len(image.Compatibility.Observations) == 0 {
-				return nil, fmt.Errorf("compatibility build %s has no current rendered evidence", image.ID)
+			if image.Discovery == "first-party" {
+				if image.Compatibility != nil {
+					return nil, fmt.Errorf(
+						"first-party build %s carries compatibility evidence",
+						image.ID,
+					)
+				}
+				decision = "reproducible first-party build: " +
+					choice.BakeTarget
+			} else {
+				if image.Compatibility == nil ||
+					strings.TrimSpace(image.Compatibility.Incompatibility) == "" ||
+					len(image.Compatibility.Observations) == 0 {
+					return nil, fmt.Errorf("compatibility build %s has no current rendered evidence", image.ID)
+				}
+				decision = "evidence-backed compatibility build: " + choice.BakeTarget
 			}
-			decision = "evidence-backed compatibility build: " + choice.BakeTarget
 			input = strings.Join(choice.Materials, "<br>")
 		default:
 			return nil, fmt.Errorf("image %s has unsupported delivery type %q", image.ID, choice.Type)
@@ -246,16 +257,19 @@ as a workload coordinator.
 	document.WriteString(`
 ## Retained compatibility builds
 
-Only the rows below are built. Each reason and render-evidence record comes
-from the final selected candidate render. Registry1 values in the last column
-are non-fetchable comparison evidence, never build inputs.
+Only compatibility builds appear below; reproducible first-party builds appear
+in the preceding delivery table. Each reason and render-evidence record comes
+from the final selected candidate render.
+Registry1 values in the last column are non-fetchable comparison evidence,
+never build inputs.
 
 | ID | Consumers | Current incompatibility | Final rendered evidence | Pinned build inputs | Non-fetchable comparison evidence |
 | --- | --- | --- | --- | --- | --- |
 `)
 	buildCount := 0
 	for _, image := range images {
-		if image.Delivery.Default.Type != "build" {
+		if image.Delivery.Default.Type != "build" ||
+			image.Discovery == "first-party" {
 			continue
 		}
 		buildCount++

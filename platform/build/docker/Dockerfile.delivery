@@ -38,6 +38,7 @@ RUN set -eux; \
       coreutils \
       grep \
       mawk; \
+    ln -sfn /bin/bash /bin/sh; \
     rm -rf /var/lib/apt/lists/*
 COPY --from=atum_kubectl_upstream /bin/kubectl /usr/local/bin/kubectl
 LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \

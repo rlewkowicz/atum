@@ -80,14 +80,29 @@ func projectGenericChartSchema(tree *candidateTree) error {
 
 func projectFirstPartyImageSchema(tree *candidateTree) error {
 	data, err := tree.CandidateData(desiredSchemaFile)
-	if err != nil { return err }
-	const oldEnum = `"discovery": {"enum": ["rendered", "configuration", "controller-generated", "kubespray"]}`
-	const newEnum = `"discovery": {"enum": ["rendered", "configuration", "first-party", "controller-generated", "kubespray"]}`
-	if bytes.Contains(data, []byte(newEnum)) { return nil }
-	if bytes.Count(data, []byte(oldEnum)) != 1 {
+	if err != nil {
+		return err
+	}
+	const prefix = `"discovery": {"enum": [`
+	const suffix = `]}`
+	const canonical = `"discovery": {"enum": ["rendered", "configuration", "first-party", "controller-generated", "kubespray"]}`
+	if bytes.Contains(data, []byte(canonical)) {
+		return nil
+	}
+	if bytes.Count(data, []byte(prefix)) != 1 {
 		return errors.New("project desired schema: image discovery vocabulary is unsupported")
 	}
-	return tree.Set(desiredSchemaFile, bytes.Replace(data, []byte(oldEnum), []byte(newEnum), 1))
+	start := bytes.Index(data, []byte(prefix))
+	endOffset := bytes.Index(data[start+len(prefix):], []byte(suffix))
+	if endOffset < 0 {
+		return errors.New("project desired schema: image discovery vocabulary is incomplete")
+	}
+	end := start + len(prefix) + endOffset + len(suffix)
+	projected := make([]byte, 0, len(data)-end+start+len(canonical))
+	projected = append(projected, data[:start]...)
+	projected = append(projected, canonical...)
+	projected = append(projected, data[end:]...)
+	return tree.Set(desiredSchemaFile, projected)
 }
 
 func projectChartArtifactSchema(tree *candidateTree) error {
@@ -138,25 +153,27 @@ func projectChartArtifactSchema(tree *candidateTree) error {
       }
     },
 `
-	if bytes.Contains(data, []byte(newRequired)) &&
-		bytes.Contains(data, []byte(`"$ref": "#/$defs/chartArtifact"`)) {
-		return nil
+	switch {
+	case bytes.Count(data, []byte(newRequired)) == 1:
+	case bytes.Count(data, []byte(artifactRequired)) == 1:
+		data = bytes.Replace(data, []byte(artifactRequired), []byte(newRequired), 1)
+	case bytes.Count(data, []byte(oldRequired)) == 1:
+		data = bytes.Replace(data, []byte(oldRequired), []byte(newRequired), 1)
+	default:
+		return errors.New("project lock schema: resolved inventory requirements are unsupported")
 	}
-	if bytes.Contains(data, []byte(artifactRequired)) {
-		if bytes.Count(data, []byte(artifactRequired)) != 1 {
-			return errors.New("project lock schema: resolved artifact inventory shape is unsupported")
+	if !bytes.Contains(data, []byte(`        "kubespray": {`)) {
+		return errors.New("project lock schema: Kubespray artifact property is unsupported")
+	}
+	if !bytes.Contains(data, []byte(`"$ref": "#/$defs/chartArtifact"`)) {
+		if bytes.Count(data, []byte(oldProperty)) != 1 {
+			return errors.New("project lock schema: chart artifact property is unsupported")
 		}
-		return tree.Set(
-			lockSchemaFile,
-			bytes.Replace(data, []byte(artifactRequired), []byte(newRequired), 1),
-		)
+		data = bytes.Replace(data, []byte(oldProperty), []byte(newProperty), 1)
 	}
-	if bytes.Count(data, []byte(oldRequired)) != 1 ||
-		bytes.Count(data, []byte(oldProperty)) != 1 {
-		return errors.New("project lock schema: chart artifact shape is unsupported")
+	if bytes.Contains(data, []byte(`    "chartArtifact": {`)) {
+		return tree.Set(lockSchemaFile, data)
 	}
-	data = bytes.Replace(data, []byte(oldRequired), []byte(newRequired), 1)
-	data = bytes.Replace(data, []byte(oldProperty), []byte(newProperty), 1)
 	const definitionAnchor = `    "nonEmpty": {"type": "string", "minLength": 1},`
 	if bytes.Count(data, []byte(definitionAnchor)) != 1 {
 		return errors.New("project lock schema: definitions anchor is unsupported")

@@ -36,15 +36,15 @@ const (
 )
 
 type Project struct {
-	Root            string
-	DesiredPath     string
-	LockPath        string
-	DesiredSHA256   string
-	DeliverySHA256  string
-	DesiredData     []byte
-	LockData        []byte
-	Desired         Document
-	Lock            Lock
+	Root           string
+	DesiredPath    string
+	LockPath       string
+	DesiredSHA256  string
+	DeliverySHA256 string
+	DesiredData    []byte
+	LockData       []byte
+	Desired        Document
+	Lock           Lock
 }
 
 type LoadOptions struct {
@@ -353,12 +353,12 @@ type Secrets struct {
 }
 
 type Delivery struct {
-	Registry   Registry                    `json:"registry"`
-	Seed       SeedPlane                   `json:"seed"`
+	Registry  Registry                     `json:"registry"`
+	Seed      SeedPlane                    `json:"seed"`
 	Kubespray []KubesprayArtifactInventory `json:"kubespray"`
-	Profiles   map[string]Profile          `json:"profiles"`
-	Policy     DeliveryPolicy              `json:"policy"`
-	Images     []Image                     `json:"images"`
+	Profiles  map[string]Profile           `json:"profiles"`
+	Policy    DeliveryPolicy               `json:"policy"`
+	Images    []Image                      `json:"images"`
 }
 
 // KubesprayArtifactInventory is the exact output of the selected Kubespray
@@ -366,13 +366,15 @@ type Delivery struct {
 // delivery projects the image entries into the common image graph and
 // Kubespray consumes registry settings derived from those same targets.
 type KubesprayArtifactInventory struct {
-	SchemaVersion     string           `json:"schemaVersion"`
-	KubernetesVersion string           `json:"kubernetesVersion"`
-	KubesprayCommit   string           `json:"kubesprayCommit"`
-	InventorySHA256   string           `json:"inventorySha256"`
-	Files             []KubesprayFile  `json:"files"`
-	Images            []string         `json:"images"`
+	SchemaVersion     string          `json:"schemaVersion"`
+	KubernetesVersion string          `json:"kubernetesVersion"`
+	KubesprayCommit   string          `json:"kubesprayCommit"`
+	InventorySHA256   string          `json:"inventorySha256"`
+	Files             []KubesprayFile `json:"files"`
+	Images            []string        `json:"images"`
 }
+
+const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v5"
 
 // KubesprayFile is one content-pinned output of Kubespray's official offline
 // discovery and acquisition workflow. Variable is the exact Kubespray URL
@@ -455,6 +457,7 @@ type Image struct {
 }
 
 type ImageCompatibility struct {
+	Contract         string                 `json:"contract"`
 	Observations     []ImageRuntimeEvidence `json:"observations"`
 	Incompatibility  string                 `json:"incompatibility"`
 	OfficialMaterial string                 `json:"officialMaterial"`
@@ -528,16 +531,16 @@ type Lock struct {
 }
 
 type Resolved struct {
-	ClusterReleases []ClusterRelease            `json:"clusterReleases"`
+	ClusterReleases []ClusterRelease             `json:"clusterReleases"`
 	Kubespray       []KubesprayArtifactInventory `json:"kubespray"`
-	BigBang         GitSource                   `json:"bigBang"`
-	Flux            GitSource                   `json:"flux"`
-	Packages        []Package                   `json:"packages"`
-	SupportSources  []SupportSource             `json:"supportSources,omitempty"`
-	Charts          []TrackedChart              `json:"charts"`
-	Artifacts       []ChartArtifact             `json:"artifacts"`
-	Vendors         []Vendor                    `json:"vendors"`
-	Bootstrap       BootstrapCharts             `json:"bootstrap"`
+	BigBang         GitSource                    `json:"bigBang"`
+	Flux            GitSource                    `json:"flux"`
+	Packages        []Package                    `json:"packages"`
+	SupportSources  []SupportSource              `json:"supportSources,omitempty"`
+	Charts          []TrackedChart               `json:"charts"`
+	Artifacts       []ChartArtifact              `json:"artifacts"`
+	Vendors         []Vendor                     `json:"vendors"`
+	Bootstrap       BootstrapCharts              `json:"bootstrap"`
 }
 
 // ChartArtifact is the single immutable chart handoff from update selection
@@ -545,19 +548,19 @@ type Resolved struct {
 // upstream provenance; ArchiveSHA256 and Target identify the exact normalized
 // bytes admitted to the cluster.
 type ChartArtifact struct {
-	ID                 string                 `json:"id"`
-	Kind               string                 `json:"kind"`
-	SourceURL          string                 `json:"sourceUrl"`
-	SourceCommit       string                 `json:"sourceCommit,omitempty"`
-	ChartPath          string                 `json:"chartPath"`
-	Name               string                 `json:"name"`
-	Version            string                 `json:"version"`
-	UpstreamSHA256     string                 `json:"upstreamSha256"`
-	ArchiveSHA256      string                 `json:"archiveSha256"`
-	Size               int64                  `json:"size"`
-	File               string                 `json:"file"`
-	Target             string                 `json:"target"`
-	Normalizations     []ChartNormalization   `json:"normalizations,omitempty"`
+	ID             string               `json:"id"`
+	Kind           string               `json:"kind"`
+	SourceURL      string               `json:"sourceUrl"`
+	SourceCommit   string               `json:"sourceCommit,omitempty"`
+	ChartPath      string               `json:"chartPath"`
+	Name           string               `json:"name"`
+	Version        string               `json:"version"`
+	UpstreamSHA256 string               `json:"upstreamSha256"`
+	ArchiveSHA256  string               `json:"archiveSha256"`
+	Size           int64                `json:"size"`
+	File           string               `json:"file"`
+	Target         string               `json:"target"`
+	Normalizations []ChartNormalization `json:"normalizations,omitempty"`
 }
 
 func (artifact ChartArtifact) FluxOCITarget() (string, string, error) {
@@ -976,7 +979,10 @@ func ValidateCandidate(root string, desired Document, lock Lock, candidate Candi
 		Desired:        desired,
 		Lock:           lock,
 	}
-	if err := project.validate(false, false, false, schemaFiles); err != nil {
+	// The updater and the secret renderer are disjoint writers. An update
+	// candidate may introduce new declared secret-source members; the normal
+	// strict load performed before deployment proves they were rendered.
+	if err := project.validate(false, false, true, schemaFiles); err != nil {
 		return nil, nil, nil, err
 	}
 	if err := validateCandidateVendorTrees(desired.Platform.Vendors, candidate); err != nil {
@@ -1044,10 +1050,10 @@ type readinessHealthCheck struct {
 }
 
 type readinessKustomization struct {
-	apiVersion  string
-	kind        string
-	name        string
-	namespace   string
+	apiVersion   string
+	kind         string
+	name         string
+	namespace    string
 	healthChecks [2]readinessHealthCheck
 }
 
@@ -2040,14 +2046,6 @@ func validateGenericSourceKustomizations(
 		component string
 	}{
 		{
-			path: "platform/apps/bigbang/kustomization.yaml",
-			obsolete: map[string]struct{}{
-				"source-opensearch.yaml":          {},
-				"source-opensearch-operator.yaml": {},
-			},
-			component: "Big Bang",
-		},
-		{
 			path: "platform/apps/prep/kustomization.yaml",
 			obsolete: map[string]struct{}{
 				"cert-manager": {},
@@ -2099,7 +2097,6 @@ func readCandidateYAML(
 		if err != nil {
 			return nil, err
 		}
-		var err error
 		data, err = os.ReadFile(path)
 		if err != nil {
 			return nil, err
@@ -2775,6 +2772,7 @@ func validateKubesprayArtifactInventories(
 			problems,
 			inventory,
 			release,
+			allowStale,
 		)
 	}
 }
@@ -2783,8 +2781,9 @@ func validateKubesprayArtifactInventory(
 	problems *[]string,
 	inventory KubesprayArtifactInventory,
 	release ClusterRelease,
+	allowStale bool,
 ) {
-	if inventory.SchemaVersion != "atum.dev/kubespray-artifacts/v2" ||
+	if !allowStale && inventory.SchemaVersion != KubesprayArtifactSchema ||
 		inventory.KubernetesVersion != release.Kubernetes ||
 		inventory.KubesprayCommit != release.Kubespray.Commit ||
 		!validHexSHA256(inventory.InventorySHA256) ||

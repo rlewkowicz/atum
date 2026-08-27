@@ -39,9 +39,9 @@ var displayNames = map[string]string{
 	"kyverno-reporter": "Kyverno reporter", "local-path-provisioner": "Local-path storage",
 	"local-certificates": "Local certificates", "local-dns": "Local DNS",
 	"monitoring": "Monitoring", "openssh": "OpenSSH client", "opensearch": "OpenSearch",
-	"opensearch-dashboards": "OpenSearch Dashboards", "opensearch-operator": "OpenSearch operator",
+	"opensearch-dashboards": "OpenSearch Dashboards",
 	"platform-profile-access": "Platform profile access", "platform-profile-prep": "Platform profile prerequisites",
-	"prometheus-operator-crds":  "Prometheus operator CRDs", "python": "Python",
+	"prometheus-operator-crds": "Prometheus operator CRDs", "python": "Python",
 	"systemd-resolved": "systemd-resolved", "terraform-cli": "Terraform CLI",
 	"tempo": "Tempo", "vault": "Vault", "velero": "Velero", "virsh": "virsh",
 }

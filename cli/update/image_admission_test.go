@@ -164,6 +164,112 @@ func TestCompatibilityComparisonUsesConcreteFinalPaths(t *testing.T) {
 	}
 }
 
+func TestDirectSearchChartIncompatibilityCannotCreateCompatibilityBuild(t *testing.T) {
+	t.Parallel()
+
+	const obligation = "rendered lifecycle hook"
+	for _, imageID := range []string{"opensearch", "opensearch-dashboards"} {
+		imageID := imageID
+		t.Run(imageID, func(t *testing.T) {
+			t.Parallel()
+
+			artifact := "chart/" + imageID
+			location := "statefulset/" + imageID + "/container/" + imageID
+			image := config.Image{ID: imageID, Version: "3.8.0"}
+			use := finalImageUse{
+				artifact: artifact,
+				invocation: containerInvocation{
+					Location: location,
+				},
+				obligations: []filesystemObligation{{
+					Path:       "curl",
+					Origin:     obligation,
+					Executable: true,
+				}},
+			}
+			mismatches := compareOfficialCandidate(
+				image,
+				officialImageInspection{pathExists: map[string]bool{}},
+				[]finalImageUse{use},
+			)
+			if len(mismatches) != 1 {
+				t.Fatalf("mismatches = %#v", mismatches)
+			}
+			controlTarget, controlMaterials, controlErr := compatibilityBuildRecipe(
+				config.Image{ID: "vault"},
+				"",
+				mismatches,
+			)
+			if controlErr != nil ||
+				controlTarget != "vault-curl-compat" ||
+				len(controlMaterials) == 0 {
+				t.Fatalf(
+					"fixture does not match a generic compatibility recipe: target=%q materials=%#v err=%v",
+					controlTarget,
+					controlMaterials,
+					controlErr,
+				)
+			}
+			target, materials, recipeErr := compatibilityBuildRecipe(
+				image,
+				"",
+				mismatches,
+			)
+			if recipeErr == nil || target != "" || len(materials) != 0 {
+				t.Fatalf(
+					"direct search mismatch authorized a build: target=%q materials=%#v err=%v",
+					target,
+					materials,
+					recipeErr,
+				)
+			}
+			admissionErr := officialCandidateCompatibilityError(
+				"",
+				image.ID,
+				mismatches,
+				recipeErr,
+			)
+			for _, evidence := range []string{
+				imageID,
+				artifact,
+				location,
+				obligation,
+				"curl",
+				"requires an official immutable mirror",
+				"compatibility builds are forbidden",
+			} {
+				if !strings.Contains(admissionErr.Error(), evidence) {
+					t.Errorf("admission error lacks %q: %v", evidence, admissionErr)
+				}
+			}
+		})
+	}
+}
+
+func TestDirectSearchChartCachedIncompatibilityUsesClosedRecipeBoundary(t *testing.T) {
+	t.Parallel()
+
+	mismatches := []string{
+		"chart/opensearch/statefulset/opensearch: rendered lifecycle hook requires official executable curl",
+	}
+	target, materials, err := compatibilityBuildRecipe(
+		config.Image{ID: "opensearch"},
+		"",
+		mismatches,
+	)
+	if err == nil || target != "" || len(materials) != 0 {
+		t.Fatalf(
+			"cached direct search evidence authorized a build: target=%q materials=%#v err=%v",
+			target,
+			materials,
+			err,
+		)
+	}
+	if !strings.Contains(err.Error(), "compatibility builds are forbidden") {
+		t.Fatalf("cached recipe error lacks no-build reason: %v", err)
+	}
+}
+
 func TestInactiveHelmTestHookDoesNotAdmitImage(t *testing.T) {
 	t.Parallel()
 	inspection, err := inspectManifestData("test.yaml", []byte(`
@@ -409,6 +515,55 @@ done
 		if containsString(executables, invented) {
 			t.Fatalf("shell token %q was treated as an executable: %#v", invented, executables)
 		}
+	}
+}
+
+func TestMountedScriptInterpreterPreservesShellDialect(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		content     string
+		path        string
+		searchPath  bool
+		interpreter string
+	}{
+		{
+			name:        "bash syntax behind sh shebang",
+			content:     "#!/bin/sh\nitems=(one two)\n[[ ${#items[@]} -gt 0 ]]\n",
+			path:        "/bin/sh",
+			interpreter: "bash",
+		},
+		{
+			name:    "portable sh",
+			content: "#!/bin/sh\nfor item in one two; do echo \"$item\"; done\n",
+			path:    "/bin/sh",
+		},
+		{
+			name:        "env bash",
+			content:     "#!/usr/bin/env bash\nitems=(one two)\n",
+			path:        "bash",
+			searchPath:  true,
+			interpreter: "bash",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			obligation, found := mountedScriptInterpreter(
+				[]byte(test.content),
+				"test",
+			)
+			if !found {
+				t.Fatal("mounted script interpreter was not found")
+			}
+			if obligation.Path != test.path ||
+				obligation.SearchPATH != test.searchPath ||
+				obligation.Interpreter != test.interpreter ||
+				!obligation.Executable {
+				t.Fatalf("unexpected interpreter obligation: %#v", obligation)
+			}
+		})
 	}
 }
 

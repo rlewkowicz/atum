@@ -15,14 +15,14 @@ func TestRenderBakeContextPreservesContextAuthority(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "local source",
+			name:    "local source",
 			context: bakeContext{kind: bakeLocalContext, source: "../.."},
-			want: "../..",
+			want:    "../..",
 		},
 		{
 			name: "image source",
 			context: bakeContext{
-				kind: bakeImageContext,
+				kind:   bakeImageContext,
 				source: "10.77.0.9:32443/atum/golang@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			},
 			want: "docker-image://10.77.0.9:32443/atum/golang@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -30,7 +30,7 @@ func TestRenderBakeContextPreservesContextAuthority(t *testing.T) {
 		{
 			name: "duplicate image qualifier",
 			context: bakeContext{
-				kind: bakeImageContext,
+				kind:   bakeImageContext,
 				source: "docker-image://10.77.0.9:32443/atum/golang@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			},
 			wantErr: true,
@@ -49,26 +49,28 @@ func TestRenderBakeContextPreservesContextAuthority(t *testing.T) {
 	}
 }
 
-func TestOperatorBuildGraphUsesOneLocalAndOnePinnedHarborContext(t *testing.T) {
+func TestOperatorBuildGraphUsesOneLocalAndOnePinnedOfficialContext(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
 	desired := config.Document{
 		Project: config.ProjectConfig{Platform: "linux/amd64"},
 		Delivery: config.Delivery{
 			Registry: config.Registry{Host: "10.77.0.9:32443"},
-			Policy: config.DeliveryPolicy{BuildBase: "10.77.0.9:32443/atum/debian@sha256:" + strings.Repeat("b", 64)},
+			Policy:   config.DeliveryPolicy{BuildBase: "10.77.0.9:32443/atum/debian@sha256:" + strings.Repeat("b", 64)},
 			Images: []config.Image{
 				{ID: "sbom-scanner", Target: "10.77.0.9:32443/atum/sbom-scanner:1"},
 				{
-					ID: "operator-builder",
+					ID:     "operator-builder",
 					Target: "10.77.0.9:32443/atum/operator-builder:1.26.0",
 					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
-						Type: "mirror", Digest: digest,
+						Type:   "mirror",
+						Source: "docker.io/library/golang:1.26.0-alpine",
+						Digest: digest,
 					}},
 				},
 				{
-					ID: "atum-operator",
+					ID:        "atum-operator",
 					Discovery: "first-party",
-					Target: "10.77.0.9:32443/atum/atum-operator:0.1.0",
+					Target:    "10.77.0.9:32443/atum/atum-operator:0.1.0",
 					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
 						Type: "build", BakeTarget: "atum-operator",
 					}},
@@ -83,7 +85,7 @@ func TestOperatorBuildGraphUsesOneLocalAndOnePinnedHarborContext(t *testing.T) {
 	text := string(graph)
 	for _, wanted := range []string{
 		`atum_source = "../.."`,
-		`atum_go_upstream = "docker-image://10.77.0.9:32443/atum/operator-builder:1.26.0@` + digest + `"`,
+		`atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@` + digest + `"`,
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Errorf("graph does not contain %q", wanted)

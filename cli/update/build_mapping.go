@@ -48,8 +48,10 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 	for _, image := range desired.Delivery.Images {
 		if image.ID == "operator-builder" &&
 			image.Delivery.Default.Type == "mirror" &&
+			image.Delivery.Default.Source != "" &&
 			strings.HasPrefix(image.Delivery.Default.Digest, "sha256:") {
-			operatorBuilder = image.Target + "@" + image.Delivery.Default.Digest
+			operatorBuilder = image.Delivery.Default.Source + "@" +
+				image.Delivery.Default.Digest
 			break
 		}
 	}
@@ -63,7 +65,7 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 				return nil, fmt.Errorf("unsupported first-party build %s", image.ID)
 			}
 			if operatorBuilder == "" {
-				return nil, errors.New("Atum operator build has no immutable Harbor builder image")
+				return nil, errors.New("Atum operator build has no immutable official builder image")
 			}
 			targets = append(targets, compatibilityTarget{
 				image: image, stage: "atum-operator",
@@ -136,7 +138,7 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 		}
 		if primaryContext != "" {
 			target.contexts[primaryContext] = bakeContext{
-				kind: bakeImageContext,
+				kind:   bakeImageContext,
 				source: image.Compatibility.OfficialMaterial,
 			}
 		}

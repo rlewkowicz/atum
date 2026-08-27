@@ -321,8 +321,6 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		"platform/apps/bigbang/helmrelease.yaml",
 		"platform/apps/bigbang/kustomization.yaml",
 		"platform/apps/bigbang/source-bigbang.yaml",
-		"platform/apps/bigbang/source-opensearch.yaml",
-		"platform/apps/bigbang/source-opensearch-operator.yaml",
 		"platform/apps/atum-operator/kustomization.yaml",
 		"platform/apps/atum-operator/crd.yaml",
 		"platform/apps/atum-operator/service-account.yaml",
@@ -466,7 +464,9 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 	}
 	for _, root := range []string{"cmd/atum-operator", "operator"} {
 		directory, err := fssecure.Resolve(tree.root, root, false)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if err := fssecure.WalkRegularFiles(directory, func(_ string, relative string, _ os.FileInfo) error {
 			paths = append(paths, filepath.ToSlash(filepath.Join(root, relative)))
 			return nil
