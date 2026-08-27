@@ -13,8 +13,13 @@ spec:
   postBuild:
     substitute:
       ATUM_PLATFORM_DOMAIN: ${ATUM_PLATFORM_DOMAIN}
+    substituteFrom:
+      - kind: Secret
+        name: atum-platform-stateful
+      - kind: Secret
+        name: atum-platform-root-ca-public
   dependsOn:
-    - name: bigbang
+    - name: platform-certificates
   sourceRef:
     kind: GitRepository
     name: flux-system

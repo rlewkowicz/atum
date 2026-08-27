@@ -15,13 +15,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
 	"os"
-	"encoding/pem"
 	"regexp"
 	"strings"
 	"time"
@@ -55,7 +55,7 @@ type Document struct {
 	Harbor        HarborSecrets   `json:"harbor" yaml:"harbor"`
 	Identity      IdentitySecrets `json:"identity" yaml:"identity"`
 	Stateful      StatefulSecrets `json:"stateful" yaml:"stateful"`
-	RootCA        RootCASecrets    `json:"rootCA" yaml:"rootCA"`
+	RootCA        RootCASecrets   `json:"rootCA" yaml:"rootCA"`
 }
 
 type ForgejoSecrets struct {
@@ -110,6 +110,13 @@ const (
 	statefulGitLabActiveRecordPrimaryKey       = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_PRIMARY_KEY"
 	statefulGitLabActiveRecordDeterministicKey = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_DETERMINISTIC_KEY"
 	statefulGitLabActiveRecordSaltKey          = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_SALT"
+	statefulOpenSearchAdminPasswordKey         = "ATUM_STATEFUL_OPENSEARCH_ADMIN_PASSWORD"
+	statefulOpenSearchAdminHashKey             = "ATUM_STATEFUL_OPENSEARCH_ADMIN_HASH"
+	statefulOpenSearchDashboardsPasswordKey    = "ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_PASSWORD"
+	statefulOpenSearchDashboardsHashKey        = "ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_HASH"
+	statefulOpenSearchDashboardsCookieKey      = "ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_COOKIE"
+	statefulFluentBitPasswordKey               = "ATUM_STATEFUL_FLUENTBIT_OPENSEARCH_PASSWORD"
+	statefulFluentBitHashKey                   = "ATUM_STATEFUL_FLUENTBIT_OPENSEARCH_HASH"
 	statefulDigestKey                          = "ATUM_STATEFUL_DIGEST"
 	statefulProjectionSchema                   = "atum.dev/platform-stateful/v1"
 	statefulProjectionSchemaKey                = "ATUM_STATEFUL_SCHEMA_VERSION"
@@ -140,13 +147,14 @@ func (projection *StatefulProjection) MarshalKubernetesSecret() ([]byte, error) 
 	if projection == nil || len(projection.values) == 0 || len(projection.digest) == 0 {
 		return nil, errors.New("stateful projection is unavailable")
 	}
-	return secretvalue.MarshalKubernetesSecret(
+	return secretvalue.MarshalImmutableKubernetesSecret(
 		"atum-platform-stateful",
 		"flux-system",
 		"atum.dev/stateful-digest",
 		projection.digest,
 		projection.values,
 		fileLimit,
+		true,
 	)
 }
 
@@ -245,6 +253,64 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		return nil, err
 	}
 	defer clear(gitlabSalt)
+	openSearchAdmin, err := derive("opensearch-admin-password", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(openSearchAdmin)
+	openSearchAdminSalt, err := derive("opensearch-admin-bcrypt-salt", 16)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(openSearchAdminSalt)
+	openSearchAdminPassword := encodeRawURL(openSearchAdmin)
+	defer clear(openSearchAdminPassword)
+	openSearchAdminHash, err := deterministicBcrypt(openSearchAdminPassword, openSearchAdminSalt, 10)
+	if err != nil {
+		return nil, fmt.Errorf("derive OpenSearch admin password hash: %w", err)
+	}
+	defer clear(openSearchAdminHash)
+	openSearchDashboards, err := derive("opensearch-dashboards-password", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(openSearchDashboards)
+	openSearchDashboardsSalt, err := derive("opensearch-dashboards-bcrypt-salt", 16)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(openSearchDashboardsSalt)
+	openSearchDashboardsPassword := encodeRawURL(openSearchDashboards)
+	defer clear(openSearchDashboardsPassword)
+	openSearchDashboardsHash, err := deterministicBcrypt(
+		openSearchDashboardsPassword, openSearchDashboardsSalt, 10,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("derive OpenSearch Dashboards password hash: %w", err)
+	}
+	defer clear(openSearchDashboardsHash)
+	openSearchDashboardsCookie, err := derive("opensearch-dashboards-cookie", 24)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(openSearchDashboardsCookie)
+	fluentBit, err := derive("fluentbit-opensearch-password", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(fluentBit)
+	fluentBitSalt, err := derive("fluentbit-opensearch-bcrypt-salt", 16)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(fluentBitSalt)
+	fluentBitPassword := encodeRawURL(fluentBit)
+	defer clear(fluentBitPassword)
+	fluentBitHash, err := deterministicBcrypt(fluentBitPassword, fluentBitSalt, 10)
+	if err != nil {
+		return nil, fmt.Errorf("derive Fluent Bit OpenSearch password hash: %w", err)
+	}
+	defer clear(fluentBitHash)
 	values := secretvalue.Values{
 		statefulProjectionSchemaKey:                []byte(statefulProjectionSchema),
 		statefulRedisPasswordKey:                   encodeRawURL(redis),
@@ -259,6 +325,13 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		statefulGitLabActiveRecordPrimaryKey:       encodeRawURL(gitlabPrimary),
 		statefulGitLabActiveRecordDeterministicKey: encodeRawURL(gitlabDeterministic),
 		statefulGitLabActiveRecordSaltKey:          encodeRawURL(gitlabSalt),
+		statefulOpenSearchAdminPasswordKey:         append([]byte(nil), openSearchAdminPassword...),
+		statefulOpenSearchAdminHashKey:             append([]byte(nil), openSearchAdminHash...),
+		statefulOpenSearchDashboardsPasswordKey:    append([]byte(nil), openSearchDashboardsPassword...),
+		statefulOpenSearchDashboardsHashKey:        append([]byte(nil), openSearchDashboardsHash...),
+		statefulOpenSearchDashboardsCookieKey:      encodeRawURL(openSearchDashboardsCookie),
+		statefulFluentBitPasswordKey:               append([]byte(nil), fluentBitPassword...),
+		statefulFluentBitHashKey:                   append([]byte(nil), fluentBitHash...),
 	}
 	hash := sha256.New()
 	for _, key := range []string{
@@ -271,6 +344,10 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		statefulGitLabActiveRecordPrimaryKey,
 		statefulGitLabActiveRecordDeterministicKey,
 		statefulGitLabActiveRecordSaltKey,
+		statefulOpenSearchAdminPasswordKey, statefulOpenSearchAdminHashKey,
+		statefulOpenSearchDashboardsPasswordKey, statefulOpenSearchDashboardsHashKey,
+		statefulOpenSearchDashboardsCookieKey,
+		statefulFluentBitPasswordKey, statefulFluentBitHashKey,
 	} {
 		_, _ = io.WriteString(hash, key)
 		_, _ = hash.Write(values[key])
@@ -754,13 +831,13 @@ func generateRootCA() ([]byte, []byte, error) {
 	}
 	now := time.Now().UTC()
 	template := &x509.Certificate{
-		SerialNumber: serial,
-		Subject: pkix.Name{CommonName: "atum-test"},
-		NotBefore: now.Add(-time.Hour),
-		NotAfter: now.AddDate(10, 0, 0),
-		IsCA: true,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "atum-test"},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.AddDate(10, 0, 0),
+		IsCA:                  true,
 		BasicConstraintsValid: true,
-		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 	}
 	der, err := x509.CreateCertificate(
 		rand.Reader,

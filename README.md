@@ -168,5 +168,6 @@ atum infra access status
 
 - [Architecture and ownership contract](CONTRACT.md)
 - [Selected packages and image decisions](platform/docs/finalpackages.md)
+- [Maintained platform overrides](platform/docs/overrides.md)
 - [Local libvirt setup](infra/libvirt/README.md)
 - [Kubespray patches](orchestration/patches/README.md)

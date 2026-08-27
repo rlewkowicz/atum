@@ -233,6 +233,38 @@ func MarshalKubernetesSecret(
 	digest []byte,
 	values Values,
 	limit int,
+	watch bool,
+) ([]byte, error) {
+	return marshalKubernetesSecret(
+		name, namespace, annotation, digest, values, limit, watch, false,
+	)
+}
+
+// MarshalImmutableKubernetesSecret emits an install-time Secret that rejects
+// mutation instead of implying that its consumers support live rotation.
+func MarshalImmutableKubernetesSecret(
+	name string,
+	namespace string,
+	annotation string,
+	digest []byte,
+	values Values,
+	limit int,
+	watch bool,
+) ([]byte, error) {
+	return marshalKubernetesSecret(
+		name, namespace, annotation, digest, values, limit, watch, true,
+	)
+}
+
+func marshalKubernetesSecret(
+	name string,
+	namespace string,
+	annotation string,
+	digest []byte,
+	values Values,
+	limit int,
+	watch bool,
+	immutable bool,
 ) ([]byte, error) {
 	for label, value := range map[string]string{
 		"name": name, "namespace": namespace, "annotation": annotation,
@@ -268,11 +300,18 @@ func MarshalKubernetesSecret(
 	result = strconv.AppendQuote(result, name)
 	result = append(result, `,"namespace":`...)
 	result = strconv.AppendQuote(result, namespace)
-	result = append(result, `,"labels":{"reconcile.fluxcd.io/watch":"Enabled"},"annotations":{`...)
+	if watch {
+		result = append(result, `,"labels":{"reconcile.fluxcd.io/watch":"Enabled"}`...)
+	}
+	result = append(result, `,"annotations":{`...)
 	result = strconv.AppendQuote(result, annotation)
 	result = append(result, ':')
 	result = appendQuotedBytes(result, digest)
-	result = append(result, `}},"type":"Opaque","stringData":{`...)
+	result = append(result, `}},"type":"Opaque"`...)
+	if immutable {
+		result = append(result, `,"immutable":true`...)
+	}
+	result = append(result, `,"stringData":{`...)
 	for index, key := range keys {
 		if index != 0 {
 			result = append(result, ',')

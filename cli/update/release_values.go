@@ -103,7 +103,7 @@ type releaseValueInstance struct {
 	values    map[string]any
 }
 
-type renderedResource struct {
+type releaseValueRenderedResource struct {
 	key    resourceKey
 	object map[string]any
 }
@@ -113,7 +113,7 @@ type releaseValueCollector struct {
 	resources        map[resourceKey]valueResource
 	repositories     map[resourceKey]repositoryResource
 	releases         map[string][]releaseValues
-	rendered         []renderedResource
+	rendered         []releaseValueRenderedResource
 	captureRendered  bool
 }
 
@@ -156,7 +156,7 @@ func (collector *releaseValueCollector) observe(value any) error {
 	}
 	kind, _ := object["kind"].(string)
 	if collector.captureRendered && kind != "" {
-		collector.rendered = append(collector.rendered, renderedResource{
+		collector.rendered = append(collector.rendered, releaseValueRenderedResource{
 			key:    resourceKey{namespace: namespace, name: name, kind: kind},
 			object: object,
 		})
@@ -350,8 +350,8 @@ func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBi
 		}
 		key := releaseBindingKey{
 			source: source, chart: binding.chart, version: binding.version,
-			reconcile: binding.reconcileStrategy,
-			releaseName: binding.releaseName,
+			reconcile:        binding.reconcileStrategy,
+			releaseName:      binding.releaseName,
 			releaseNamespace: binding.releaseNamespace,
 		}
 		if err := addReleaseBinding(bindingIndex, key, index, bindings); err != nil {
@@ -483,7 +483,7 @@ func resolveReleaseBinding(
 	keys := [...]releaseBindingKey{
 		{
 			source: base.source, chart: base.chart, version: base.version,
-			reconcile: base.reconcile,
+			reconcile:   base.reconcile,
 			releaseName: release.key.name, releaseNamespace: release.key.namespace,
 		},
 		{

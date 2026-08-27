@@ -34,9 +34,7 @@ func TestNormalizePlaceholderValueMapPreservesHelmOverrideSemantics(t *testing.T
 			},
 		},
 		"garage": map[string]any{
-			"environment": []any{
-				map[string]any{"name": "GARAGE_ADMIN_TOKEN"},
-			},
+			"environment": []any{},
 		},
 		"policy":    map[string]any{"enabled": true},
 		"nullified": nil,
@@ -55,9 +53,7 @@ func TestNormalizePlaceholderValueMapPreservesHelmOverrideSemantics(t *testing.T
 			},
 		},
 		"garage": map[string]any{
-			"environment": []any{
-				map[string]any{"name": "GARAGE_ADMIN_TOKEN"},
-			},
+			"environment": []any{},
 		},
 		"policy":    map[string]any{},
 		"preserved": map[string]any{"enabled": true},
@@ -142,9 +138,9 @@ func TestNormalizePlaceholderDefaultsMatchesAliasedDependencyByIdentity(t *testi
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(garage.Values["environment"], environment) {
+	if !reflect.DeepEqual(garage.Values["environment"], []any{}) {
 		t.Fatalf(
-			"aliased dependency environment = %#v, want %#v",
+			"aliased dependency environment = %#v, want an empty list placeholder for %#v",
 			garage.Values["environment"],
 			environment,
 		)

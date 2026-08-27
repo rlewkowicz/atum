@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,7 @@ resources:
   - stateful.json
   - identity.json
   - operator.json
+  - root-ca-public.json
 `)
 
 var fluxPKIKustomization = []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
@@ -35,7 +37,6 @@ resources:
   - cert-manager-namespace.yaml
   - root-ca.json
   - ../../../profiles/local/prep/certificates
-  - ../../../profiles/local/access/certificates
 `)
 
 var certManagerNamespace = []byte(`apiVersion: v1
@@ -62,13 +63,14 @@ type FluxSourceResult struct {
 type encryptedFluxManifest struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
-	Metadata struct {
+	Metadata   struct {
 		Name        string            `json:"name"`
 		Namespace   string            `json:"namespace"`
 		Labels      map[string]string `json:"labels,omitempty"`
 		Annotations map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Type       string            `json:"type"`
+	Immutable  bool              `json:"immutable"`
 	StringData map[string]string `json:"stringData"`
 	SOPS       struct {
 		Age []struct {
@@ -149,6 +151,11 @@ func RenderFluxSource(
 		return FluxSourceResult{}, err
 	}
 	defer clear(rootCAPlaintext)
+	rootCAPublicPlaintext, err := rootCAPublicKubernetesSecret(credentials)
+	if err != nil {
+		return FluxSourceResult{}, err
+	}
+	defer clear(rootCAPublicPlaintext)
 	statefulEncrypted, err := sops.EncryptKubernetesSecret(
 		ctx, statefulPlaintext, ageIdentity.Recipient(),
 	)
@@ -177,6 +184,13 @@ func RenderFluxSource(
 		return FluxSourceResult{}, fmt.Errorf("encrypt root CA Flux Secret: %w", err)
 	}
 	defer clear(rootCAEncrypted)
+	rootCAPublicEncrypted, err := sops.EncryptKubernetesSecret(
+		ctx, rootCAPublicPlaintext, ageIdentity.Recipient(),
+	)
+	if err != nil {
+		return FluxSourceResult{}, fmt.Errorf("encrypt public root CA Flux Secret: %w", err)
+	}
+	defer clear(rootCAPublicEncrypted)
 
 	root := fluxSourceRoot(project)
 	if _, err := fssecure.EnsureDirectory(project.Root, root, 0o755); err != nil {
@@ -189,15 +203,16 @@ func RenderFluxSource(
 `, fluxSourceEncryptedRegex, ageIdentity.Recipient()))
 	defer clear(sopsConfiguration)
 	dataByName := map[string][]byte{
-		".sops.yaml":                   sopsConfiguration,
-		"kustomization.yaml":           fluxSourceKustomization,
-		"operator-namespace.yaml":       operatorNamespace,
-		"stateful.json":                 statefulEncrypted,
-		"identity.json":                 identityEncrypted,
-		"operator.json":                 operatorEncrypted,
-		"pki/kustomization.yaml":        fluxPKIKustomization,
+		".sops.yaml":                      sopsConfiguration,
+		"kustomization.yaml":              fluxSourceKustomization,
+		"operator-namespace.yaml":         operatorNamespace,
+		"stateful.json":                   statefulEncrypted,
+		"identity.json":                   identityEncrypted,
+		"operator.json":                   operatorEncrypted,
+		"root-ca-public.json":             rootCAPublicEncrypted,
+		"pki/kustomization.yaml":          fluxPKIKustomization,
 		"pki/cert-manager-namespace.yaml": certManagerNamespace,
-		"pki/root-ca.json":              rootCAEncrypted,
+		"pki/root-ca.json":                rootCAEncrypted,
 	}
 	names := config.FluxSecretSourceNames()
 	result := FluxSourceResult{
@@ -250,7 +265,8 @@ func rootCAKubernetesSecret(document Document) ([]byte, string, error) {
 				"atum.dev/root-ca-digest": digest,
 			},
 		},
-		"type": "kubernetes.io/tls",
+		"type":      "kubernetes.io/tls",
+		"immutable": true,
 		"stringData": map[string]string{
 			"tls.crt": string(certificate),
 			"tls.key": string(privateKey),
@@ -261,6 +277,42 @@ func rootCAKubernetesSecret(document Document) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("encode root CA Flux Secret: %w", err)
 	}
 	return data, digest, nil
+}
+
+func rootCAPublicKubernetesSecret(document Document) ([]byte, error) {
+	certificate := document.RootCA.Certificate.Bytes()
+	if len(certificate) == 0 {
+		return nil, errors.New("root CA certificate is unavailable")
+	}
+	digest, err := document.RootCADigest()
+	if err != nil {
+		return nil, err
+	}
+	manifest := map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Secret",
+		"metadata": map[string]any{
+			"name":      "atum-platform-root-ca-public",
+			"namespace": "flux-system",
+			"labels": map[string]string{
+				"reconcile.fluxcd.io/watch": "Enabled",
+			},
+			"annotations": map[string]string{
+				"atum.dev/root-ca-digest": digest,
+			},
+		},
+		"type":      "Opaque",
+		"immutable": true,
+		"stringData": map[string]string{
+			"ATUM_ROOT_CA_CERTIFICATE_B64": base64.StdEncoding.EncodeToString(certificate),
+			"ATUM_ROOT_CA_DIGEST":          digest,
+		},
+	}
+	data, err := config.MarshalJSON(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("encode public root CA Flux Secret: %w", err)
+	}
+	return data, nil
 }
 
 func (document Document) RootCADigest() (string, error) {
@@ -337,7 +389,9 @@ func ValidateFluxSource(
 	operatorNS, err := readFluxSourceFile(
 		sourceRoot, filepath.Join(root, "operator-namespace.yaml"),
 	)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer clear(operatorNS)
 	if !bytes.Equal(operatorNS, operatorNamespace) {
 		return errors.New("Flux Atum operator namespace source is stale; run `atum secrets render`")
@@ -349,16 +403,25 @@ func ValidateFluxSource(
 		secretType string
 		annotation string
 		digest     string
+		immutable  bool
 	}{
 		{
 			name: "pki/root-ca.json", secretName: "atum-test-root-ca",
 			namespace: "cert-manager", secretType: "kubernetes.io/tls",
 			annotation: "atum.dev/root-ca-digest", digest: rootCADigest,
+			immutable: true,
+		},
+		{
+			name: "root-ca-public.json", secretName: "atum-platform-root-ca-public",
+			namespace: "flux-system", secretType: "Opaque",
+			annotation: "atum.dev/root-ca-digest", digest: rootCADigest,
+			immutable: true,
 		},
 		{
 			name: "stateful.json", secretName: "atum-platform-stateful",
 			namespace: "flux-system", secretType: "Opaque",
 			annotation: "atum.dev/stateful-digest", digest: statefulDigest,
+			immutable: true,
 		},
 		{
 			name: "identity.json", secretName: "atum-platform-identity",
@@ -390,6 +453,7 @@ func ValidateFluxSource(
 			manifest.Metadata.Name != expected.secretName ||
 			manifest.Metadata.Namespace != expected.namespace ||
 			manifest.Type != expected.secretType ||
+			manifest.Immutable != expected.immutable ||
 			len(manifest.Metadata.Annotations) != 1 ||
 			manifest.Metadata.Annotations[expected.annotation] != expected.digest ||
 			manifest.SOPS.EncryptedRegex != fluxSourceEncryptedRegex ||
@@ -462,7 +526,7 @@ func validateEncryptedFluxEnvelope(data []byte, name string) error {
 	}
 	allowed := map[string]struct{}{
 		"apiVersion": {}, "kind": {}, "metadata": {}, "type": {},
-		"stringData": {}, "sops": {},
+		"immutable": {}, "stringData": {}, "sops": {},
 	}
 	for field := range envelope {
 		if _, ok := allowed[field]; !ok {
@@ -470,6 +534,15 @@ func validateEncryptedFluxEnvelope(data []byte, name string) error {
 				"encrypted Flux source %s contains unrecognized Secret field %s",
 				name,
 				field,
+			)
+		}
+	}
+	if raw, ok := envelope["immutable"]; ok {
+		var immutable bool
+		if err := json.Unmarshal(raw, &immutable); err != nil {
+			return fmt.Errorf(
+				"encrypted Flux source %s Secret field immutable must be boolean",
+				name,
 			)
 		}
 	}

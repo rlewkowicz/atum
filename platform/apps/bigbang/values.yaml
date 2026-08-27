@@ -17,7 +17,41 @@ bbctl:
 fluentbit:
   enabled: true
   values:
+    networkPolicies:
+      egress:
+        from:
+          fluent-bit:
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: fluent-bit
+                app.kubernetes.io/instance: fluentbit
+            to:
+              k8s:
+                opensearch/opensearch:9200:
+                  enabled: true
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: opensearch
+                      app.kubernetes.io/instance: opensearch
     upstream:
+      envFrom:
+        - secretRef:
+            name: fluentbit-opensearch-credentials
+      extraVolumes:
+        - name: flb-storage
+          hostPath:
+            path: /var/log/flb-storage/
+            type: DirectoryOrCreate
+        - name: opensearch-ca
+          secret:
+            secretName: fluentbit-opensearch-ca
+      extraVolumeMounts:
+        - name: flb-storage
+          mountPath: /var/log/flb-storage/
+          readOnly: false
+        - name: opensearch-ca
+          mountPath: /fluent-bit/tls
+          readOnly: true
       config:
         outputs: |
           [OUTPUT]
@@ -26,8 +60,14 @@ fluentbit:
               Host                opensearch-cluster-master.opensearch.svc.cluster.local
               Port                9200
               Suppress_Type_Name  On
+              Logstash_Format     On
+              Logstash_Prefix     kubernetes
               Retry_Limit         False
-              tls                 Off
+              HTTP_User           ${OPENSEARCH_USER}
+              HTTP_Passwd         ${OPENSEARCH_PASSWORD}
+              tls                 On
+              tls.verify          On
+              tls.ca_file         /fluent-bit/tls/ca.crt
           [OUTPUT]
               Name                opensearch
               Match               host.*
@@ -37,15 +77,11 @@ fluentbit:
               Logstash_Format     On
               Logstash_Prefix     node
               Retry_Limit         False
-              tls                 Off
-
-grafana:
-  values:
-    upstream:
-      grafana.ini:
-        # The legacy Angular piechart plugin is unsupported by the selected
-        # Grafana release. Use Grafana's native pie visualization instead.
-        plugin.grafana-piechart-panel: null
+              HTTP_User           ${OPENSEARCH_USER}
+              HTTP_Passwd         ${OPENSEARCH_PASSWORD}
+              tls                 On
+              tls.verify          On
+              tls.ca_file         /fluent-bit/tls/ca.crt
 
 addons:
   authservice:
@@ -105,25 +141,12 @@ addons:
 
   harbor:
     enabled: true
-    values:
-      postgresql:
-        global:
-          # The selected Bitnami subchart defaults to an Iron Bank-specific
-          # restricted OpenSSL provider. Atum delivers the official upstream
-          # PostgreSQL image and its minimal chart-compatibility layer instead.
-          defaultFips: off
 
   headlamp:
     enabled: true
 
   keycloak:
     enabled: true
-    values:
-      postgresql:
-        global:
-          # Match the standard official PostgreSQL distribution rather than
-          # claiming an unavailable Iron Bank FIPS provider.
-          defaultFips: off
 
   vault:
     enabled: true
@@ -272,6 +295,7 @@ packages:
               selector:
                 matchLabels:
                   app.kubernetes.io/name: opensearch
+                  app.kubernetes.io/instance: opensearch
               rules:
                 - from:
                     - source:
@@ -288,6 +312,7 @@ packages:
             podSelector:
               matchLabels:
                 app.kubernetes.io/name: opensearch
+                app.kubernetes.io/instance: opensearch
             policyTypes:
               - Ingress
             ingress:
@@ -298,22 +323,36 @@ packages:
                     podSelector:
                       matchLabels:
                         app.kubernetes.io/name: fluent-bit
+                        app.kubernetes.io/instance: fluentbit
                 ports:
                   - port: 9200
                     protocol: TCP
     values:
-      singleNode: true
-      replicas: 1
-      extraEnvs:
-        - name: DISABLE_INSTALL_DEMO_CONFIG
-          value: "true"
-        - name: DISABLE_SECURITY_PLUGIN
-          value: "true"
-      persistence:
-        enableInitChown: false
-      sysctlInit:
-        enabled: false
-
+      config:
+        opensearch.yml: |
+          plugins.security.ssl.transport.pemcert_filepath: certificates/tls.crt
+          plugins.security.ssl.transport.pemkey_filepath: certificates/tls.key
+          plugins.security.ssl.transport.pemtrustedcas_filepath: certificates/ca.crt
+          plugins.security.ssl.transport.enforce_hostname_verification: true
+          plugins.security.ssl.http.enabled: true
+          plugins.security.ssl.http.pemcert_filepath: certificates/tls.crt
+          plugins.security.ssl.http.pemkey_filepath: certificates/tls.key
+          plugins.security.ssl.http.pemtrustedcas_filepath: certificates/ca.crt
+          plugins.security.nodes_dn:
+            - CN=opensearch-node
+          plugins.security.ssl.certificates_hot_reload.enabled: true
+          plugins.security.allow_default_init_securityindex: true
+      securityConfig:
+        actionGroupsSecret: opensearch-security-config
+        configSecret: opensearch-security-config
+        internalUsersSecret: opensearch-security-config
+        rolesSecret: opensearch-security-config
+        rolesMappingSecret: opensearch-security-config
+        tenantsSecret: opensearch-security-config
+      secretMounts:
+        - name: opensearch-node-tls
+          secretName: opensearch-node-tls
+          path: /usr/share/opensearch/config/certificates
   opensearch-dashboards:
     enabled: true
     namespace:
@@ -325,7 +364,15 @@ packages:
       - name: opensearch
         namespace: opensearch
     values:
-      opensearchHosts: http://opensearch-cluster-master:9200
-      replicaCount: 1
-      autoscaling:
-        enabled: false
+      opensearchHosts: https://opensearch-cluster-master.opensearch.svc.cluster.local:9200
+      opensearchAccount:
+        secret: opensearch-dashboards-credentials
+      secretMounts:
+        - name: opensearch-ca
+          secretName: opensearch-dashboards-ca
+          path: /usr/share/opensearch-dashboards/config/certificates
+      config:
+        opensearch_dashboards.yml: |
+          opensearch.ssl.certificateAuthorities:
+            - /usr/share/opensearch-dashboards/config/certificates/ca.crt
+          opensearch.ssl.verificationMode: full

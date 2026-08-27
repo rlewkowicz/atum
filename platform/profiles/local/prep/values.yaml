@@ -1,18 +1,18 @@
 domain: ${ATUM_PLATFORM_DOMAIN}
 networkPolicies:
-  # The local profile owns the control-plane network once. Big Bang packages
-  # use it for API egress, while webhook packages consume the reusable kubeAPI
-  # ingress definition.
-  controlPlaneCidr: &kubeAPICIDR 10.77.0.8/29
-  # Big Bang uses the VPC CIDR alongside the control-plane CIDR when
-  # generating Vault's reusable kubeAPI egress definition.
-  vpcCidr: 10.77.0.0/24
+  # API clients use the stable HAProxy VIP. Admission webhooks instead receive
+  # connections from the three control-plane nodes.
+  controlPlaneCidr: 10.77.0.10/32
   ingress:
     definitions:
-      kubeAPI:
+      controlPlaneWebhooks:
         from:
           - ipBlock:
-              cidr: *kubeAPICIDR
+              cidr: 10.77.0.11/32
+          - ipBlock:
+              cidr: 10.77.0.12/32
+          - ipBlock:
+              cidr: 10.77.0.13/32
 kyvernoPolicies:
   values:
     policies:
@@ -21,8 +21,43 @@ kyvernoPolicies:
         parameters:
           allow:
             - 10.77.0.9:32443
+      # The local-path provisioner is the sole owner of node-local hostPath
+      # volumes. Its short-lived helper pods need write access to the exact
+      # storage root, and the generated PVs remain constrained to that root.
+      restrict-host-path-mount:
+        parameters:
+          allow:
+            - /var/lib/atum/local-path-provisioner/*
+      restrict-host-path-mount-pv:
+        parameters:
+          allow:
+            - /var/lib/atum/local-path-provisioner/*
+      restrict-host-path-write:
+        parameters:
+          allow:
+            - /var/lib/atum/local-path-provisioner/*
+      restrict-volume-types:
+        exclude:
+          any:
+            - resources:
+                namespaces:
+                  - local-path-storage
+                names:
+                  - helper-pod-*
 istiod:
   values:
+    networkPolicies:
+      ingress:
+        to:
+          istiod:[443,15017]:
+            from:
+              # Cilium's node-aware CIDR mode excludes control-plane node
+              # identities from a world CIDR. Use Big Bang's canonical
+              # controlPlaneWebhooks definition for webhook traffic.
+              cidr:
+                0.0.0.0/0: false
+              definition:
+                controlPlaneWebhooks: true
     upstream:
       pilot:
         autoscaleEnabled: false
@@ -60,6 +95,15 @@ tempo:
       replicas: 1
 monitoring:
   values:
+    networkPolicies:
+      ingress:
+        to:
+          kube-prometheus-stack-prometheus-operator:10250:
+            from:
+              cidr:
+                10.77.0.10/32: false
+              definition:
+                controlPlaneWebhooks: true
     upstream:
       alertmanager:
         alertmanagerSpec:
@@ -74,6 +118,15 @@ grafana:
       autoscaling:
         enabled: false
 addons:
+  metricsServer:
+    values:
+      upstream:
+        # Kubespray's kubelets use per-node self-signed serving certificates.
+        # The local profile constrains this traffic to cluster nodes rather
+        # than installing a second, non-Flux CSR reconciliation controller.
+        args:
+          - --kubelet-insecure-tls
+  headlamp:
   gitlab:
     values:
       upstream:
@@ -121,6 +174,23 @@ addons:
             readOnly: true
   vault:
     values:
+      networkPolicies:
+        egress:
+          definitions:
+            # Big Bang 3.31.1's deprecated vpcCidr migration otherwise
+            # broadens kubeAPI egress when vpcCidr is intentionally absent.
+            kubeAPI:
+              to:
+                - ipBlock:
+                    cidr: 10.77.0.10/32
+        ingress:
+          to:
+            vault-agent-injector:8080:
+              from:
+                cidr:
+                  0.0.0.0/0: false
+                definition:
+                  controlPlaneWebhooks: true
       upstream:
         server:
           ha:
@@ -176,3 +246,21 @@ packages:
             size: 1Gi
           data:
             size: 10Gi
+  opensearch:
+    values:
+      # Local single-node storage cannot satisfy the upstream multi-node
+      # topology. Native OpenSearch authentication and TLS remain enabled.
+      singleNode: true
+      replicas: 1
+      extraEnvs:
+        - name: DISABLE_INSTALL_DEMO_CONFIG
+          value: "true"
+      persistence:
+        enableInitChown: false
+      sysctlInit:
+        enabled: false
+  opensearch-dashboards:
+    values:
+      replicaCount: 1
+      autoscaling:
+        enabled: false

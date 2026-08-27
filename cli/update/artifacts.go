@@ -40,10 +40,11 @@ func candidateRenderError(id string, err error) error {
 func artifactBindings(
 	chartRegistry config.Registry,
 	packages []config.Package,
+	support []config.SupportSource,
 	charts []config.TrackedChart,
 	values map[string]any,
 ) ([]artifactBinding, []map[string]any, error) {
-	bindings := make([]artifactBinding, 0, len(packages)+len(charts))
+	bindings := make([]artifactBinding, 0, len(packages)+len(support)+len(charts))
 	for _, pkg := range packages {
 		packageValues, err := valuesAt(values, pkg.ValuesPath)
 		if err != nil {
@@ -69,8 +70,32 @@ func artifactBindings(
 			chart:             chartName,
 			version:           version,
 			reconcileStrategy: "Revision",
+			defaultReconcile:  true,
 		}
 		bindings = append(bindings, binding)
+	}
+	for _, item := range support {
+		supportValues, err := valuesAt(values, item.ValuesPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve support source %s binding: %w", item.ID, err)
+		}
+		helmValues, _ := supportValues["helmRepo"].(map[string]any)
+		repositoryName, _ := helmValues["repoName"].(string)
+		chartName, _ := helmValues["chartName"].(string)
+		version, _ := helmValues["tag"].(string)
+		if repositoryName != "atum" || chartName != item.ID ||
+			version != item.Source.Version {
+			return nil, nil, fmt.Errorf(
+				"support source %s has an incomplete Helm repository binding", item.ID,
+			)
+		}
+		bindings = append(bindings, artifactBinding{
+			id: item.ID, sourceKind: "HelmRepository",
+			sourceName: repositoryName, sourceNamespace: "bigbang",
+			sourceURL: "oci://" + chartRegistry.Host + "/" + chartRegistry.Project,
+			chart:     chartName, version: version,
+			reconcileStrategy: "Revision", defaultReconcile: true,
+		})
 	}
 	for _, chart := range charts {
 		chartValues, err := valuesAt(values, chart.ValuesPath)
@@ -96,6 +121,7 @@ func artifactBindings(
 			chart:             chartName,
 			version:           version,
 			reconcileStrategy: "Revision",
+			defaultReconcile:  true,
 		})
 	}
 	return bindings, nil, nil
@@ -105,13 +131,14 @@ func candidateArtifacts(
 	bigBang resolvedGit,
 	chartRegistry config.Registry,
 	packages []resolvedPackage,
+	support []resolvedSupportSource,
 	charts []resolvedTrackedChart,
 	bootstrap []resolvedBootstrapChart,
 	renderValues map[string]any,
 	root string,
 	files map[string][]byte,
 ) ([]artifactInput, error) {
-	inputs := make([]artifactInput, 0, 1+len(packages)+len(charts)+len(bootstrap))
+	inputs := make([]artifactInput, 0, 1+len(packages)+len(support)+len(charts)+len(bootstrap))
 	configuredPackages := make([]config.Package, len(packages))
 	for i := range packages {
 		configuredPackages[i] = packages[i].Package
@@ -120,7 +147,10 @@ func candidateArtifacts(
 	for i := range charts {
 		configuredCharts[i] = charts[i].Chart
 	}
-	bindings, sources, err := artifactBindings(chartRegistry, configuredPackages, configuredCharts, renderValues)
+	bindings, sources, err := artifactBindings(
+		chartRegistry, configuredPackages, supportSourceValues(support),
+		configuredCharts, renderValues,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +162,12 @@ func candidateArtifacts(
 		inputs = append(inputs, artifactInput{
 			ID:   "package/" + pkg.Package.ID,
 			Path: filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
+		})
+	}
+	for _, item := range support {
+		inputs = append(inputs, artifactInput{
+			ID:   "wrapper/" + item.Support.ID,
+			Path: filepath.Join(item.Checkout, filepath.FromSlash(item.Support.ChartPath)),
 		})
 	}
 	for _, chart := range charts {
@@ -232,6 +268,7 @@ func inspectArtifacts(
 	}
 	for index := range artifacts {
 		if !strings.HasPrefix(artifacts[index].ID, "package/") &&
+			!strings.HasPrefix(artifacts[index].ID, "wrapper/") &&
 			!strings.HasPrefix(artifacts[index].ID, "chart/") {
 			continue
 		}
@@ -258,6 +295,7 @@ func inspectArtifacts(
 			var selected chartInspection
 			var renderErr error
 			if strings.HasPrefix(artifact.ID, "package/") ||
+				strings.HasPrefix(artifact.ID, "wrapper/") ||
 				strings.HasPrefix(artifact.ID, "chart/") {
 				releaseName := strings.SplitN(artifact.ID, "/", 2)[1]
 				selected, renderErr = inspectChartInstances(
@@ -309,6 +347,7 @@ func inspectAppliedArtifacts(
 	operational map[string]any,
 	generated map[string]any,
 	profile map[string]any,
+	support []config.SupportSource,
 	bootstrapValues map[string]map[string]any,
 	artifacts []chartArtifact,
 	files map[string][]byte,
@@ -336,6 +375,7 @@ func inspectAppliedArtifacts(
 			bindings, sources, err := artifactBindings(
 				desired.Platform.Bootstrap.Registry,
 				desired.Platform.Packages,
+				support,
 				desired.Platform.Charts,
 				exact[i].Values,
 			)
@@ -369,6 +409,18 @@ func inspectAppliedArtifacts(
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("render exact deployed values: %w", err)
+	}
+	inspectionsByID, err := inspectionsByArtifactID(exact, inspections)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateOpenSearchMeshContract(inspectionsByID); err != nil {
+		return nil, nil, fmt.Errorf("validate exact deployed strict-mesh contract: %w", err)
+	}
+	if err := validateFormerWaitResourceAbsence(inspectionsByID); err != nil {
+		return nil, nil, fmt.Errorf(
+			"validate exact deployed former wait-resource absence: %w", err,
+		)
 	}
 	allowed := make(map[string]struct{}, len(desired.Delivery.Images))
 	for _, image := range desired.Delivery.Images {

@@ -3,16 +3,21 @@ package secrets
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	"atum/cli/progress"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestLoadOrCreateLocalRejectsUnsupportedSchemaWithoutMutation(t *testing.T) {
@@ -142,6 +147,18 @@ func TestStatefulProjectionIsStableFormattedAndClearable(t *testing.T) {
 	if string(firstData) != string(secondData) {
 		t.Fatal("unchanged stateful seed produced a different projection")
 	}
+	kubernetesData, err := first.MarshalKubernetesSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(kubernetesData)
+	var kubernetesSecret map[string]any
+	if err := json.Unmarshal(kubernetesData, &kubernetesSecret); err != nil {
+		t.Fatal(err)
+	}
+	if kubernetesSecret["immutable"] != true {
+		t.Fatal("stateful installation projection is mutable")
+	}
 	if value := string(first.values[statefulGarageAccessKeyIDKey]); len(value) != 26 || value[:2] != "GK" {
 		t.Fatalf("Garage access key ID = %q", value)
 	}
@@ -171,6 +188,27 @@ func TestStatefulProjectionIsStableFormattedAndClearable(t *testing.T) {
 			t.Fatalf("%s length = %d", key, len(first.values[key]))
 		}
 	}
+	for _, pair := range [][2]string{
+		{statefulOpenSearchAdminPasswordKey, statefulOpenSearchAdminHashKey},
+		{statefulOpenSearchDashboardsPasswordKey, statefulOpenSearchDashboardsHashKey},
+		{statefulFluentBitPasswordKey, statefulFluentBitHashKey},
+	} {
+		if err := bcrypt.CompareHashAndPassword(first.values[pair[1]], first.values[pair[0]]); err != nil {
+			t.Fatalf("%s does not authenticate its derived password: %v", pair[1], err)
+		}
+	}
+	if string(first.values[statefulOpenSearchAdminPasswordKey]) ==
+		string(first.values[statefulOpenSearchDashboardsPasswordKey]) ||
+		string(first.values[statefulOpenSearchAdminPasswordKey]) ==
+			string(first.values[statefulFluentBitPasswordKey]) {
+		t.Fatal("OpenSearch service credentials are not independent")
+	}
+	if len(first.values[statefulOpenSearchDashboardsCookieKey]) != 32 {
+		t.Fatalf(
+			"OpenSearch Dashboards cookie length = %d",
+			len(first.values[statefulOpenSearchDashboardsCookieKey]),
+		)
+	}
 	clear(firstData)
 	clear(secondData)
 	first.Clear()
@@ -178,6 +216,180 @@ func TestStatefulProjectionIsStableFormattedAndClearable(t *testing.T) {
 	if len(first.values) != 0 || len(first.digest) != 0 {
 		t.Fatal("stateful projection retained cleartext after Clear")
 	}
+}
+
+func TestDeterministicBcryptInputBoundsAndFormat(t *testing.T) {
+	t.Parallel()
+	password := []byte("independent-test-password")
+	salt := []byte("0123456789abcdef")
+	hash, err := deterministicBcrypt(password, salt, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(hash)
+	if len(hash) != 60 || !bytes.HasPrefix(hash, []byte("$2y$10$")) {
+		t.Fatalf("bcrypt format length=%d prefix-valid=%t", len(hash), bytes.HasPrefix(hash, []byte("$2y$10$")))
+	}
+	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
+		t.Fatalf("bcrypt output does not verify: %v", err)
+	}
+	for _, invalid := range []struct {
+		password []byte
+		salt     []byte
+		cost     uint8
+	}{
+		{nil, salt, 10},
+		{make([]byte, 73), salt, 10},
+		{password, salt[:15], 10},
+		{password, salt, 3},
+		{password, salt, 32},
+	} {
+		if value, err := deterministicBcrypt(
+			invalid.password, invalid.salt, invalid.cost,
+		); err == nil {
+			clear(value)
+			t.Fatal("invalid deterministic bcrypt input was accepted")
+		}
+	}
+}
+
+func TestRootCAPublicProjectionContainsNoPrivateKey(t *testing.T) {
+	t.Parallel()
+	document, err := generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := rootCAPublicKubernetesSecret(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(data)
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest["immutable"] != true ||
+		mapAtAny(manifest, "metadata")["name"] != "atum-platform-root-ca-public" {
+		t.Fatal("public root CA projection has invalid identity or mutability")
+	}
+	stringData := mapAtAny(manifest, "stringData")
+	if len(stringData) != 2 || stringData["ATUM_ROOT_CA_DIGEST"] == nil {
+		t.Fatal("public root CA projection has unexpected keys")
+	}
+	encoded, _ := stringData["ATUM_ROOT_CA_CERTIFICATE_B64"].(string)
+	certificate, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(certificate)
+	if !bytes.Equal(certificate, document.RootCA.Certificate.Bytes()) ||
+		strings.Contains(string(data), "tls.key") ||
+		strings.Contains(string(data), "PRIVATE KEY") {
+		t.Fatal("public root CA projection contains wrong or private material")
+	}
+}
+
+func TestEncryptedFluxSecretEnvelopeTypesImmutable(t *testing.T) {
+	t.Parallel()
+
+	envelope := func(immutable string, extra string) []byte {
+		field := ""
+		if immutable != "" {
+			field = `,"immutable":` + immutable
+		}
+		return []byte(`{
+			"apiVersion":"v1",
+			"kind":"Secret",
+			"metadata":{"name":"test","namespace":"flux-system"},
+			"type":"Opaque",
+			"stringData":{"value":"ENC[AES256_GCM,data:test]"},
+			"sops":{"age":[],"encrypted_regex":"^(data|stringData)$","mac":"ENC[]"}` +
+			field + extra + `}`)
+	}
+	for _, test := range []struct {
+		name      string
+		immutable string
+	}{
+		{name: "pki/root-ca.json", immutable: "true"},
+		{name: "root-ca-public.json", immutable: "true"},
+		{name: "stateful.json", immutable: "true"},
+		{name: "identity.json", immutable: "false"},
+		{name: "operator.json", immutable: "false"},
+		{name: "omitted"},
+	} {
+		if err := validateEncryptedFluxEnvelope(
+			envelope(test.immutable, ""), test.name,
+		); err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+	}
+	if err := validateEncryptedFluxEnvelope(
+		envelope(`"true"`, ""), "non-boolean.json",
+	); err == nil {
+		t.Fatal("non-boolean immutable field was accepted")
+	}
+	if err := validateEncryptedFluxEnvelope(
+		envelope("", `,"unknown":true`), "unknown.json",
+	); err == nil {
+		t.Fatal("unrecognized encrypted Secret field was accepted")
+	}
+}
+
+func TestFluxPKIKustomizationExcludesSubstitutedAccessCertificates(t *testing.T) {
+	t.Parallel()
+	text := string(fluxPKIKustomization)
+	if !strings.Contains(text, "../../../profiles/local/prep/certificates") {
+		t.Fatal("generated PKI source omits its prep certificates")
+	}
+	if strings.Contains(text, "../../../profiles/local/access") ||
+		strings.Contains(text, "ATUM_PLATFORM_DOMAIN") {
+		t.Fatal("generated PKI source claims substituted profile-access certificates")
+	}
+	access, err := os.ReadFile(
+		filepath.Join(
+			"..", "..", "platform", "clusters", "atum",
+			"platform-profile-access.yaml",
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(access, []byte("name: platform-certificates")) ||
+		!bytes.Contains(access, []byte("ATUM_PLATFORM_DOMAIN")) ||
+		!bytes.Contains(access, []byte("path: ./platform/profiles/${ATUM_PLATFORM_PROFILE}/access")) {
+		t.Fatal("profile-access does not solely order and substitute access certificates")
+	}
+	accessSource, err := os.ReadFile(
+		filepath.Join(
+			"..", "..", "platform", "profiles", "local", "access",
+			"kustomization.yaml",
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(accessSource, []byte("  - certificates")) {
+		t.Fatal("profile-access source omits its sole access-certificate input")
+	}
+	pkiOwner, err := os.ReadFile(
+		filepath.Join(
+			"..", "..", "platform", "clusters", "atum",
+			"platform-certificates.yaml",
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(pkiOwner, []byte("path: ./platform/secrets/atum/pki")) ||
+		bytes.Contains(pkiOwner, []byte("postBuild:")) ||
+		bytes.Contains(pkiOwner, []byte("ATUM_PLATFORM_DOMAIN")) {
+		t.Fatal("platform-certificates crosses into substituted profile-access ownership")
+	}
+}
+
+func mapAtAny(value map[string]any, key string) map[string]any {
+	result, _ := value[key].(map[string]any)
+	return result
 }
 
 func TestLoadOrCreateLocalPreservesInvalidFile(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,8 +17,8 @@ import (
 
 	"atum/cli/config"
 
-	"gopkg.in/yaml.v3"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
@@ -60,8 +61,8 @@ func selectedChartPackageInputs(
 	if err := add(chartPackageInput{
 		ID: "bigbang", Kind: "root", SourceURL: bigBang.Source.URL,
 		SourceCommit: bigBang.Source.Commit, ChartPath: "chart",
-		Path: filepath.Join(bigBang.Checkout, "chart"),
-		Values: artifactsByID["bigbang"].Values,
+		Path:      filepath.Join(bigBang.Checkout, "chart"),
+		Values:    artifactsByID["bigbang"].Values,
 		Instances: artifactsByID["bigbang"].Instances,
 	}); err != nil {
 		return nil, err
@@ -76,7 +77,7 @@ func selectedChartPackageInputs(
 		if err := add(chartPackageInput{
 			ID: id, Kind: kind, SourceURL: pkg.Package.Source.URL,
 			SourceCommit: pkg.Package.Source.Commit, ChartPath: pkg.Package.RepositoryChartPath(),
-			Path: filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
+			Path:   filepath.Join(pkg.Checkout, filepath.FromSlash(pkg.Package.RepositoryChartPath())),
 			Values: artifactsByID[id].Values, Instances: artifactsByID[id].Instances,
 		}); err != nil {
 			return nil, err
@@ -84,11 +85,17 @@ func selectedChartPackageInputs(
 	}
 	for index := range support {
 		item := support[index]
+		id := "wrapper/" + item.Support.ID
+		artifact, exists := artifactsByID[id]
+		if !exists {
+			return nil, fmt.Errorf("admitted chart artifact %s is missing", id)
+		}
 		if err := add(chartPackageInput{
-			ID: "wrapper/" + item.Support.ID, Kind: "wrapper",
+			ID: id, Kind: "wrapper",
 			SourceURL: item.Support.Source.URL, SourceCommit: item.Support.Source.Commit,
 			ChartPath: item.Support.ChartPath,
-			Path: filepath.Join(item.Checkout, filepath.FromSlash(item.Support.ChartPath)),
+			Path:      filepath.Join(item.Checkout, filepath.FromSlash(item.Support.ChartPath)),
+			Values:    artifact.Values, Instances: artifact.Instances,
 		}); err != nil {
 			return nil, err
 		}
@@ -210,7 +217,7 @@ func packageChart(root string, registry config.Registry, input chartPackageInput
 	relative := filepath.Join(archiveRoot, file)
 	destination := filepath.Join(root, relative)
 	if err := verifyChartCacheFile(root, relative, digest); err != nil {
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, os.ErrNotExist) {
 			return config.ChartArtifact{}, err
 		}
 		if err := os.Link(temporaryPath, destination); err != nil {

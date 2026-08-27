@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 
+	"atum/cli/config"
+
 	containername "github.com/google/go-containerregistry/pkg/name"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v4/pkg/chart/common"
@@ -41,6 +43,8 @@ type chartInspection struct {
 	Declared     []string
 	Invocations  []containerInvocation
 	ContractSHA  string
+	Security     platformSecurityObservation
+	FormerWait   formerWaitObservation
 }
 
 type containerInvocation struct {
@@ -178,6 +182,16 @@ func inspectChartInstances(
 		combined.Images = append(combined.Images, inspection.Images...)
 		combined.SourceImages = append(combined.SourceImages, inspection.SourceImages...)
 		combined.Declared = append(combined.Declared, inspection.Declared...)
+		mergePlatformSecurityObservation(
+			&combined.Security,
+			inspection.Security,
+			instances[i].identity+"/",
+		)
+		mergeFormerWaitObservation(
+			&combined.FormerWait,
+			inspection.FormerWait,
+			instances[i].identity+"/",
+		)
 		for _, invocation := range inspection.Invocations {
 			invocation.Location = instances[i].identity + "/" + invocation.Location
 			combined.Invocations = append(combined.Invocations, invocation)
@@ -192,6 +206,7 @@ func inspectChartInstances(
 	combined.Images = compactSorted(combined.Images)
 	combined.SourceImages = compactSorted(combined.SourceImages)
 	combined.Declared = compactSorted(combined.Declared)
+	normalizePlatformSecurity(&combined.Security)
 	sort.Slice(combined.Invocations, func(i, j int) bool {
 		return combined.Invocations[i].Location < combined.Invocations[j].Location
 	})
@@ -253,7 +268,9 @@ func inspectLoadedChart(
 	if err != nil {
 		return chartInspection{}, fmt.Errorf("render Helm chart %s: %w", loaded.Name(), err)
 	}
-	images, invocations, contractSHA, err := inspectRenderedResources(rendered, nil, annotated, collector)
+	images, invocations, contractSHA, security, formerWait, err := inspectRenderedResources(
+		rendered, nil, annotated, collector,
+	)
 	if err != nil {
 		return chartInspection{}, err
 	}
@@ -270,6 +287,8 @@ func inspectLoadedChart(
 		Declared:     annotated,
 		Invocations:  invocations,
 		ContractSHA:  contractSHA,
+		Security:     security,
+		FormerWait:   formerWait,
 	}, nil
 }
 
@@ -484,7 +503,9 @@ func normalizePlaceholderValueMap(
 			continue
 		case overrideShape == defaultShape:
 			continue
-		case isSemanticallyEmpty(defaultValue):
+		case isSemanticallyEmpty(defaultValue) ||
+			isBooleanEnabledMap(defaultValue, override) ||
+			isCollectionShape(defaultShape) && isSemanticallyEmpty(override):
 			defaults[key] = emptyValueForShape(overrideShape)
 			*receipts = append(*receipts, config.ChartNormalization{
 				Path: valuePath, From: defaultShape, To: overrideShape,
@@ -497,6 +518,18 @@ func normalizePlaceholderValueMap(
 		}
 	}
 	return nil
+}
+
+func isBooleanEnabledMap(defaultValue, override any) bool {
+	if _, ok := defaultValue.(bool); !ok {
+		return false
+	}
+	overrideMap, ok := override.(map[string]any)
+	if !ok || len(overrideMap) != 1 {
+		return false
+	}
+	_, ok = overrideMap["enabled"].(bool)
+	return ok
 }
 
 func isSemanticallyEmpty(value any) bool {
@@ -561,7 +594,7 @@ func releaseOptions(name, namespace string) common.ReleaseOptions {
 }
 
 func inspectManifestData(name string, data []byte) (chartInspection, error) {
-	images, invocations, contractSHA, err := inspectRenderedResources(
+	images, invocations, contractSHA, security, formerWait, err := inspectRenderedResources(
 		map[string]string{name: string(data)},
 		nil,
 		nil,
@@ -573,11 +606,13 @@ func inspectManifestData(name string, data []byte) (chartInspection, error) {
 	return chartInspection{
 		Images: images, SourceImages: images,
 		Invocations: invocations, ContractSHA: contractSHA,
+		Security:   security,
+		FormerWait: formerWait,
 	}, nil
 }
 
 func inspectRendered(rendered map[string]string, images []string) ([]string, string, error) {
-	images, _, contractSHA, err := inspectRenderedResources(rendered, images, nil, nil)
+	images, _, contractSHA, _, _, err := inspectRenderedResources(rendered, images, nil, nil)
 	return images, contractSHA, err
 }
 
@@ -586,8 +621,17 @@ func inspectRenderedResources(
 	images []string,
 	annotated []string,
 	collector *releaseValueCollector,
-) ([]string, []containerInvocation, string, error) {
+) (
+	[]string,
+	[]containerInvocation,
+	string,
+	platformSecurityObservation,
+	formerWaitObservation,
+	error,
+) {
 	contract := runtimeContract{}
+	var security platformSecurityObservation
+	var formerWait formerWaitObservation
 	configMaps := make(map[string][]renderedConfigFile)
 	var mountedConfigBytes int64
 	for _, image := range annotated {
@@ -611,26 +655,28 @@ func inspectRenderedResources(
 		for document, key := range keys {
 			var value any
 			if err := yaml.Unmarshal([]byte(documents[key]), &value); err != nil {
-				return nil, nil, "", fmt.Errorf("decode rendered object %s: %w", filename, err)
+				return nil, nil, "", security, formerWait, fmt.Errorf("decode rendered object %s: %w", filename, err)
 			}
 			if !installActiveHelmResource(value) {
 				continue
 			}
 			if collector != nil {
 				if err := collector.observe(value); err != nil {
-					return nil, nil, "", fmt.Errorf("inspect rendered object %s: %w", filename, err)
+					return nil, nil, "", security, formerWait, fmt.Errorf("inspect rendered object %s: %w", filename, err)
 				}
 			}
-			if err := collectRenderedConfigFiles(value, configMaps, &mountedConfigBytes); err != nil {
-				return nil, nil, "", fmt.Errorf("inspect rendered object %s: %w", filename, err)
-			}
 			location := filename + fmt.Sprintf("#%d", document)
+			observePlatformSecurity(value, location, &security)
+			observeFormerWaitResource(value, location, &formerWait)
+			if err := collectRenderedConfigFiles(value, configMaps, &mountedConfigBytes); err != nil {
+				return nil, nil, "", security, formerWait, fmt.Errorf("inspect rendered object %s: %w", filename, err)
+			}
 			collectControllerConfigImages(value, location, &contract, &images)
 			walkRuntime(value, location, nil, &contract, &images)
 		}
 	}
 	if err := attachMountedConfigFiles(contract.Pods, configMaps); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", security, formerWait, err
 	}
 	contract.AnnotatedRepositories = compactSorted(contract.AnnotatedRepositories)
 	sort.Slice(contract.ImageFields, func(i, j int) bool {
@@ -652,14 +698,15 @@ func inspectRenderedResources(
 	sort.Slice(contract.Pods, func(i, j int) bool { return contract.Pods[i].Location < contract.Pods[j].Location })
 	invocations, err := applicationInvocations(contract.Pods, contract.ImageFields)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", security, formerWait, err
 	}
 	encoded, err := json.Marshal(contract)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("encode runtime contract: %w", err)
+		return nil, nil, "", security, formerWait, fmt.Errorf("encode runtime contract: %w", err)
 	}
 	hash := sha256.Sum256(encoded)
-	return images, invocations, hex.EncodeToString(hash[:]), nil
+	normalizePlatformSecurity(&security)
+	return images, invocations, hex.EncodeToString(hash[:]), security, formerWait, nil
 }
 
 func collectControllerConfigImages(

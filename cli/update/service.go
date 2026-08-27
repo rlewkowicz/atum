@@ -525,6 +525,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		operational,
 		candidateGenerated,
 		profileRenderValues,
+		supportSourceValues(supportSources),
 		bootstrapValues,
 		artifacts,
 		tree.filesView(),
@@ -1448,7 +1449,8 @@ func (service *Service) selectCompatiblePlatform(
 			candidateRenderValues := cloneMap(candidateConfiguredValues)
 			candidateInputs, err := candidateArtifacts(
 				candidate, attemptDesired.Platform.Bootstrap.Registry,
-				packages, trackedCharts, bootstrapCharts, candidateRenderValues, service.root, files,
+				packages, supportSources, trackedCharts, bootstrapCharts,
+				candidateRenderValues, service.root, files,
 			)
 			if err != nil {
 				return platformSelection{}, fmt.Errorf(
@@ -1493,6 +1495,40 @@ func (service *Service) selectCompatiblePlatform(
 					service.logger.WarnContext(ctx, "candidate chart render failed; trying the next compatible release",
 						"artifact", renderErr.id,
 						"error", renderErr.err,
+					)
+					continue
+				}
+				failures = append(failures, coordinate+": "+err.Error())
+				break
+			}
+			inspectionsByID, err := inspectionsByArtifactID(artifacts, inspections)
+			if err != nil {
+				return platformSelection{}, err
+			}
+			if err := validateOpenSearchMeshContract(inspectionsByID); err != nil {
+				var meshErr *artifactRenderError
+				if errors.As(err, &meshErr) && meshErr.candidate &&
+					backtrackChart(meshErr.id, trackedOffsets, bootstrapOffsets) {
+					service.logger.WarnContext(
+						ctx,
+						"candidate strict-mesh contract failed; trying the next compatible release",
+						"artifact", meshErr.id,
+						"error", meshErr.err,
+					)
+					continue
+				}
+				failures = append(failures, coordinate+": "+err.Error())
+				break
+			}
+			if err := validateFormerWaitResourceAbsence(inspectionsByID); err != nil {
+				var waitErr *artifactRenderError
+				if errors.As(err, &waitErr) && waitErr.candidate &&
+					backtrackChart(waitErr.id, trackedOffsets, bootstrapOffsets) {
+					service.logger.WarnContext(
+						ctx,
+						"candidate former wait resource detected; trying the next compatible release",
+						"artifact", waitErr.id,
+						"error", waitErr.err,
 					)
 					continue
 				}

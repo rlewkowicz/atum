@@ -13,7 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const statefulValuesTemplatePath = "platform/templates/secrets/stateful-values.yaml.tmpl"
+const (
+	statefulValuesTemplatePath    = "platform/templates/secrets/stateful-values.yaml.tmpl"
+	statefulOpenSearchSecretsPath = "platform/profiles/local/access/opensearch-secrets.yaml"
+)
 
 type platformValuesSource struct {
 	kind       string
@@ -90,6 +93,13 @@ var (
 		"ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_PRIMARY_KEY":       "0000000000000000000000000000000000000000000000000000000000000000",
 		"ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_DETERMINISTIC_KEY": "0000000000000000000000000000000000000000000000000000000000000000",
 		"ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_SALT":              "0000000000000000000000000000000000000000000000000000000000000000",
+		"ATUM_STATEFUL_OPENSEARCH_ADMIN_PASSWORD":              "atum-render-only-opensearch-admin",
+		"ATUM_STATEFUL_OPENSEARCH_ADMIN_HASH":                  "$2y$10$......................../................................",
+		"ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_PASSWORD":         "atum-render-only-opensearch-dashboards",
+		"ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_HASH":             "$2y$10$......................../................................",
+		"ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_COOKIE":           "atum-render-only-opensearch-cookie",
+		"ATUM_STATEFUL_FLUENTBIT_OPENSEARCH_PASSWORD":          "atum-render-only-fluentbit-opensearch",
+		"ATUM_STATEFUL_FLUENTBIT_OPENSEARCH_HASH":              "$2y$10$......................../................................",
 	}
 )
 
@@ -166,6 +176,16 @@ func loadStatefulValuesOverlay(
 	collectStatefulPlaceholders(projection.values, observed)
 	for _, value := range projection.targetValues {
 		collectStatefulPlaceholders(value, observed)
+	}
+	openSearchSecrets, found := files[statefulOpenSearchSecretsPath]
+	if !found {
+		return statefulValuesProjection{}, fmt.Errorf(
+			"required OpenSearch Secret projection %s is not managed",
+			statefulOpenSearchSecretsPath,
+		)
+	}
+	for _, match := range statefulPlaceholderPattern.FindAllSubmatch(openSearchSecrets, -1) {
+		observed[string(match[1])] = struct{}{}
 	}
 	for name := range observed {
 		if _, allowed := statefulRenderSentinels[name]; !allowed {

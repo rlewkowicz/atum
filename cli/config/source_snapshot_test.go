@@ -11,10 +11,10 @@ func TestOperatorSourceSnapshotMembership(t *testing.T) {
 		},
 		Platform: Platform{
 			Directory: "platform",
-			Values: PlatformValues{Profiles: map[string]string{}},
+			Values:    PlatformValues{Profiles: map[string]string{}},
 		},
 		Delivery: Delivery{Images: []Image{{
-			ID: "atum-operator",
+			ID:        "atum-operator",
 			Discovery: "first-party",
 			Delivery: ImageDelivery{Default: DeliveryChoice{
 				Type: "build",
@@ -39,6 +39,35 @@ func TestOperatorSourceSnapshotMembership(t *testing.T) {
 	} {
 		if !containsSortedMember(members, wanted) {
 			t.Errorf("source snapshot does not contain %q", wanted)
+		}
+	}
+}
+
+func TestCertificateSourceSnapshotKeepsDisjointFluxOwners(t *testing.T) {
+	t.Parallel()
+	desired := Document{
+		Project: ProjectConfig{Cluster: "atum"},
+		Orchestration: Orchestration{
+			Directory: "kubespray",
+			Inventory: "kubespray/inventory/atum",
+		},
+		Platform: Platform{
+			Directory: "platform",
+			Values: PlatformValues{
+				Profiles: map[string]string{"local": "platform/profiles/local/prep/values.yaml"},
+			},
+		},
+	}
+	members := RequiredSourceSnapshotMembers(desired)
+	for _, wanted := range []string{
+		"platform/clusters/atum/platform-certificates.yaml",
+		"platform/clusters/atum/platform-profile-access.yaml",
+		"platform/profiles/local/prep/certificates/kustomization.yaml",
+		"platform/profiles/local/access/kustomization.yaml",
+		"platform/secrets/atum/pki/kustomization.yaml",
+	} {
+		if !containsSortedMember(members, wanted) {
+			t.Errorf("certificate source snapshot does not contain %q", wanted)
 		}
 	}
 }

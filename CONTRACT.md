@@ -268,22 +268,28 @@ database, Redis, object-storage, and Rails Secrets from the final secret-backed
 values layer. Kyverno does not copy, transform, or rotate these credentials.
 
 Big Bang and package charts own NetworkPolicy rendering. Atum expresses only
-documented cross-package connection intent and validates its authored inputs;
-it does not evaluate resulting Kubernetes connectivity. It may reject a
-selected render whose resources, selectors, peers, principals, ports, probes,
-or sidecar annotations contradict an Atum-authored security policy; that
-structural admission does not make Atum a network-reachability engine.
+documented cross-package connection intent. The updater admits compact
+structural observations from the exact selected renders so label, identity,
+port, injection-eligibility, and policy-interface drift fails before
+selection. This compatibility observation does not evaluate packet
+reachability, interpret Cilium behavior, claim that Helm output contains
+injected sidecars, or transfer policy ownership to Atum.
 
-OpenSearch may use plain application HTTP with its native security plugin
-disabled only within a structurally proven strict-mesh boundary. OpenSearch,
-Dashboards, and Fluent Bit must receive the intended sidecars; a selecting
-`PeerAuthentication` must be `STRICT`; port 9200 must be captured without a
-bypass annotation; the authorization policy must select the actual OpenSearch
-labels and permit only the Fluent Bit service account on that port; the
-NetworkPolicy must select the same workloads; and probes, init containers, and
-controller traffic must remain compatible with strict mode. Failure of any
-part requires native OpenSearch authentication and TLS through official chart
-and cert-manager values.
+The official OpenSearch chart owns native authentication, authorization, and
+TLS. Flux projects independently derived administrator, Dashboards, and Fluent
+Bit basic-auth credentials plus six file-scoped security inputs as immutable
+Secrets. The internal administrator has no certificate DN; the node DN is
+limited to cert-manager's renewable OpenSearch node certificate. Dashboards
+and Fluent Bit consume immutable CA-only projections of the SOPS-owned public
+root certificate and never receive its private key or an unused client key.
+The selected OpenSearch native certificate hot-reload setting owns renewal of
+the node certificate at stable paths and identity. Passwords, the root CA, and
+initialized security-index configuration are installation inputs and do not
+rotate in this greenfield contract. The Big Bang wrapper's sidecar injection
+and `STRICT` mesh mTLS remain transport defense in depth; its broad
+same-namespace policies are not application authentication or authorization.
+No Atum operator field, Job, post-renderer, checksum rollout, or imperative
+setup operation owns any OpenSearch lifecycle or security state.
 
 Transport claims name their layer precisely. Mesh mTLS authenticates
 sidecar-to-sidecar traffic and does not imply application TLS. Ingress TLS
