@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"atum/cli/config"
-	"atum/cli/orchestration"
+	"atum/cli/kube"
 
 	"github.com/Masterminds/semver/v3"
 	"gopkg.in/yaml.v3"
@@ -35,7 +35,7 @@ type versionConstraint struct {
 var errNoCompatibleKubernetes = errors.New("no compatible Kubernetes release")
 
 func validateKubesprayOIDCLifecycle(checkout, kubernetes string) error {
-	if _, err := orchestration.AuthenticationConfigAPIVersion(kubernetes); err != nil {
+	if _, err := kube.AuthenticationConfigAPIVersion(kubernetes); err != nil {
 		return err
 	}
 	return validateKubesprayOIDCImplementation(checkout)
@@ -69,6 +69,7 @@ func validateKubesprayOIDCImplementation(checkout string) error {
 				`mode: "0640"`,
 				"apiVersion: apiserver.config.k8s.io/{{ kube_apiserver_authentication_config_api_version }}",
 				`jwt: "{{ kube_apiserver_authentication_config_jwt }}"`,
+				`anonymous: "{{ kube_apiserver_authentication_config_anonymous }}"`,
 				"when: kube_apiserver_use_authentication_config_file",
 			},
 		},
@@ -77,6 +78,7 @@ func validateKubesprayOIDCImplementation(checkout string) error {
 			relative: filepath.Join("roles", "kubernetes", "control-plane", "templates", "kubeadm-config.v1beta4.yaml.j2"),
 			evidence: []string{
 				"{% if kube_oidc_auth and kube_oidc_url is defined and kube_oidc_client_id is defined and not kube_apiserver_use_authentication_config_file %}",
+				"{% if kube_api_anonymous_auth is defined and not kube_apiserver_use_authentication_config_file %}",
 				"- name: authentication-config",
 				`value: "{{ kube_config_dir }}/apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml"`,
 				"hostPath: {{ kube_config_dir }}/apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml",

@@ -115,10 +115,10 @@ the transfer. The receiver owns execution and physical resources afterward.
 - Atum owns local host integration, bounded secret projection, immutable
   publication receipts, and cross-plane sequencing.
 
-Atum may validate a handoff it authors. It must not reimplement Helm
-truthiness, Big Bang package identity, NetworkPolicy reachability, workload
-rollout rules, PVC semantics, controller state machines, or source-controller
-readiness.
+Atum may validate a handoff it authors, including the structural consistency
+of its own policy inputs. It must not reimplement Helm truthiness, Big Bang
+package identity, NetworkPolicy reachability, workload rollout rules, PVC
+semantics, controller state machines, or source-controller readiness.
 
 ## System tools
 
@@ -213,6 +213,13 @@ Big Bang tests are evidence for Big Bang, not a production deployment API.
 Post-renderers and wrappers are not composition defaults. Use a supported
 official chart and its public values first.
 
+A compatibility patch is permitted only when the exact selected upstream API
+cannot express a required handoff. It must be backed by the selected version's
+rendered resource evidence, target only the exact resource and narrow selector
+or destination implicated by that evidence, and carry an upstream removal
+condition. A changed version or rendered shape invalidates the evidence and
+must remove or re-admit the patch.
+
 The Big Bang HelmRelease loads values in explicit precedence:
 
 1. target-independent operational values;
@@ -262,7 +269,31 @@ values layer. Kyverno does not copy, transform, or rotate these credentials.
 
 Big Bang and package charts own NetworkPolicy rendering. Atum expresses only
 documented cross-package connection intent and validates its authored inputs;
-it does not evaluate resulting Kubernetes connectivity.
+it does not evaluate resulting Kubernetes connectivity. It may reject a
+selected render whose resources, selectors, peers, principals, ports, probes,
+or sidecar annotations contradict an Atum-authored security policy; that
+structural admission does not make Atum a network-reachability engine.
+
+OpenSearch may use plain application HTTP with its native security plugin
+disabled only within a structurally proven strict-mesh boundary. OpenSearch,
+Dashboards, and Fluent Bit must receive the intended sidecars; a selecting
+`PeerAuthentication` must be `STRICT`; port 9200 must be captured without a
+bypass annotation; the authorization policy must select the actual OpenSearch
+labels and permit only the Fluent Bit service account on that port; the
+NetworkPolicy must select the same workloads; and probes, init containers, and
+controller traffic must remain compatible with strict mode. Failure of any
+part requires native OpenSearch authentication and TLS through official chart
+and cert-manager values.
+
+Transport claims name their layer precisely. Mesh mTLS authenticates
+sidecar-to-sidecar traffic and does not imply application TLS. Ingress TLS
+terminates or passes through at the declared gateway. Provider TLS is
+server-authenticated HTTPS unless the provider contract separately proves
+client-certificate authentication; Keycloak
+`KC_HTTPS_CLIENT_AUTH=request` permits, but does not require, a client
+certificate and is not an mTLS claim. Registry transport is separate again:
+the isolated HTTP registry is permitted only for the bastion-local seed before
+Harbor exists and is never a cluster transport.
 
 ## Secret authority
 
@@ -356,9 +387,11 @@ The local apply sequence is linear:
 Atum owns ordering, cancellation, error attribution, and its receipts. It
 performs small safe cleanup for a failed short handoff when possible;
 otherwise it leaves an inspectable state and an idempotent rerun path. It does
-not mutate live resources manually to manufacture success, call
-`flux reconcile`, activate a deployment branch, or retain an in-cluster Atum
-receipt object.
+not mutate live resources manually to manufacture success, force Flux
+reconciliation during normal `atum apply` or `atum platform apply`, activate a
+deployment branch, or retain an in-cluster Atum receipt object. A caller may
+explicitly invoke `atum platform flux reconcile ...` as raw Flux passthrough;
+Flux remains the sole reconciler and the command is not an apply repair path.
 
 The explicit local-access install command uses the same native platform status
 and delivery-compliance observation as the automatic apply path. Missing
@@ -409,6 +442,27 @@ declared Keycloak and Vault intent plus fixed Secret references; it cannot
 carry arbitrary URLs, scripts, manifests, plugins, actions, or generic
 execution maps.
 
+A documented manual step is admitted to the operator only when all of these
+conditions hold:
+
+1. it is required for Atum's steady-state baseline;
+2. it creates provider or service API state, not infrastructure, Kubernetes,
+   Helm, workload, certificate, Secret-projection, or local-host state;
+3. the exact selected chart cannot express it through values, realm import,
+   native custom resources, or another upstream controller;
+4. its desired state fits a closed, narrow typed schema without arbitrary
+   URLs, scripts, commands, manifests, or generic maps;
+5. its reconciliation is idempotent and defines ownership, status, deletion,
+   retry, and Secret-custody semantics; and
+6. provider-native APIs expose readiness without a parallel platform
+   lifecycle.
+
+Backup and restore, credential or certificate rotation, package upgrades,
+Vault initialization and unseal, infrastructure, Kubernetes configuration,
+workload changes, and local-host procedures remain with their native owners or
+explicit operational procedures. Describing work as manual does not transfer
+it to the operator.
+
 Flux owns the operator deployment, RBAC, CRD, credential and CA Secrets, and
 singleton custom resource as Kubernetes desired state. The operator owns only
 the matching provider objects, their idempotent lifecycle, and its native
@@ -445,8 +499,9 @@ The following are architectural violations:
 - hand edits to updater-owned coupled state;
 - parallel renderers or package identity vocabularies;
 - copied Big Bang CI topology or defaults;
-- deployment branches, secondary desired-state repositories, or explicit
-  reconciliation beside normal Flux reconciliation;
+- deployment branches, secondary desired-state repositories, a second
+  reconciler, imperative platform mutation, or any non-Flux platform lifecycle
+  path;
 - any cluster image or Helm chart fetched outside Harbor;
 - standalone cert-manager or OpenSearch reconciliation outside their Big Bang
   generic package `HelmRelease` objects;

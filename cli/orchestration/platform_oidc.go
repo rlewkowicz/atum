@@ -2,16 +2,10 @@ package orchestration
 
 import (
 	"errors"
-	"fmt"
 	"sort"
-	"strings"
 
 	"atum/cli/identity"
-
-	"github.com/Masterminds/semver/v3"
 )
-
-var exactAuthenticationConfiguration = semver.MustParse("1.34.0")
 
 type jwtAuthenticator struct {
 	Issuer        jwtIssuer     `json:"issuer"`
@@ -36,8 +30,12 @@ type prefixedClaim struct {
 }
 
 type anonymousAuth struct {
-	Enabled    bool  `json:"enabled"`
-	Conditions []any `json:"conditions"`
+	Enabled    bool                     `json:"enabled"`
+	Conditions []anonymousAuthCondition `json:"conditions"`
+}
+
+type anonymousAuthCondition struct {
+	Path string `json:"path"`
 }
 
 type kubesprayOIDCProjection struct {
@@ -106,26 +104,11 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 			audiences,
 			string(service.RootCAPEM),
 		),
-		Anonymous: anonymousAuth{Enabled: true, Conditions: []any{}},
+		Anonymous: anonymousAuth{
+			Enabled: true,
+			Conditions: []anonymousAuthCondition{
+				{Path: "/healthz"},
+			},
+		},
 	}, nil
-}
-
-// AuthenticationConfigAPIVersion is the selected-version projection shared
-// by Kubespray serialization and updater compatibility inspection.
-func AuthenticationConfigAPIVersion(kubernetes string) (string, error) {
-	version, err := semver.NewVersion(strings.TrimPrefix(kubernetes, "v"))
-	if err != nil {
-		return "", fmt.Errorf(
-			"parse selected Kubernetes version %q: %w",
-			kubernetes,
-			err,
-		)
-	}
-	if version.LessThan(exactAuthenticationConfiguration) {
-		return "", fmt.Errorf(
-			"Kubernetes %s lacks the required v1 AuthenticationConfiguration API",
-			kubernetes,
-		)
-	}
-	return "v1", nil
 }

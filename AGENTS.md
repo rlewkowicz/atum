@@ -390,8 +390,11 @@ SOPS age-key Secret; normal Flux reconciliation deploys Big Bang; Big Bang
 creates its Harbor-backed generic cert-manager `HelmRelease`; Flux gates the
 issuer and Certificate resources on that `HelmRelease`; and the Flux-deployed
 Atum operator performs final typed Keycloak and Vault configuration after
-certificate readiness. Do not call `flux reconcile` or manually apply any
-other platform object.
+certificate readiness. Normal `atum apply` and `atum platform apply` must not
+call `flux reconcile` to repair or advance Big Bang. An explicitly requested
+`atum platform flux reconcile ...` command remains raw Flux passthrough and
+does not transfer reconciliation ownership to Atum. Do not manually apply any
+platform object other than Flux's SOPS age-key Secret.
 
 Atum is a pure-Go binary. Run every Atum build and Go test with
 `CGO_ENABLED=0`; do not introduce a C compiler, libc, or CGO dependency and do

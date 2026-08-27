@@ -14,8 +14,8 @@ Atum is a declarative Go CLI for deploying the Department of Defense (War?) plat
 
 Big Bang is a platform in a box. The deployment model is open source and openly licensed, but access to its specialty images is restricted. This repo handles a few things on that front. But it's still just a wrapper around battle-tested software platforms. So if something goes wrong, you're not troubleshooting Atum, you're troubleshooting industry-standard, production-proven deployment platforms.
 
-1. All images are swapped out for their official upstreams and built from scratch where there is no analog or the upstream was sunset.
-2. It's all fully declarative. Big Bang itself is a Helm chart of Helm charts. Nothing is vendored to this repo. The platform is mostly value overrides with minimal Flux/Kustomize wiring.
+1. All images are swapped out for immutable official upstreams when they satisfy the selected chart's rendered contract. A bounded compatibility image is built from official project source only when the rendered command, filesystem, identity, or lifecycle proves it necessary.
+2. It's all fully declarative. Big Bang itself is a Helm chart of Helm charts. Selected charts are repackaged into Harbor rather than vendored wholesale; the repo maintains only the bounded compatibility material and minimal Flux/Kustomize wiring needed to deliver them.
 3. As of this writing, it uses Kubespray for the cluster. Lean into it. Own the cluster. I may add support for cloud-native Kubernetes implementations in the future, but this handles upgrades and deployment using Ansible with Mitogen. I'm also out of money in a big way.
 4. It's air-gap ready. It publishes every cluster image and chart to [Harbor](https://github.com/goharbor/harbor), while a minimal bastion seed starts Harbor and [Forgejo](https://forgejo.org/) for first-time deployment.
 
@@ -162,14 +162,6 @@ PostgreSQL subchart.
 ```sh
 atum platform status
 atum infra access status
-```
-
-## Backup and restore
-
-```sh
-atum platform velero backup create platform
-atum platform velero backup get
-atum platform velero restore create --from-backup platform
 ```
 
 ## More detail
