@@ -1,8 +1,9 @@
 domain: ${ATUM_PLATFORM_DOMAIN}
 networkPolicies:
-  # API clients use the stable HAProxy VIP. Admission webhooks instead receive
-  # connections from the three control-plane nodes.
-  controlPlaneCidr: 10.77.0.10/32
+  # Big Bang's documented API destination is the endpoint set reported by the
+  # kubernetes Service, not the HAProxy VIP. This is the smallest CIDR
+  # containing all three local endpoints: .11, .12, and .13.
+  controlPlaneCidr: 10.77.0.8/29
   ingress:
     definitions:
       controlPlaneWebhooks:
@@ -101,7 +102,7 @@ monitoring:
           kube-prometheus-stack-prometheus-operator:10250:
             from:
               cidr:
-                10.77.0.10/32: false
+                10.77.0.8/29: false
               definition:
                 controlPlaneWebhooks: true
     upstream:
@@ -181,7 +182,7 @@ addons:
             kubeAPI:
               to:
                 - ipBlock:
-                    cidr: 10.77.0.10/32
+                    cidr: 10.77.0.8/29
         ingress:
           to:
             vault-agent-injector:8080:

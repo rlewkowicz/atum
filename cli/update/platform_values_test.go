@@ -149,7 +149,7 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	}
 
 	network := mapAt(local, "networkPolicies")
-	if network["controlPlaneCidr"] != "10.77.0.10/32" {
+	if network["controlPlaneCidr"] != "10.77.0.8/29" {
 		t.Fatalf("API destination = %v", network["controlPlaneCidr"])
 	}
 	definition := mapAt(network, "ingress", "definitions", "controlPlaneWebhooks")
@@ -171,11 +171,11 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 		local, "monitoring", "values", "networkPolicies", "ingress", "to",
 		"kube-prometheus-stack-prometheus-operator:10250", "from", "cidr",
 	)
-	if monitoringCIDR["10.77.0.10/32"] != false {
-		t.Fatal("Monitoring does not disable the generated API VIP source")
+	if monitoringCIDR["10.77.0.8/29"] != false {
+		t.Fatal("Monitoring does not disable the generated API destination source")
 	}
 	for _, absent := range []string{
-		"vpcCidr:", "10.77.0.8/29",
+		"vpcCidr:", "10.77.0.0/24",
 		"allow-egress-from-.*-wait-job-to-anywhere-any-port",
 	} {
 		if strings.Contains(localText, absent) {

@@ -22,7 +22,11 @@ spec:
         - {protocol: TCP, port: 53}
     - to:
         - ipBlock:
-            cidr: 10.77.0.10/32
+            cidr: 10.77.0.11/32
+        - ipBlock:
+            cidr: 10.77.0.12/32
+        - ipBlock:
+            cidr: 10.77.0.13/32
       ports:
         - {protocol: TCP, port: 6443}
     - to:
