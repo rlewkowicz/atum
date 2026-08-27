@@ -184,8 +184,14 @@ func loadStatefulValuesOverlay(
 			statefulOpenSearchSecretsPath,
 		)
 	}
-	for _, match := range statefulPlaceholderPattern.FindAllSubmatch(openSearchSecrets, -1) {
-		observed[string(match[1])] = struct{}{}
+	if err := collectStatefulSecretDataPlaceholders(
+		openSearchSecrets,
+		observed,
+	); err != nil {
+		return statefulValuesProjection{}, fmt.Errorf(
+			"inspect OpenSearch Secret projection: %w",
+			err,
+		)
 	}
 	for name := range observed {
 		if _, allowed := statefulRenderSentinels[name]; !allowed {
@@ -342,6 +348,29 @@ func collectStatefulPlaceholders(value any, observed map[string]struct{}) {
 	case string:
 		for _, match := range statefulPlaceholderPattern.FindAllStringSubmatch(typed, -1) {
 			observed[match[1]] = struct{}{}
+		}
+	}
+}
+
+func collectStatefulSecretDataPlaceholders(
+	data []byte,
+	observed map[string]struct{},
+) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	for {
+		var document map[string]any
+		err := decoder.Decode(&document)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if document["apiVersion"] != "v1" || document["kind"] != "Secret" {
+			continue
+		}
+		if stringData, ok := document["stringData"].(map[string]any); ok {
+			collectStatefulPlaceholders(stringData, observed)
 		}
 	}
 }

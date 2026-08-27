@@ -126,7 +126,6 @@ addons:
         # than installing a second, non-Flux CSR reconciliation controller.
         args:
           - --kubelet-insecure-tls
-  headlamp:
   gitlab:
     values:
       upstream:

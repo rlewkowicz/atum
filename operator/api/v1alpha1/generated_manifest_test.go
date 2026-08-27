@@ -57,6 +57,16 @@ func TestGeneratedSchemaOwnsAdmissionContract(t *testing.T) {
 		string(roleNameSchema.Enum[0].Raw) != `"atum-admin"` {
 		t.Fatalf("Vault role name admission = %#v", roleNameSchema.Enum)
 	}
+	scopesSchema := rootSchema.Properties["spec"].
+		Properties["keycloak"].
+		Properties["scopes"]
+	if len(scopesSchema.XValidations) != 1 ||
+		scopesSchema.XValidations[0].Rule !=
+			"self == ['openid', 'profile', 'email', 'groups']" ||
+		scopesSchema.XValidations[0].Message !=
+			"scopes must be openid, profile, email, groups in canonical order" {
+		t.Fatalf("Keycloak scope admission = %#v", scopesSchema.XValidations)
+	}
 	encoded := string(generated)
 	for _, required := range []string{
 		"self.metadata.name == 'atum'",
@@ -64,7 +74,6 @@ func TestGeneratedSchemaOwnsAdmissionContract(t *testing.T) {
 		"x-kubernetes-list-map-keys:",
 		"vault.role.clientID must name one declared confidential client",
 		"Vault role scopes must equal the canonical Keycloak scopes",
-		"scopes must be openid, profile, email, groups in canonical order",
 	} {
 		if !strings.Contains(encoded, required) {
 			t.Fatalf("generated schema does not contain %q", required)

@@ -1843,6 +1843,12 @@ func meshResourceError(
 	artifact string, resource renderedResource, reason string,
 ) error {
 	if resource.Name == "" {
+		if resource.Path != "" {
+			return candidateRenderError(
+				artifact,
+				fmt.Errorf("%s: %s", resource.Path, reason),
+			)
+		}
 		return candidateRenderError(artifact, errors.New(reason))
 	}
 	return candidateRenderError(artifact, fmt.Errorf("%s: %s", resource.String(), reason))
