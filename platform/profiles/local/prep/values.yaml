@@ -37,6 +37,33 @@ kyvernoPolicies:
         parameters:
           allow:
             - /var/lib/atum/local-path-provisioner/*
+      # The upstream helper owns setup and teardown beneath its node hostPath.
+      # It must retain the image's root identity to create directories in the
+      # root-owned base path; every other selected policy remains enforced.
+      add-default-securitycontext:
+        exclude:
+          any:
+            - resources:
+                namespaces:
+                  - local-path-storage
+                names:
+                  - helper-pod-*
+      require-non-root-user:
+        exclude:
+          any:
+            - resources:
+                namespaces:
+                  - local-path-storage
+                names:
+                  - helper-pod-*
+      require-non-root-group:
+        exclude:
+          any:
+            - resources:
+                namespaces:
+                  - local-path-storage
+                names:
+                  - helper-pod-*
       restrict-volume-types:
         exclude:
           any:

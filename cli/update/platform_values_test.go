@@ -174,6 +174,21 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	if monitoringCIDR["10.77.0.8/29"] != false {
 		t.Fatal("Monitoring does not disable the generated API destination source")
 	}
+	for _, policy := range []string{
+		"add-default-securitycontext",
+		"require-non-root-user",
+		"require-non-root-group",
+		"restrict-volume-types",
+	} {
+		if !policyExcludesResource(
+			local, policy, "local-path-storage", "helper-pod-*",
+		) {
+			t.Fatalf(
+				"Kyverno policy %s does not narrowly exclude the local-path helper",
+				policy,
+			)
+		}
+	}
 	for _, absent := range []string{
 		"vpcCidr:", "10.77.0.0/24",
 		"allow-egress-from-.*-wait-job-to-anywhere-any-port",
@@ -805,6 +820,24 @@ func namedReference(references []any, name string) bool {
 func stringReference(references []any, name string) bool {
 	for _, reference := range references {
 		if reference == name {
+			return true
+		}
+	}
+	return false
+}
+
+func policyExcludesResource(
+	values map[string]any, policy, namespace, name string,
+) bool {
+	exclusions := mapSlice(mapAt(
+		values, "kyvernoPolicies", "values", "policies", policy, "exclude",
+	)["any"])
+	for _, exclusion := range exclusions {
+		resources := mapAt(exclusion, "resources")
+		namespaces, _ := resources["namespaces"].([]any)
+		names, _ := resources["names"].([]any)
+		if stringReference(namespaces, namespace) &&
+			stringReference(names, name) {
 			return true
 		}
 	}
