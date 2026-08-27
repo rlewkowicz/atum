@@ -1160,18 +1160,15 @@ func (service *Service) resolveKubernetesCandidates(
 		if err != nil && !errors.Is(err, errNoCompatibleKubernetes) {
 			return nil, err
 		}
-		oidcImplementationErr := validateKubesprayOIDCImplementation(
-			candidate.Checkout,
-		)
 		kubesprayVersion, err := semver.NewVersion(strings.TrimPrefix(candidate.Source.Version, "v"))
 		if err != nil {
 			return nil, err
 		}
 		for _, kubernetes := range compatible {
-			_, apiErr := kube.AuthenticationConfigAPIVersion(
+			if err := kube.ValidateKubesprayNoAnonymousLifecycle(
+				candidate.Checkout,
 				kubernetes.Version,
-			)
-			if err := errors.Join(apiErr, oidcImplementationErr); err != nil {
+			); err != nil {
 				oidcFailures = append(oidcFailures,
 					candidate.Source.Version+"/Kubernetes "+kubernetes.Version+": "+err.Error())
 				continue

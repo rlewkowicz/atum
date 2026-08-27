@@ -44,30 +44,25 @@ func TestInitialKubernetesOIDCProjectsCanonicalAuthentication(t *testing.T) {
 		t.Fatalf("audiences = %v, want %v", authenticator.Issuer.Audiences, want)
 	}
 	if authenticator.ClaimMappings.Username != (prefixedClaim{
-		Claim: "preferred_username",
+		Claim:  "preferred_username",
 		Prefix: "oidc:",
 	}) || authenticator.ClaimMappings.Groups != (prefixedClaim{
-		Claim: "groups",
+		Claim:  "groups",
 		Prefix: "oidc:",
 	}) {
 		t.Fatalf("claim mappings = %#v", authenticator.ClaimMappings)
 	}
 
-	wantPaths := []string{"/healthz"}
-	paths := make([]string, len(projection.Anonymous.Conditions))
-	for index, condition := range projection.Anonymous.Conditions {
-		paths[index] = condition.Path
-	}
-	if !projection.Anonymous.Enabled || !reflect.DeepEqual(paths, wantPaths) {
+	if projection.Anonymous.Enabled {
 		t.Fatalf("anonymous authentication = %#v", projection.Anonymous)
 	}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), `"conditions":[]`) ||
-		strings.Contains(string(encoded), `"conditions":[{}]`) {
-		t.Fatalf("projection permits globally anonymous authentication: %s", encoded)
+	if strings.Contains(string(encoded), `"conditions"`) ||
+		!strings.Contains(string(encoded), `"anonymous":{"enabled":false}`) {
+		t.Fatalf("anonymous authentication projection = %s", encoded)
 	}
 }
 

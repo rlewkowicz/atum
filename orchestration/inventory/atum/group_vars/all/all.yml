@@ -1,5 +1,6 @@
 ---
 loadbalancer_apiserver_localhost: false
+resolvconf_mode: none
 loadbalancer_apiserver:
   address: "{{ atum_load_balancer_address }}"
   port: 6443

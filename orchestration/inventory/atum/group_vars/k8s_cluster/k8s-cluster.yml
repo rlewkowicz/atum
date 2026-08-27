@@ -6,20 +6,21 @@ kube_owner: root
 kube_network_plugin: cilium
 kube_proxy_remove: true
 enable_nodelocaldns: false
+dns_mode: coredns
 upstream_dns_servers:
   - 1.1.1.1
   - 8.8.8.8
 
-# Kubespray owns the mounted authentication file and kubeadm flag. Atum hands
+# Kubespray owns the mounted authentication file and kubeadm flags. Atum hands
 # it one complete projection from the active identity contract, including the
-# validated root CA, before initial cluster creation. Anonymous GET access to
-# /healthz is the sole exception required by the selected Kubespray API-server
-# checks. No platform component replaces the file later.
+# validated root CA, before initial cluster creation. No platform component
+# replaces the file later.
+kube_api_anonymous_auth: false
 kube_apiserver_use_authentication_config_file: >-
   {{ (atum_kubernetes_oidc | default({})).enabled | default(false) }}
 kube_apiserver_authentication_config_anonymous: >-
   {{ (atum_kubernetes_oidc | default({})).anonymous |
-     default({'enabled': kube_api_anonymous_auth, 'conditions': []}) }}
+     default({'enabled': false}) }}
 kube_apiserver_authentication_config_jwt: >-
   {{ (atum_kubernetes_oidc | default({})).jwt | default([]) }}
 

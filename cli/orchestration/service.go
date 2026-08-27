@@ -12,12 +12,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
 	"atum/cli/gitcache"
+	"atum/cli/kube"
 	"atum/cli/process"
 	"atum/cli/progress"
 
@@ -35,6 +37,7 @@ type Service struct {
 	PythonBin      string
 	PythonIdentity string
 	SSHBin         string
+	FirewallBin    string
 	RootCAPEM      []byte
 }
 
@@ -165,6 +168,20 @@ func (service Service) prepareRelease(
 	}
 	if err := verifyReleaseChecksums(source, checksumReleases); err != nil {
 		return Toolchain{}, err
+	}
+	for _, locked := range checksumReleases {
+		if err := kube.ValidateKubesprayNoAnonymousLifecycle(
+			source,
+			locked.Kubernetes,
+		); err != nil {
+			return Toolchain{}, fmt.Errorf(
+				"locked Kubespray %s (%s) for Kubernetes %s fails no-anonymous lifecycle admission: %w",
+				locked.Kubespray.Version,
+				locked.Kubespray.Commit,
+				locked.Kubernetes,
+				err,
+			)
+		}
 	}
 	progress.Update(ctx, progress.Orchestration, id, label, "source and Kubernetes checksums verified", 0, 0)
 	python, pythonIdentity, err := service.python()

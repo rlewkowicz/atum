@@ -3,14 +3,12 @@ package update
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"atum/cli/config"
-	"atum/cli/kube"
 
 	"github.com/Masterminds/semver/v3"
 	"gopkg.in/yaml.v3"
@@ -33,106 +31,6 @@ type versionConstraint struct {
 }
 
 var errNoCompatibleKubernetes = errors.New("no compatible Kubernetes release")
-
-func validateKubesprayOIDCLifecycle(checkout, kubernetes string) error {
-	if _, err := kube.AuthenticationConfigAPIVersion(kubernetes); err != nil {
-		return err
-	}
-	return validateKubesprayOIDCImplementation(checkout)
-}
-
-func validateKubesprayOIDCImplementation(checkout string) error {
-	type contractFile struct {
-		name     string
-		relative string
-		evidence []string
-	}
-	files := [...]contractFile{
-		{
-			name:     "structured authentication defaults",
-			relative: filepath.Join("roles", "kubespray_defaults", "defaults", "main", "main.yml"),
-			evidence: []string{
-				"kube_apiserver_use_authentication_config_file: false",
-				"kube_apiserver_authentication_config_api_version:",
-				// This is upstream bootstrap evidence, not an accepted final Atum API.
-				"'v1beta1' if kube_version is version('1.34.0', '<') else 'v1'",
-				"kube_apiserver_authentication_config_jwt: []",
-				"kube_apiserver_authentication_config_anonymous:",
-			},
-		},
-		{
-			name:     "structured authentication task",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "main.yml"),
-			evidence: []string{
-				"Create structured AuthenticationConfiguration file",
-				"apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml",
-				`mode: "0640"`,
-				"apiVersion: apiserver.config.k8s.io/{{ kube_apiserver_authentication_config_api_version }}",
-				`jwt: "{{ kube_apiserver_authentication_config_jwt }}"`,
-				`anonymous: "{{ kube_apiserver_authentication_config_anonymous }}"`,
-				"when: kube_apiserver_use_authentication_config_file",
-			},
-		},
-		{
-			name:     "kubeadm authentication mount",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "templates", "kubeadm-config.v1beta4.yaml.j2"),
-			evidence: []string{
-				"{% if kube_oidc_auth and kube_oidc_url is defined and kube_oidc_client_id is defined and not kube_apiserver_use_authentication_config_file %}",
-				"{% if kube_api_anonymous_auth is defined and not kube_apiserver_use_authentication_config_file %}",
-				"- name: authentication-config",
-				`value: "{{ kube_config_dir }}/apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml"`,
-				"hostPath: {{ kube_config_dir }}/apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml",
-				"mountPath: {{ kube_config_dir }}/apiserver-authentication-config-{{ kube_apiserver_authentication_config_api_version }}.yaml",
-			},
-		},
-	}
-	for _, file := range files {
-		data, err := readCompatibilityEvidence(filepath.Join(checkout, file.relative))
-		if err != nil {
-			return fmt.Errorf("inspect Kubespray %s: %w", file.name, err)
-		}
-		text := string(data)
-		if file.name == "structured authentication defaults" {
-			var defaults struct {
-				KubeConfigDir string `yaml:"kube_config_dir"`
-			}
-			if err := yaml.Unmarshal(data, &defaults); err != nil {
-				return fmt.Errorf("decode Kubespray structured authentication defaults: %w", err)
-			}
-			if defaults.KubeConfigDir != "/etc/kubernetes" {
-				return fmt.Errorf(
-					"Kubespray structured authentication defaults select kube_config_dir %q, want /etc/kubernetes",
-					defaults.KubeConfigDir)
-			}
-		}
-		for _, evidence := range file.evidence {
-			if !strings.Contains(text, evidence) {
-				return fmt.Errorf("Kubespray %s does not preserve required evidence %q", file.name, evidence)
-			}
-		}
-	}
-	return nil
-}
-
-func readCompatibilityEvidence(path string) ([]byte, error) {
-	const limit = 4 << 20
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, limit+1))
-	closeErr := file.Close()
-	if readErr != nil {
-		return nil, readErr
-	}
-	if closeErr != nil {
-		return nil, closeErr
-	}
-	if len(data) > limit {
-		return nil, errors.New("compatibility evidence exceeds 4 MiB")
-	}
-	return data, nil
-}
 
 func readKubesprayMatrix(checkout string) ([]kubernetesRelease, error) {
 	path := filepath.Join(checkout, "roles", "kubespray_defaults", "vars", "main", "checksums.yml")

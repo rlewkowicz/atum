@@ -30,12 +30,7 @@ type prefixedClaim struct {
 }
 
 type anonymousAuth struct {
-	Enabled    bool                     `json:"enabled"`
-	Conditions []anonymousAuthCondition `json:"conditions"`
-}
-
-type anonymousAuthCondition struct {
-	Path string `json:"path"`
+	Enabled bool `json:"enabled"`
 }
 
 type kubesprayOIDCProjection struct {
@@ -105,10 +100,7 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 			string(service.RootCAPEM),
 		),
 		Anonymous: anonymousAuth{
-			Enabled: true,
-			Conditions: []anonymousAuthCondition{
-				{Path: "/healthz"},
-			},
+			Enabled: false,
 		},
 	}, nil
 }
