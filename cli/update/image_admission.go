@@ -636,6 +636,7 @@ func applyCompatibilityIdentity(image *config.Image, bakeTarget string) {
 		image.License = "AGPL-3.0-only AND Apache-2.0"
 		image.Provenance = strings.Join([]string{
 			image.Provenance,
+			"https://github.com/grafana/piechart-panel",
 			"https://github.com/grafana/grafana-polystat-panel",
 			"https://github.com/RedisGrafana/grafana-redis-datasource",
 		}, ";")
@@ -2937,16 +2938,20 @@ func compatibilityBuildRecipe(
 	}
 	const dockerfile = "platform/build/docker/Dockerfile.delivery"
 	if requirementsOnly(requirements, "path", map[string]struct{}{
+		"/var/lib/bb-plugins/piechart-panel":   {},
 		"/var/lib/bb-plugins/polystat-panel":   {},
 		"/var/lib/bb-plugins/redis-datasource": {},
 	}) && requirementsContain(requirements,
-		"path", "/var/lib/bb-plugins/polystat-panel") &&
+		"path", "/var/lib/bb-plugins/piechart-panel") &&
+		requirementsContain(requirements,
+			"path", "/var/lib/bb-plugins/polystat-panel") &&
 		requirementsContain(requirements,
 			"path", "/var/lib/bb-plugins/redis-datasource") {
 		return "grafana-plugins", []string{
 			dockerfile,
 			buildBase,
 			"platform/build/compat/debian",
+			"https://github.com/grafana/piechart-panel/releases/download/v1.6.4/grafana-piechart-panel-1.6.4.zip#sha256:c8637c0331eb0270cb127e19ea0d839b2b4107aecb27ed518d0794d90ffcb52e",
 			"https://github.com/grafana/grafana-polystat-panel/releases/download/v2.1.16/grafana-polystat-panel-2.1.16.zip#sha256:3e1791f83b4db03134dac24521a52407c1990a1b56356dc440580ee4664f214c",
 			"https://github.com/RedisGrafana/grafana-redis-datasource/releases/download/v2.2.0/redis-datasource-2.2.0.zip#sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f501a8ab",
 		}, nil

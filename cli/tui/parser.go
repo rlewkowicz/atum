@@ -389,13 +389,13 @@ func (parser *outputParser) observeSeedPlane(session *Session, line string) bool
 			{id: "seed-harbor", label: "Seed Harbor"},
 		} {
 			session.reportUnlocked(progress.Event{
-				Phase: progress.Infrastructure,
-				ID: item.id,
-				Label: item.label,
-				Detail: message,
-				State: progress.Running,
+				Phase:        progress.Infrastructure,
+				ID:           item.id,
+				Label:        item.label,
+				Detail:       message,
+				State:        progress.Running,
 				BytesCurrent: current,
-				BytesTotal: total,
+				BytesTotal:   total,
 			})
 		}
 	case strings.HasPrefix(lower, "preparing harbor"):

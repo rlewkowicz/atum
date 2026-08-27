@@ -155,6 +155,13 @@ func projectWithSourceAdmissionFailure(
 	if err := mirrorProjectFixture(root, fixtureRoot); err != nil {
 		t.Fatalf("mirror project fixture: %v", err)
 	}
+	if err := mirrorResolvedChartArtifacts(
+		root,
+		fixtureRoot,
+		project.Lock.Resolved.Artifacts,
+	); err != nil {
+		t.Fatalf("mirror resolved chart artifacts: %v", err)
+	}
 	repository, err := git.PlainInit(fixtureRoot, false)
 	if err != nil {
 		t.Fatalf("initialize fixture Git index: %v", err)
@@ -234,29 +241,59 @@ func mirrorProjectFixture(sourceRoot, fixtureRoot string) error {
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		if err := os.Link(path, target); err == nil {
-			return nil
-		}
-		source, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		destination, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
-		if err != nil {
-			_ = source.Close()
-			return err
-		}
-		_, copyErr := io.Copy(destination, source)
-		closeErr := destination.Close()
-		sourceCloseErr := source.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		return sourceCloseErr
+		return mirrorRegularFile(path, target, info.Mode().Perm())
 	})
+}
+
+func mirrorResolvedChartArtifacts(
+	sourceRoot string,
+	fixtureRoot string,
+	artifacts []config.ChartArtifact,
+) error {
+	for _, artifact := range artifacts {
+		source := filepath.Join(sourceRoot, filepath.FromSlash(artifact.File))
+		target := filepath.Join(fixtureRoot, filepath.FromSlash(artifact.File))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return err
+		}
+		if err := mirrorRegularFile(source, target, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mirrorRegularFile(sourcePath, targetPath string, mode os.FileMode) error {
+	if err := os.Link(sourcePath, targetPath); err == nil {
+		return nil
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	destination, err := os.OpenFile(
+		targetPath,
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		mode,
+	)
+	if err != nil {
+		_ = source.Close()
+		return err
+	}
+	_, copyErr := io.Copy(destination, source)
+	closeErr := destination.Close()
+	sourceCloseErr := source.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return sourceCloseErr
 }
 
 func requiredFixtureFiles(

@@ -268,7 +268,12 @@ func selectedMeshResource(artifact string, resource renderedResource) attributed
 	return attributedMeshResource{Artifact: artifact, Resource: resource}
 }
 
-func observePlatformSecurity(value any, path string, observation *platformSecurityObservation) {
+func observePlatformSecurity(
+	value any,
+	path string,
+	defaultNamespace string,
+	observation *platformSecurityObservation,
+) {
 	object, ok := value.(map[string]any)
 	if !ok {
 		return
@@ -277,7 +282,7 @@ func observePlatformSecurity(value any, path string, observation *platformSecuri
 	apiVersion, _ := object["apiVersion"].(string)
 	kind, _ := object["kind"].(string)
 	name, _ := metadata["name"].(string)
-	namespace, _ := metadata["namespace"].(string)
+	namespace := observedResourceNamespace(kind, metadata, defaultNamespace)
 	if name == "" {
 		return
 	}
@@ -433,7 +438,7 @@ func observePlatformSecurity(value any, path string, observation *platformSecuri
 		}
 		spec, _ := object["spec"].(map[string]any)
 		policy := networkPolicyObservation{
-			Resource: resource, Selector: observeDirectSelector(spec, "podSelector"),
+			Resource: resource, Selector: observeSelector(spec, "podSelector"),
 		}
 		policy.PolicyTypesPresent, policy.PolicyTypesValid, policy.PolicyTypes =
 			observeStringList(spec, "policyTypes")
@@ -445,6 +450,18 @@ func observePlatformSecurity(value any, path string, observation *platformSecuri
 			observation.NetworkPolicies = append(observation.NetworkPolicies, policy)
 		}
 	}
+}
+
+func observedResourceNamespace(
+	kind string,
+	metadata map[string]any,
+	defaultNamespace string,
+) string {
+	namespace, _ := metadata["namespace"].(string)
+	if namespace == "" && kind != "Namespace" {
+		return defaultNamespace
+	}
+	return namespace
 }
 
 func (observation *platformSecurityObservation) admit(
@@ -729,8 +746,8 @@ func observeNetworkRules(
 		for _, raw := range peers {
 			_, ipBlockPresent := raw["ipBlock"]
 			rule.Peers = append(rule.Peers, networkPeerObservation{
-				NamespaceSelector: observeDirectSelector(raw, "namespaceSelector"),
-				PodSelector:       observeDirectSelector(raw, "podSelector"),
+				NamespaceSelector: observeSelector(raw, "namespaceSelector"),
+				PodSelector:       observeSelector(raw, "podSelector"),
 				IPBlockPresent:    ipBlockPresent,
 				OtherFields:       hasOtherFields(raw, "namespaceSelector", "podSelector", "ipBlock"),
 			})

@@ -13,6 +13,22 @@ import (
 
 var linuxAMD64 = v1.Platform{OS: "linux", Architecture: "amd64"}
 
+func isResolvedImageDigest(value string) bool {
+	const prefix = "sha256:"
+	encoded := strings.TrimPrefix(value, prefix)
+	if encoded == value || len(encoded) != 64 || strings.Trim(encoded, "0") == "" {
+		return false
+	}
+	for index := range encoded {
+		character := encoded[index]
+		if (character < '0' || character > '9') &&
+			(character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 type resolvedImageDigests struct {
 	manifest string
 	tag      string

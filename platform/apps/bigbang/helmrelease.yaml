@@ -4,15 +4,10 @@ metadata:
     name: bigbang
     namespace: bigbang
 spec:
-    chart:
-        spec:
-            chart: ./chart
-            interval: 10m
-            reconcileStrategy: Revision
-            sourceRef:
-                kind: GitRepository
-                name: bigbang
-                namespace: bigbang
+    chartRef:
+        kind: OCIRepository
+        name: bigbang
+        namespace: bigbang
     driftDetection:
         mode: enabled
     install:
@@ -22,6 +17,18 @@ spec:
             name: RetryOnFailure
             retryInterval: 5m
     interval: 10m
+    postRenderers:
+        - kustomize:
+            patches:
+                - patch: |
+                    - op: add
+                      path: /spec/insecure
+                      value: true
+                  target:
+                    group: source.toolkit.fluxcd.io
+                    kind: HelmRepository
+                    name: atum
+                    version: v1
     releaseName: bigbang
     targetNamespace: bigbang
     timeout: 30m

@@ -37,8 +37,8 @@ func (service *Service) resolveLocalDelivery(
 	if err != nil {
 		return localDelivery{}, err
 	}
-	if len(selectedIDs) != len(project.Desired.Delivery.Images) {
-		return localDelivery{}, fmt.Errorf("publication requires the complete runtime image inventory")
+	if len(selected) != len(project.Desired.Delivery.Images) {
+		return localDelivery{}, fmt.Errorf("publication requires the complete image inventory")
 	}
 	registry, err := atumoci.NewClient(project.Desired.Delivery.Registry, atumoci.Credentials{})
 	if err != nil {

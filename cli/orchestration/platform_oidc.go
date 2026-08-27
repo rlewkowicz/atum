@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"atum/cli/identity"
+	"atum/cli/kube"
 )
 
 type jwtAuthenticator struct {
@@ -30,7 +31,12 @@ type prefixedClaim struct {
 }
 
 type anonymousAuth struct {
-	Enabled bool `json:"enabled"`
+	Enabled    bool                      `json:"enabled"`
+	Conditions [3]anonymousAuthCondition `json:"conditions"`
+}
+
+type anonymousAuthCondition struct {
+	Path string `json:"path"`
 }
 
 type kubesprayOIDCProjection struct {
@@ -92,6 +98,7 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 	if err != nil {
 		return nil, err
 	}
+	healthPaths := kube.ScopedAnonymousHealthPaths()
 	return &kubesprayOIDCProjection{
 		Enabled: true,
 		JWT: contractJWT(
@@ -100,7 +107,12 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 			string(service.RootCAPEM),
 		),
 		Anonymous: anonymousAuth{
-			Enabled: false,
+			Enabled: true,
+			Conditions: [3]anonymousAuthCondition{
+				{Path: healthPaths[0]},
+				{Path: healthPaths[1]},
+				{Path: healthPaths[2]},
+			},
 		},
 	}, nil
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"atum/cli/config"
@@ -122,6 +121,10 @@ func New(options Options) *cobra.Command {
 			if err := a.loadProject(
 				cmd.Context(),
 				commandAnnotation(cmd, "atum.dev/allow-stale") == "true",
+				commandAnnotation(
+					cmd,
+					"atum.dev/allow-missing-generated-identity",
+				) == "true",
 				commandAnnotation(cmd, "atum.dev/allow-missing-flux-secrets") == "true",
 			); err != nil {
 				return err
@@ -249,6 +252,7 @@ func (a *app) configureLogger() error {
 func (a *app) loadProject(
 	ctx context.Context,
 	allowStale bool,
+	allowMissingGeneratedIdentity bool,
 	allowMissingFluxSecrets bool,
 ) error {
 	root, err := config.Discover(a.rootHint)
@@ -264,8 +268,9 @@ func (a *app) loadProject(
 		return fmt.Errorf("recover interrupted upstream update: %w", err)
 	}
 	project, err := config.LoadWithOptions(root, config.LoadOptions{
-		AllowStale:              allowStale,
-		AllowMissingFluxSecrets: allowMissingFluxSecrets,
+		AllowStale:                    allowStale,
+		AllowMissingGeneratedIdentity: allowMissingGeneratedIdentity,
+		AllowMissingFluxSecrets:       allowMissingFluxSecrets,
 	})
 	if err != nil {
 		unlock()
@@ -469,6 +474,11 @@ func (a *app) orchestrationCommand() *cobra.Command {
 			Use:   "prepare",
 			Short: "Hydrate exact Kubespray sources and Python tool caches",
 			Args:  cobra.NoArgs,
+			Annotations: map[string]string{
+				"atum.dev/allow-stale":                      "true",
+				"atum.dev/allow-missing-generated-identity": "true",
+				"atum.dev/allow-missing-flux-secrets":       "true",
+			},
 			RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 				return a.withDashboard(cmd.Context(), "orchestration prepare", tui.ScopeOrchestration, func(ctx context.Context) error {
 					if err := a.checkPreflight(ctx, preflight.OrchestrationPrepare); err != nil {
@@ -703,7 +713,7 @@ func (a *app) ensurePublication(ctx context.Context, scope preflight.Scope) erro
 		progress.Fail(ctx, progress.Platform, "publication", "Publication inputs", err)
 		return err
 	}
-	if err := a.loadProject(ctx, false, false); err != nil {
+	if err := a.loadProject(ctx, false, false, false); err != nil {
 		err = fmt.Errorf("reload declarative state after local publication resolution: %w", err)
 		progress.Fail(ctx, progress.Platform, "publication", "Publication inputs", err)
 		return err

@@ -441,9 +441,9 @@ func requireRegularAt(parent *os.File, name string, required bool) error {
 	return nil
 }
 
-// RenameRegularNoReplace atomically publishes a regular file within one
-// managed directory. It never replaces an existing destination and proves
-// that the published name still identifies the opened source inode.
+// RenameRegularNoReplace atomically publishes a regular file between managed
+// directories on one filesystem. It never replaces an existing destination
+// and proves that the published name still identifies the opened source inode.
 func RenameRegularNoReplace(root, sourceRelative, destinationRelative string) (bool, error) {
 	source, err := Relative(sourceRelative)
 	if err != nil {
@@ -452,9 +452,6 @@ func RenameRegularNoReplace(root, sourceRelative, destinationRelative string) (b
 	destination, err := Relative(destinationRelative)
 	if err != nil {
 		return false, err
-	}
-	if filepath.Dir(source) != filepath.Dir(destination) {
-		return false, fmt.Errorf("managed rename must remain within one directory")
 	}
 	sourceFile, err := OpenRegular(root, source)
 	if err != nil {
@@ -469,19 +466,19 @@ func RenameRegularNoReplace(root, sourceRelative, destinationRelative string) (b
 	if err != nil {
 		return false, err
 	}
-	parentHandle, err := pathrs.OpenInRoot(root, filepath.Dir(source))
+	sourceParent, err := openParentDirectory(root, source)
 	if err != nil {
 		return false, err
 	}
-	defer parentHandle.Close()
-	parent, err := pathrs.Reopen(parentHandle, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC)
+	defer sourceParent.Close()
+	destinationParent, err := openManagedParent(root, destination)
 	if err != nil {
 		return false, err
 	}
-	defer parent.Close()
+	defer destinationParent.directory.Close()
 	if err := unix.Renameat2(
-		int(parent.Fd()), filepath.Base(source),
-		int(parent.Fd()), filepath.Base(destination),
+		int(sourceParent.Fd()), filepath.Base(source),
+		int(destinationParent.directory.Fd()), destinationParent.name,
 		unix.RENAME_NOREPLACE,
 	); err != nil {
 		if errors.Is(err, unix.EEXIST) {
@@ -504,8 +501,13 @@ func RenameRegularNoReplace(root, sourceRelative, destinationRelative string) (b
 	if !os.SameFile(sourceInfo, publishedInfo) {
 		return false, fmt.Errorf("managed file %s changed while it was published", destination)
 	}
-	if err := unix.Fsync(int(parent.Fd())); err != nil {
-		return false, fmt.Errorf("sync parent for %s: %w", destination, err)
+	if err := unix.Fsync(int(destinationParent.directory.Fd())); err != nil {
+		return false, fmt.Errorf("sync destination parent for %s: %w", destination, err)
+	}
+	if filepath.Dir(source) != filepath.Dir(destination) {
+		if err := unix.Fsync(int(sourceParent.Fd())); err != nil {
+			return false, fmt.Errorf("sync source parent for %s: %w", source, err)
+		}
 	}
 	return true, nil
 }

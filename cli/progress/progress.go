@@ -29,17 +29,17 @@ const (
 )
 
 type Event struct {
-	Phase   Phase
-	ID      string
-	Label   string
-	Detail  string
-	State   State
-	Restart bool
-	Current int
-	Total   int
+	Phase        Phase
+	ID           string
+	Label        string
+	Detail       string
+	State        State
+	Restart      bool
+	Current      int
+	Total        int
 	BytesCurrent int64
 	BytesTotal   int64
-	Time    time.Time
+	Time         time.Time
 }
 
 type Target struct {

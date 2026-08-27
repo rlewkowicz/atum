@@ -1884,10 +1884,8 @@ func ValidateOfficialImageEvidence(
 	if err != nil {
 		return fmt.Errorf("parse official source %q: %w", source, err)
 	}
-	if _, tagged := sourceReference.(name.Tag); !tagged {
-		return fmt.Errorf("official source %q is not tag-addressable", source)
-	}
-	if policy.MutableTagsForbidden && mutableImageReference(source) {
+	_, sourceIsDigest := sourceReference.(name.Digest)
+	if policy.MutableTagsForbidden && !sourceIsDigest && mutableImageReference(source) {
 		return fmt.Errorf("official source %q uses a mutable tag", source)
 	}
 	materialReference, err := name.ParseReference(material)

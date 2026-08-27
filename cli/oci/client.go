@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -202,9 +201,9 @@ func (client *Client) ValidateHelmChart(
 	return nil
 }
 
-// Mirror copies one exact linux/amd64 source manifest into the configured
-// target tag. The declarative updater resolves tags to platform manifests, so
-// a multi-platform index is never accepted as the pinned source digest.
+// Mirror copies the exact source graph into the configured target tag. The
+// root digest is preserved because upstream consumers may pin an image index
+// rather than its selected linux/amd64 child manifest.
 func (client *Client) Mirror(ctx context.Context, source string, digest string, target string) (ocispec.Descriptor, error) {
 	sourceReference, sourceRepository, err := client.repository(source)
 	if err != nil {
@@ -220,7 +219,6 @@ func (client *Client) Mirror(ctx context.Context, source string, digest string, 
 	options := oras.DefaultCopyOptions
 	options.CopyGraphOptions.Concurrency = copyConcurrency
 	options.CopyGraphOptions.MaxMetadataBytes = metadataLimit
-	options.WithTargetPlatform(&ocispec.Platform{OS: "linux", Architecture: "amd64"})
 	descriptor, err := oras.Copy(ctx, sourceRepository, digest, targetRepository, targetReference.Identifier, options)
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("mirror %s@%s to %s: %w", sourceReference.RepositoryName(), digest, target, err)

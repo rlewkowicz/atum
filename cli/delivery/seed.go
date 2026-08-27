@@ -304,45 +304,62 @@ func (service *Service) prepareSeedImages(
 		group.Go(func() error {
 			return runDeliveryWorker(groupContext, func() error {
 				if local != nil {
-				locked, lockedFound := lockedByID[image.ID]
-				output, outputFound := local.mirrors[image.ID]
-				if lockedFound && outputFound && locked.Digest == image.Digest && locked.Delivery.Type == "mirror" &&
-					locked.Delivery.Source == image.Source && locked.Delivery.Digest == image.Digest {
-					inputs[index] = dockerArchiveImage{
-						Reference: image.Source, Descriptor: output.descriptor, Store: output.store,
+					locked, lockedFound := lockedByID[image.ID]
+					output, outputFound := local.mirrors[image.ID]
+					if lockedFound && outputFound && locked.Digest == image.Digest && locked.Delivery.Type == "mirror" &&
+						locked.Delivery.Source == image.Source && locked.Delivery.Digest == image.Digest {
+						manifest, err := atumoci.LinuxAMD64Manifest(
+							groupContext,
+							output.store,
+							output.descriptor,
+						)
+						if err != nil {
+							return fmt.Errorf("select seed image %s: %w", image.ID, err)
+						}
+						inputs[index] = dockerArchiveImage{
+							Reference: image.Source, Descriptor: manifest, Store: output.store,
+						}
+						reportComplete(image.ID)
+						return nil
 					}
-					reportComplete(image.ID)
-					return nil
 				}
-			}
-			descriptor, err := registry.CopyToStore(
-				groupContext,
-				image.Source,
-				image.Digest,
-				extraStore,
-				"atum-seed.local/"+image.ID+":seed",
-				func(delta int64) {
-					progress.UpdateBytes(
-						groupContext,
-						progress.Platform,
-						"seed-artifacts",
-						"Seed artifacts",
-						"caching seed image "+image.ID,
-						int(completed.Load()),
-						len(images),
-						copiedBytes.Add(delta),
-						0,
-					)
-				},
-			)
-			if err != nil {
-				return err
-			}
-			if err := atumoci.ValidateLinuxAMD64Manifest(groupContext, extraStore, descriptor); err != nil {
-				return fmt.Errorf("validate seed image %s: %w", image.ID, err)
-			}
-			inputs[index] = dockerArchiveImage{Reference: image.Source, Descriptor: descriptor, Store: extraStore}
-			reportComplete(image.ID)
+				descriptor, err := registry.CopyToStore(
+					groupContext,
+					image.Source,
+					image.Digest,
+					extraStore,
+					"atum-seed.local/"+image.ID+":seed",
+					func(delta int64) {
+						progress.UpdateBytes(
+							groupContext,
+							progress.Platform,
+							"seed-artifacts",
+							"Seed artifacts",
+							"caching seed image "+image.ID,
+							int(completed.Load()),
+							len(images),
+							copiedBytes.Add(delta),
+							0,
+						)
+					},
+				)
+				if err != nil {
+					return err
+				}
+				manifest, err := atumoci.LinuxAMD64Manifest(
+					groupContext,
+					extraStore,
+					descriptor,
+				)
+				if err != nil {
+					return fmt.Errorf("select seed image %s: %w", image.ID, err)
+				}
+				inputs[index] = dockerArchiveImage{
+					Reference:  image.Source,
+					Descriptor: manifest,
+					Store:      extraStore,
+				}
+				reportComplete(image.ID)
 				return nil
 			})
 		})
@@ -399,6 +416,16 @@ func validateSeedArchive(project *config.Project, seed seedArchive) error {
 		return fmt.Errorf("minimal seed artifact path is not portable")
 	}
 	return nil
+}
+
+func validArchive(identity archiveIdentity, expectedFile string) bool {
+	if identity.File != expectedFile || identity.Size <= 0 ||
+		len(identity.SHA256) != sha256.Size*2 ||
+		strings.ToLower(identity.SHA256) != identity.SHA256 {
+		return false
+	}
+	decoded, err := hex.DecodeString(identity.SHA256)
+	return err == nil && len(decoded) == sha256.Size
 }
 
 func copyVerified(
@@ -460,8 +487,8 @@ func copyVerified(
 		)
 	}
 	return archiveIdentity{
-		File: artifactPath,
+		File:   artifactPath,
 		SHA256: actual,
-		Size: size,
+		Size:   size,
 	}, nil
 }

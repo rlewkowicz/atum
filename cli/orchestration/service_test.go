@@ -25,7 +25,7 @@ func (runner *preparationRunner) Run(context.Context, process.Command) error {
 	return nil
 }
 
-func TestPrepareReleaseRejectsUncredentialedLockedKubesprayBeforeToolMutation(t *testing.T) {
+func TestPrepareReleaseRejectsUnscopedAnonymousKubesprayBeforeToolMutation(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -40,6 +40,7 @@ kube_apiserver_use_authentication_config_file: false
 kube_apiserver_authentication_config_api_version: "{{ 'v1beta1' if kube_version is version('1.34.0', '<') else 'v1' }}"
 kube_apiserver_authentication_config_anonymous:
   enabled: true
+  conditions: []
 kube_apiserver_authentication_config_jwt: []
 `,
 		filepath.Join("roles", "kubespray_defaults", "vars", "main", "checksums.yml"): `
@@ -103,7 +104,7 @@ kubectl_checksums:
 		filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"): `
 - name: Control plane | wait for the apiserver to be running
   uri:
-    url: "{{ kube_apiserver_endpoint }}/healthz"
+    url: "{{ kube_apiserver_endpoint }}/api"
   listen:
     - Control plane | restart kubelet
     - Control plane | Restart apiserver
@@ -176,8 +177,8 @@ kubectl_checksums:
 	_, err = service.prepareRelease(context.Background(), release, []config.ClusterRelease{release})
 	if err == nil ||
 		!strings.Contains(err.Error(), "locked Kubespray "+version+" ("+commit.String()+") for Kubernetes 1.35.4") ||
-		!strings.Contains(err.Error(), "authenticated control-plane restart API probe") ||
-		!strings.Contains(err.Error(), "client_cert") {
+		!strings.Contains(err.Error(), "scoped-anonymous control-plane restart API probe") ||
+		!strings.Contains(err.Error(), `/healthz`) {
 		t.Fatalf("locked source admission error = %v", err)
 	}
 	if runner.calls != 0 {

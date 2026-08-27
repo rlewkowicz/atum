@@ -14,9 +14,6 @@ func resolveSelection(project *config.Project, graphSHA string) ([]selectedImage
 	}
 	selected := make([]selectedImage, 0, len(project.Desired.Delivery.Images))
 	for _, image := range project.Desired.Delivery.Images {
-		if !image.Runtime {
-			continue
-		}
 		resolved, err := config.ResolveDelivery(image, profile, graphSHA)
 		if err != nil {
 			return nil, fmt.Errorf("resolve delivery for %s: %w", image.ID, err)

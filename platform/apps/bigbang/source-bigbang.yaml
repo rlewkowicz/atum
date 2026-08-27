@@ -1,12 +1,15 @@
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
+kind: OCIRepository
 metadata:
     name: bigbang
     namespace: bigbang
 spec:
+    insecure: true
     interval: 10m
+    layerSelector:
+        mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+        operation: copy
+    provider: generic
     ref:
-        commit: 5a6955fe38f6e7506c49208f629c3979d5aa424c
-        tag: 3.31.0
-    timeout: 5m
-    url: http://10.77.0.9:3000/atum-upstreams/bigbang.git
+        tag: 3.31.1
+    url: oci://10.77.0.9:32443/charts/bigbang

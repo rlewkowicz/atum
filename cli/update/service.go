@@ -1167,7 +1167,7 @@ func (service *Service) resolveKubernetesCandidates(
 			return nil, err
 		}
 		for _, kubernetes := range compatible {
-			if err := kube.ValidateKubesprayNoAnonymousLifecycle(
+			if err := kube.ValidateKubesprayScopedAnonymousLifecycle(
 				candidate.Checkout,
 				kubernetes.Version,
 			); err != nil {

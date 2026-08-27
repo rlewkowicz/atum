@@ -170,12 +170,12 @@ func (service Service) prepareRelease(
 		return Toolchain{}, err
 	}
 	for _, locked := range checksumReleases {
-		if err := kube.ValidateKubesprayNoAnonymousLifecycle(
+		if err := kube.ValidateKubesprayScopedAnonymousLifecycle(
 			source,
 			locked.Kubernetes,
 		); err != nil {
 			return Toolchain{}, fmt.Errorf(
-				"locked Kubespray %s (%s) for Kubernetes %s fails no-anonymous lifecycle admission: %w",
+				"locked Kubespray %s (%s) for Kubernetes %s fails scoped-anonymous lifecycle admission: %w",
 				locked.Kubespray.Version,
 				locked.Kubespray.Commit,
 				locked.Kubernetes,

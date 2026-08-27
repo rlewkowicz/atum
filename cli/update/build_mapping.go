@@ -49,7 +49,7 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 		if image.ID == "operator-builder" &&
 			image.Delivery.Default.Type == "mirror" &&
 			image.Delivery.Default.Source != "" &&
-			strings.HasPrefix(image.Delivery.Default.Digest, "sha256:") {
+			isResolvedImageDigest(image.Delivery.Default.Digest) {
 			operatorBuilder = image.Delivery.Default.Source + "@" +
 				image.Delivery.Default.Digest
 			break

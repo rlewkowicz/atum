@@ -1,8 +1,6 @@
 package update
 
 import (
-	"strings"
-
 	"atum/cli/config"
 )
 
@@ -22,23 +20,22 @@ func resetRenderedImageInventory(desired *config.Document) {
 }
 
 func ensureOperatorImages(desired *config.Document) {
-	byID := make(map[string]struct{}, len(desired.Delivery.Images))
-	for _, image := range desired.Delivery.Images { byID[image.ID] = struct{}{} }
+	byID := make(map[string]int, len(desired.Delivery.Images))
+	for index := range desired.Delivery.Images {
+		byID[desired.Delivery.Images[index].ID] = index
+	}
 	prefix := desired.Delivery.Policy.RuntimeRegistryPrefix
-	if _, exists := byID["operator-builder"]; !exists {
-		desired.Delivery.Images = append(desired.Delivery.Images, config.Image{
+	canonical := []config.Image{
+		{
 			ID: "operator-builder", Family: "build-system", Version: "1.26.0",
 			Target: prefix + "operator-builder:1.26.0", Scopes: []string{"build-system"},
 			Runtime: false, License: "BSD-3-Clause", Provenance: "docker.io/library/golang",
 			Consumers: []string{"configuration/atum-operator"}, BigBangRefs: []string{},
 			Discovery: "configuration", Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
 				Type: "mirror", Source: "docker.io/library/golang:1.26.0-alpine",
-				Digest: "sha256:" + strings.Repeat("0", 64),
 			}},
-		})
-	}
-	if _, exists := byID["atum-operator"]; !exists {
-		desired.Delivery.Images = append(desired.Delivery.Images, config.Image{
+		},
+		{
 			ID: "atum-operator", Family: "platform-control", Version: "0.1.0",
 			Target: prefix + "atum-operator:0.1.0", Scopes: []string{"bigbang"},
 			Runtime: true, License: "Apache-2.0", Provenance: "https://github.com/rlewkowicz/atum",
@@ -47,6 +44,14 @@ func ensureOperatorImages(desired *config.Document) {
 				Type: "build", BakeTarget: "atum-operator",
 				Materials: []string{"platform/build/docker/Dockerfile.operator", "cmd/atum-operator", "operator", "go.mod", "go.sum"},
 			}},
-		})
+		},
+	}
+	for _, image := range canonical {
+		if index, exists := byID[image.ID]; exists {
+			desired.Delivery.Images[index] = image
+			continue
+		}
+		byID[image.ID] = len(desired.Delivery.Images)
+		desired.Delivery.Images = append(desired.Delivery.Images, image)
 	}
 }

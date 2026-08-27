@@ -49,7 +49,7 @@ type UpgradePlan struct {
 type clusterClient = kube.Observer
 
 func (service Service) ValidatePlatformPrerequisites(ctx context.Context) error {
-	client, state, err := service.validatedPlatformState(ctx)
+	client, _, err := service.validatedPlatformState(ctx)
 	if err != nil {
 		return err
 	}

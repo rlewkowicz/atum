@@ -36,15 +36,15 @@ func TestProgressRenderingIncludesItemsAndBytes(t *testing.T) {
 	t.Parallel()
 
 	event := progress.Event{
-		Phase: progress.Platform,
-		ID: "harbor-publication",
-		Label: "Harbor publication",
-		Detail: "publishing",
-		State: progress.Running,
-		Current: 3,
-		Total: 8,
+		Phase:        progress.Platform,
+		ID:           "harbor-publication",
+		Label:        "Harbor publication",
+		Detail:       "publishing",
+		State:        progress.Running,
+		Current:      3,
+		Total:        8,
 		BytesCurrent: 1536,
-		BytesTotal: 4096,
+		BytesTotal:   4096,
 	}
 	if compact := compactEvent(event); !strings.Contains(compact, "3/8") ||
 		!strings.Contains(compact, "1.5 KiB/4.0 KiB") {

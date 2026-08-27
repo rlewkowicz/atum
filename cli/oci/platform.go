@@ -62,6 +62,56 @@ func ValidateLinuxAMD64(ctx context.Context, source content.ReadOnlyStorage, roo
 	return err
 }
 
+// LinuxAMD64Manifest validates an image graph and returns its one runnable
+// linux/amd64 manifest. This is used only at single-platform serialization
+// boundaries such as a Docker archive; registry publication retains root.
+func LinuxAMD64Manifest(
+	ctx context.Context,
+	source content.ReadOnlyStorage,
+	root ocispec.Descriptor,
+) (ocispec.Descriptor, error) {
+	if err := ValidateLinuxAMD64(ctx, source, root); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	switch root.MediaType {
+	case ocispec.MediaTypeImageManifest, "application/vnd.docker.distribution.manifest.v2+json":
+		return root, nil
+	case ocispec.MediaTypeImageIndex, "application/vnd.docker.distribution.manifest.list.v2+json":
+		data, err := fetchBounded(ctx, source, root)
+		if err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("read OCI index %s: %w", root.Digest, err)
+		}
+		var index ocispec.Index
+		if err := json.Unmarshal(data, &index); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("decode OCI index %s: %w", root.Digest, err)
+		}
+		var selected ocispec.Descriptor
+		matches := 0
+		for _, candidate := range index.Manifests {
+			if candidate.Platform != nil &&
+				candidate.Platform.OS == "linux" &&
+				candidate.Platform.Architecture == "amd64" {
+				selected = candidate
+				matches++
+			}
+		}
+		if matches != 1 {
+			return ocispec.Descriptor{}, fmt.Errorf(
+				"OCI index %s contains %d linux/amd64 manifests, want one",
+				root.Digest,
+				matches,
+			)
+		}
+		return selected, nil
+	default:
+		return ocispec.Descriptor{}, fmt.Errorf(
+			"OCI root %s has unsupported media type %s",
+			root.Digest,
+			root.MediaType,
+		)
+	}
+}
+
 // RuntimeDigestsWithContent validates the complete local image graph while
 // returning the same runtime identities as RuntimeDigests. Shared layers are
 // hashed once across calls made through the same verifier.

@@ -43,13 +43,15 @@ identity and service connections that selected charts cannot express through
 values are expressed through the narrowly typed Atum operator described below;
 they are never an imperative Atum handoff.
 
-Kubespray owns Kubernetes API authentication. Both its legacy kubeadm flag and
-its structured authentication configuration reject anonymous requests. Atum
-selects Kubespray's official resolver mode that leaves host resolver state
-unchanged, so the selected late resolver lifecycle and its unauthenticated API
-health probe are not invoked; pod `clusterDNS` remains configured by
-Kubespray's CoreDNS mode. Terraform, Flux, and the Atum operator do not own or
-transition this policy.
+Kubespray owns Kubernetes API authentication. Its legacy kubeadm flag remains
+false as a fail-closed fallback. The active structured authentication
+configuration enables anonymous requests only for `/healthz`, `/livez`, and
+`/readyz`, which are required by kubeadm's static-pod probes and Kubespray's
+lifecycle checks; anonymous discovery and resource requests remain disabled.
+Atum selects Kubespray's official resolver mode that leaves host resolver
+state unchanged, so its separate late resolver lifecycle is not invoked; pod
+`clusterDNS` remains configured by Kubespray's CoreDNS mode. Terraform, Flux,
+and the Atum operator do not own or transition this policy.
 
 `platform/` is the monorepo representation consumed by Flux from the exact
 `main` branch of this repository on the bastion seed Forgejo instance.
@@ -425,15 +427,15 @@ with native health checks and an in-memory input-consistency check confined to
 that invocation.
 
 Candidate selection verifies the exact Kubespray paths that gate the late
-resolver lifecycle, authenticate the node-label, initial control-plane, and
-before-and-after upgrade API health checks, retain every active caller and
-listener, project CoreDNS to kubelets, and gate the optional local API load
-balancer. If those bounded paths do not prove that every active API probe is
-authenticated or disabled by Atum's official inventory choices, the candidate
-is rejected rather than opening an anonymous endpoint or patching Kubespray.
-The currently pinned Kubespray `v2.29.1`, `v2.30.0`, and `v2.31.0` sources are
-not admissible for this no-anonymous lifecycle because their initial
-control-plane and upgrade probes do not supply client credentials.
+resolver lifecycle, authenticate the node-label checks, constrain the active
+initial-control-plane and before-and-after upgrade checks to `/healthz`,
+retain every active caller and listener, project CoreDNS to kubelets, and gate
+the optional local API load balancer. It also requires Kubernetes' stable
+structured authentication API. A candidate is rejected if an active
+uncredentialed lifecycle check escapes the three-path health allowlist; Atum
+does not patch Kubespray. The pinned Kubespray `v2.29.1`, `v2.30.0`, and
+`v2.31.0` sources are admissible only with Kubernetes 1.34 or newer and the
+canonical scoped-anonymous projection.
 
 Flux and package/controller `Ready` or failure conditions own reconciliation
 completion. Atum does not install Flux twice or infer completion from

@@ -410,7 +410,9 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 	case OrchestrationInventory:
 		return requirementSet{terraform: true}, nil
 	case OrchestrationConverge:
-		return requirementSet{terraform: true, python: true, ssh: true}, nil
+		return requirementSet{
+			terraform: true, python: true, ssh: true, firewall: true,
+		}, nil
 	case OrchestrationAnsible:
 		return requirementSet{python: true, ssh: true}, nil
 	case Delivery:
@@ -436,7 +438,7 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 	case Full:
 		return requirementSet{
 			terraform: true, docker: true, python: true, ssh: true, flux: true,
-			sops: true, localTarget: true,
+			sops: true, localTarget: true, firewall: true,
 		}, nil
 	case AccessDNS:
 		return requirementSet{resolver: true, serviceManager: true, sudo: true}, nil

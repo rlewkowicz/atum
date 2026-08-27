@@ -19,8 +19,8 @@ import (
 const SchemaVersion = "atum.dev/identity/v1"
 
 const (
-	ProfilePrepKustomizationName     = "platform-profile-prep"
-	ProfileAccessKustomizationName   = "platform-profile-access"
+	ProfilePrepKustomizationName   = "platform-profile-prep"
+	ProfileAccessKustomizationName = "platform-profile-access"
 )
 
 var (

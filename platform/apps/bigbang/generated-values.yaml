@@ -1,24 +1,20 @@
 addons:
     authservice:
-        git:
-            branch: main
-            commit: 5fd08540ea1b83d1e697e2f5507b6f04c5cc5c53
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/authservice.git
-            semver: 1.1.5-bb.7
-            tag: ""
+        helmRepo:
+            chartName: authservice
+            repoName: atum
+            tag: 1.1.5-bb.7
+        sourceType: helmRepo
         values:
             image:
                 repository: 10.77.0.9:32443/atum/authservice
                 tag: 1.1.5
     gitlab:
-        git:
-            branch: main
-            commit: f8e82e63650b1783f720fb868eb9ade4f0df3eb3
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/gitlab.git
-            semver: 10.2.4-bb.0
-            tag: ""
+        helmRepo:
+            chartName: gitlab
+            repoName: atum
+            tag: 10.2.4-bb.0
+        sourceType: helmRepo
         values:
             global:
                 certificates:
@@ -80,13 +76,11 @@ addons:
                             repository: 10.77.0.9:32443/atum/cfssl-self-sign
                             tag: v19.2.4
     harbor:
-        git:
-            branch: main
-            commit: d9c43a3ee00b593f308939d6730be8d73773f54f
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/harbor.git
-            semver: 1.19.2-bb.0
-            tag: ""
+        helmRepo:
+            chartName: harbor
+            repoName: atum
+            tag: 1.19.2-bb.0
+        sourceType: helmRepo
         values:
             postgresql:
                 image:
@@ -130,29 +124,23 @@ addons:
                         repository: 10.77.0.9:32443/atum/harbor-trivy-adapter
                         tag: v2.15.2
     headlamp:
-        git:
-            branch: main
-            commit: bdee331b4cba0ddece5b9b2e2b5b72a32f6e5ebd
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/headlamp.git
-            semver: 0.44.0-bb.0
-            tag: ""
+        helmRepo:
+            chartName: headlamp
+            repoName: atum
+            tag: 0.44.0-bb.0
+        sourceType: helmRepo
         values:
             upstream:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/headlamp
                     tag: v0.44.0
-            waitJob:
-                image: 10.77.0.9:32443/atum/kubectl:v1.35.4
     keycloak:
-        git:
-            branch: main
-            commit: 63f3f02f4b5d32f970bb9d4525331cc8e96cd832
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/keycloak.git
-            semver: 7.2.2-bb.1
-            tag: ""
+        helmRepo:
+            chartName: keycloak
+            repoName: atum
+            tag: 7.3.0-bb.0
+        sourceType: helmRepo
         values:
             postgresql:
                 image:
@@ -162,28 +150,24 @@ addons:
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
-                    tag: 26.7.0
+                    tag: 26.7.2
     metricsServer:
-        git:
-            branch: main
-            commit: ac71d009703207024e92f30bb5e38eba7b45043d
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/metrics-server.git
-            semver: 3.13.1-bb.1
-            tag: ""
+        helmRepo:
+            chartName: metrics-server
+            repoName: atum
+            tag: 3.13.1-bb.1
+        sourceType: helmRepo
         values:
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/metrics-server
                     tag: v0.8.1
     vault:
-        git:
-            branch: main
-            commit: 51721eb137561b518f22cba0e2e28a7610c03043
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/vault.git
-            semver: 0.34.0-bb.0
-            tag: ""
+        helmRepo:
+            chartName: vault
+            repoName: atum
+            tag: 0.34.0-bb.0
+        sourceType: helmRepo
         values:
             upstream:
                 injector:
@@ -198,26 +182,22 @@ addons:
                         repository: 10.77.0.9:32443/atum/vault
                         tag: 1.21.4
 fluentbit:
-    git:
-        branch: main
-        commit: c85d4ca665b9a59645c68f1246ff653d68e5d82b
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/fluentbit.git
-        semver: 0.57.9-bb.0
-        tag: ""
+    helmRepo:
+        chartName: fluentbit
+        repoName: atum
+        tag: 0.57.9-bb.0
+    sourceType: helmRepo
     values:
         upstream:
             image:
                 repository: 10.77.0.9:32443/atum/fluent-bit
                 tag: 5.0.9
 grafana:
-    git:
-        branch: main
-        commit: 70293e4da4fbbfda8ee8676ca70cce67f1b8b381
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/grafana.git
-        semver: 10.5.15-bb.6
-        tag: ""
+    helmRepo:
+        chartName: grafana
+        repoName: atum
+        tag: 10.5.15-bb.6
+    sourceType: helmRepo
     values:
         global:
             imageRegistry: 10.77.0.9:32443
@@ -231,51 +211,41 @@ grafana:
                     registry: 10.77.0.9:32443
                     repository: atum/k8s-sidecar
                     tag: 2.8.1
+helmRepositories:
+    - name: atum
+      password: ""
+      repository: oci://10.77.0.9:32443/charts
+      type: oci
+      username: ""
 istioCRDs:
-    git:
-        branch: main
-        commit: bf478aca88cbeaaa9a6b74579d339333e0e17bb6
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/istio-crds.git
-        semver: 1.30.3-bb.0
-        tag: ""
+    helmRepo:
+        chartName: istio-crds
+        repoName: atum
+        tag: 1.30.3-bb.0
+    sourceType: helmRepo
 istioGateway:
-    git:
-        branch: main
-        commit: 4e0520ebbed7b8be114602a8f7e9993b4a75a9b2
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/istio-gateway.git
-        semver: 1.30.3-bb.0
-        tag: ""
-    values:
-        gateways:
-            passthrough:
-                waitJob:
-                    image: 10.77.0.9:32443/atum/kubectl:v1.35.4
-            public:
-                waitJob:
-                    image: 10.77.0.9:32443/atum/kubectl:v1.35.4
+    helmRepo:
+        chartName: gateway
+        repoName: atum
+        tag: 1.30.3-bb.0
+    sourceType: helmRepo
 istiod:
-    git:
-        branch: main
-        commit: 31fe272d29c84e3c88b586891bde1e00322090a9
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/istiod.git
-        semver: 1.30.3-bb.0
-        tag: ""
+    helmRepo:
+        chartName: istiod
+        repoName: atum
+        tag: 1.30.3-bb.0
+    sourceType: helmRepo
     values:
         upstream:
             global:
                 hub: 10.77.0.9:32443/atum
                 tag: 1.30.3
 kiali:
-    git:
-        branch: main
-        commit: 1febcc0edd7d866441674625e8eb69d1c01ed4dc
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/kiali.git
-        semver: 2.30.0-bb.0
-        tag: ""
+    helmRepo:
+        chartName: kiali
+        repoName: atum
+        tag: 2.30.0-bb.0
+    sourceType: helmRepo
     values:
         upstream:
             cr:
@@ -285,16 +255,12 @@ kiali:
             image:
                 repo: 10.77.0.9:32443/atum/kiali-operator
                 tag: v2.30.0
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl-helper-1-35-7:v1.35.7
 kyverno:
-    git:
-        branch: main
-        commit: bef758d5cb05fd4d9a65785354395ed424d5fe3a
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/kyverno.git
-        semver: 3.8.2-bb.2
-        tag: ""
+    helmRepo:
+        chartName: kyverno
+        repoName: atum
+        tag: 3.8.2-bb.2
+    sourceType: helmRepo
     values:
         global:
             image:
@@ -327,24 +293,17 @@ kyverno:
                     repository: atum/kyverno-reports-controller
                     tag: v1.18.2
 kyvernoPolicies:
-    git:
-        branch: main
-        commit: 4a5b32d4b3dda100b661ca04a9f4608705c9224e
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/kyverno-policies.git
-        semver: 3.3.4-bb.87
-        tag: ""
-    values:
-        waitJob:
-            image: 10.77.0.9:32443/atum/kubectl-helper-1-34-11:v1.34.11
+    helmRepo:
+        chartName: kyverno-policies
+        repoName: atum
+        tag: 3.3.4-bb.87
+    sourceType: helmRepo
 kyvernoReporter:
-    git:
-        branch: main
-        commit: 9f0d6c810035b09b8e232c305a1ca413ff354347
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/kyverno-reporter.git
-        semver: 3.9.0-bb.1
-        tag: ""
+    helmRepo:
+        chartName: kyverno-reporter
+        repoName: atum
+        tag: 3.9.0-bb.1
+    sourceType: helmRepo
     values:
         upstream:
             image:
@@ -363,13 +322,11 @@ kyvernoReporter:
                     repository: atum/policy-reporter-ui
                     tag: 2.7.1
 monitoring:
-    git:
-        branch: main
-        commit: f6c4fad5f5a89f2b33c5fdadc557f7f7a8d3117a
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/monitoring.git
-        semver: 88.3.0-bb.0
-        tag: ""
+    helmRepo:
+        chartName: monitoring
+        repoName: atum
+        tag: 88.3.0-bb.0
+    sourceType: helmRepo
     values:
         upstream:
             alertmanager:
@@ -414,28 +371,59 @@ monitoring:
                     registry: 10.77.0.9:32443
                     repository: atum/thanos
                     tag: v0.42.4
+offline: true
 packages:
+    cert-manager:
+        bbCommonValues: false
+        enabled: true
+        helmRepo:
+            chartName: cert-manager
+            repoName: atum
+            tag: v1.21.1
+        istio:
+            injection: disabled
+        namespace:
+            name: cert-manager
+        sourceType: helmRepo
+        values:
+            acmesolver:
+                image:
+                    repository: 10.77.0.9:32443/atum/cert-manager-acmesolver
+                    tag: v1.21.1
+            cainjector:
+                image:
+                    repository: 10.77.0.9:32443/atum/cert-manager-cainjector
+                    tag: v1.21.1
+            crds:
+                enabled: true
+            image:
+                repository: 10.77.0.9:32443/atum/cert-manager-controller
+                tag: v1.21.1
+            startupapicheck:
+                image:
+                    repository: 10.77.0.9:32443/atum/cert-manager-startupapicheck
+                    tag: v1.21.1
+            webhook:
+                image:
+                    repository: 10.77.0.9:32443/atum/cert-manager-webhook
+                    tag: v1.21.1
     cloudnative-pg:
-        git:
-            branch: main
-            commit: 8067614001663dba175f5d229c9e6bb5cb23ccf8
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/cloudnative-pg.git
-            semver: 0.29.0-bb.0
-            tag: ""
+        helmRepo:
+            chartName: cloudnative-pg
+            repoName: atum
+            tag: 0.29.0-bb.0
+        sourceType: helmRepo
         values:
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/cloudnative-pg
                     tag: 1.30.0
     garage:
-        git:
-            branch: main
-            commit: fb39e54e3d4d4263161e53e78f209739346882b2
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/garage.git
-            semver: 0.9.3-bb.2
-            tag: ""
+        helmRepo:
+            chartName: garage
+            repoName: atum
+            tag: 0.9.3-bb.2
+        sourceType: helmRepo
         values:
             garageInit:
                 image:
@@ -450,45 +438,39 @@ packages:
                     tag: 1.37.0
     opensearch:
         helmRepo:
+            chartName: opensearch
+            repoName: atum
             tag: 3.8.0
+        sourceType: helmRepo
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch
                 tag: 3.8.0
     opensearch-dashboards:
         helmRepo:
+            chartName: opensearch-dashboards
+            repoName: atum
             tag: 3.8.0
+        sourceType: helmRepo
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch-dashboards
                 tag: 3.8.0
-    opensearch-operator:
-        helmRepo:
-            tag: 2.8.2
-        values:
-            manager:
-                image:
-                    repository: 10.77.0.9:32443/atum/opensearch-operator
-                    tag: 2.8.0
     postgresql:
-        git:
-            branch: main
-            commit: e5fd7c192b39d7d03d7183c73784cc27f1f0bc79
-            path: charts/cluster
-            repo: http://10.77.0.9:3000/atum-upstreams/postgresql.git
-            semver: cluster-v0.8.1
-            tag: ""
+        helmRepo:
+            chartName: cluster
+            repoName: atum
+            tag: 0.8.1
+        sourceType: helmRepo
         values:
             cluster:
                 imageName: 10.77.0.9:32443/atum/postgresql-17:17
     redis:
-        git:
-            branch: main
-            commit: ce97559691d4b493a44c7f95b5f04f0a19fdebbd
-            path: chart
-            repo: http://10.77.0.9:3000/atum-upstreams/redis.git
-            semver: 27.0.14-bb.0
-            tag: ""
+        helmRepo:
+            chartName: redis
+            repoName: atum
+            tag: 27.0.14-bb.0
+        sourceType: helmRepo
         values:
             upstream:
                 image:
@@ -496,21 +478,17 @@ packages:
                     repository: atum/redis-8-8-0
                     tag: 8.8.0
 prometheusOperatorCRDs:
-    git:
-        branch: main
-        commit: f595b0e3a23e7558895796d9ec810aa7ca3400fa
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/prometheus-operator-crds.git
-        semver: 31.0.1-bb.0
-        tag: ""
+    helmRepo:
+        chartName: prometheus-operator-crds
+        repoName: atum
+        tag: 31.0.1-bb.0
+    sourceType: helmRepo
 tempo:
-    git:
-        branch: main
-        commit: 00e3261d933da31330be94e44a36c19dafaaa865
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/tempo.git
-        semver: 2.1.0-bb.2
-        tag: ""
+    helmRepo:
+        chartName: tempo
+        repoName: atum
+        tag: 2.1.0-bb.2
+    sourceType: helmRepo
     values:
         upstream:
             tempo:
@@ -518,11 +496,8 @@ tempo:
                 repository: atum/tempo
                 tag: 2.10.5
 wrapper:
-    git:
-        branch: main
-        commit: 86b9ecc74169cb4f9635e7a5ed695014390e9efc
-        path: chart
-        repo: http://10.77.0.9:3000/atum-upstreams/wrapper.git
-        semver: 0.4.15
-        tag: ""
-    sourceType: git
+    helmRepo:
+        chartName: wrapper
+        repoName: atum
+        tag: 0.4.15
+    sourceType: helmRepo

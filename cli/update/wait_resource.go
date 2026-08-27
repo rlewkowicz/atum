@@ -15,6 +15,7 @@ type formerWaitObservation struct {
 func observeFormerWaitResource(
 	value any,
 	path string,
+	defaultNamespace string,
 	observation *formerWaitObservation,
 ) {
 	object, ok := value.(map[string]any)
@@ -25,7 +26,7 @@ func observeFormerWaitResource(
 	kind, _ := object["kind"].(string)
 	metadata, _ := object["metadata"].(map[string]any)
 	name, _ := metadata["name"].(string)
-	namespace, _ := metadata["namespace"].(string)
+	namespace := observedResourceNamespace(kind, metadata, defaultNamespace)
 	resource := renderedResource{
 		APIVersion: apiVersion,
 		Kind:       kind,

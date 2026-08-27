@@ -421,7 +421,7 @@ func TestSecurityObservationRejectsOversizedProofInputs(t *testing.T) {
 			test.mutate(object)
 			var observed platformSecurityObservation
 			observePlatformSecurity(
-				object, "opensearch/templates/statefulset.yaml#0", &observed,
+				object, "opensearch/templates/statefulset.yaml#0", "", &observed,
 			)
 			values := validMeshInspections()
 			openSearch := values["chart/opensearch"]
@@ -631,7 +631,7 @@ func TestAuthorizationPolicyObservationRejectsMalformedOrOversizedTopLevel(t *te
 			test.mutate(object)
 			var observed platformSecurityObservation
 			observePlatformSecurity(
-				object, "wrapper/templates/authorizationpolicy.yaml#0", &observed,
+				object, "wrapper/templates/authorizationpolicy.yaml#0", "", &observed,
 			)
 			values := validMeshInspections()
 			wrapper := values["wrapper/wrapper"]

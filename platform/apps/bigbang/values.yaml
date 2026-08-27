@@ -144,6 +144,9 @@ addons:
 
   headlamp:
     enabled: true
+    values:
+      waitJob:
+        enabled: false
 
   keycloak:
     enabled: true
@@ -153,6 +156,22 @@ addons:
     values:
       autoInit:
         enabled: true
+
+istioGateway:
+  values:
+    shared:
+      waitJob:
+        enabled: false
+
+kiali:
+  values:
+    waitJob:
+      enabled: false
+
+kyvernoPolicies:
+  values:
+    waitJob:
+      enabled: false
 
 packages:
   cloudnative-pg:

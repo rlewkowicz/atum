@@ -111,19 +111,56 @@ install -m 0600 "${incoming}/forgejo-compose.yaml" "${runtime_root}/forgejo-comp
 printf 'seed plane: preparing Harbor %s without optional services\n' "${harbor_version}"
 (
   cd "${harbor_root}"
-  ./prepare
+  # Bootstrap Harbor is intentionally private-network HTTP. Cluster TLS is
+  # owned later by Flux, Big Bang cert-manager, and the Atum PKI resources.
+  ./prepare 2> >(
+    sed '/^WARNING:root:WARNING: HTTP protocol is insecure\. Harbor will deprecate http protocol in the future\. Please make sure to upgrade to https$/d' >&2
+  )
 )
 
-docker compose --project-name atum-forgejo --file "${runtime_root}/forgejo-compose.yaml" \
-  up --detach --remove-orphans --pull never
-docker compose --project-name atum-harbor --file "${runtime_root}/harbor/docker-compose.yml" \
-  up --detach --remove-orphans --pull never
+forgejo_compose=(
+  docker compose
+  --project-name atum-forgejo
+  --file "${runtime_root}/forgejo-compose.yaml"
+)
+harbor_compose=(
+  docker compose
+  --project-name atum-harbor
+  --file "${runtime_root}/harbor/docker-compose.yml"
+)
+
+"${forgejo_compose[@]}" up --detach --remove-orphans --pull never
+
+# Harbor's generated Compose file starts core as soon as PostgreSQL's container
+# starts. On a new database, core can exit before PostgreSQL accepts connections;
+# Nginx then retains core's former Docker address. Establish the generated
+# stack's database dependency first so every published Harbor route remains
+# attached to the service name Compose assigned it.
+"${harbor_compose[@]}" up --detach --remove-orphans --pull never postgresql
+
+deadline=$((SECONDS + 900))
+next_report=0
+while ! "${harbor_compose[@]}" exec --no-TTY postgresql \
+  pg_isready --quiet --username postgres --dbname postgres; do
+  if [ "${SECONDS}" -ge "${deadline}" ]; then
+    printf 'seed plane: PostgreSQL readiness timeout\n' >&2
+    "${harbor_compose[@]}" ps >&2 || true
+    exit 1
+  fi
+  if [ "${SECONDS}" -ge "${next_report}" ]; then
+    printf 'seed plane: postgresql=waiting elapsed=%ss\n' "${SECONDS}"
+    next_report=$((SECONDS + 15))
+  fi
+  sleep 3
+done
+
+"${harbor_compose[@]}" up --detach --remove-orphans --pull never
 
 harbor_healthy() {
   docker exec harbor-core /bin/sh -ceu '
     curl --fail --silent --show-error --max-time 3 \
       --user "admin:${HARBOR_ADMIN_PASSWORD}" \
-      http://127.0.0.1:8080/api/v2.0/health
+      http://nginx:8080/api/v2.0/health
   ' |
     python3 -c '
 import json
@@ -144,8 +181,6 @@ raise SystemExit(0 if healthy else 1)
 '
 }
 
-deadline=$((SECONDS + 900))
-next_report=0
 while :; do
   forgejo_state=waiting
   harbor_state=waiting
@@ -161,8 +196,8 @@ while :; do
   if [ "${SECONDS}" -ge "${deadline}" ]; then
     printf 'seed plane: readiness timeout (forgejo=%s harbor=%s)\n' \
       "${forgejo_state}" "${harbor_state}" >&2
-    docker compose --project-name atum-forgejo --file "${runtime_root}/forgejo-compose.yaml" ps >&2 || true
-    docker compose --project-name atum-harbor --file "${runtime_root}/harbor/docker-compose.yml" ps >&2 || true
+    "${forgejo_compose[@]}" ps >&2 || true
+    "${harbor_compose[@]}" ps >&2 || true
     exit 1
   fi
   if [ "${SECONDS}" -ge "${next_report}" ]; then

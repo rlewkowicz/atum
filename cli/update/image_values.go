@@ -97,15 +97,11 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		splitImage("package/harbor", "registry1.dso.mil/ironbank/opensource/redis/redis8-slim", "addons.harbor.values.redis-bb.upstream.image"),
 
 		splitImage("package/headlamp", "registry1.dso.mil/ironbank/opensource/headlamp-k8s/headlamp", "addons.headlamp.values.upstream.image"),
-		fullReference("package/headlamp", "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl", "addons.headlamp.values.waitJob.image"),
-		fullReference("package/istio-gateway", "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl", "istioGateway.values.gateways.public.waitJob.image"),
-		fullReference("package/istio-gateway", "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl", "istioGateway.values.gateways.passthrough.waitJob.image"),
 
 		repositoryTag("package/keycloak", "registry1.dso.mil/ironbank/opensource/keycloak/keycloak", "addons.keycloak.values.upstream.image"),
 		splitImage("package/keycloak", "registry1.dso.mil/ironbank/opensource/postgres/postgresql", "addons.keycloak.values.postgresql.image"),
 
 		repoTag("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator", "kiali.values.upstream.image"),
-		fullReference("package/kiali", "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl", "kiali.values.waitJob.image"),
 		fullReference("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali", "kiali.values.upstream.cr.spec.deployment.image_name"),
 
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre", "kyverno.values.upstream.admissionController.initContainer.image"),
@@ -113,7 +109,6 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller", "kyverno.values.upstream.backgroundController.image"),
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller", "kyverno.values.upstream.cleanupController.image"),
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller", "kyverno.values.upstream.reportsController.image"),
-		fullReference("package/kyverno-policies", "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl", "kyvernoPolicies.values.waitJob.image"),
 
 		splitImage("package/kyverno-reporter", "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter", "kyvernoReporter.values.upstream.image"),
 		splitImage("package/kyverno-reporter", "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui", "kyvernoReporter.values.upstream.ui.image"),

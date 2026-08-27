@@ -6,5 +6,6 @@ resources:
   - prep.yaml
   - platform-profile-prep.yaml
   - bigbang.yaml
+  - platform-certificates.yaml
   - platform-profile-access.yaml
   - atum-operator.yaml

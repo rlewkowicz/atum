@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "44790ef93e2f30d8e582b757a81e8f9803fd32b6075dbd34a7fb7604924ef4a3",
+  "desiredSha256": "5a3971c278de586ef1428b158bd64f1416420b58aee198efc0bd7bd2ebb66854",
   "resolved": {
     "clusterReleases": [
       {
@@ -44,10 +44,942 @@
         }
       }
     ],
+    "kubespray": [
+      {
+        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "kubernetesVersion": "1.33.5",
+        "kubesprayCommit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29",
+        "officialScript": "contrib/offline/generate_list.sh",
+        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
+        "inventoryScope": "full-upstream-offline",
+        "inventorySha256": "581c5280bd42eed773af48ddb80340080659da1a2c0002088256d805cbdcaa01",
+        "officialImages": [
+          "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+          "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+          "quay.io/coreos/etcd:v3.5.25",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator:v1.19.4",
+          "quay.io/cilium/hubble-relay:v1.19.4",
+          "quay.io/cilium/certgen:v0.2.4",
+          "quay.io/cilium/hubble-ui:v0.13.3",
+          "quay.io/cilium/hubble-ui-backend:v0.13.3",
+          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+          "docker.io/flannel/flannel:v0.27.3",
+          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+          "quay.io/calico/node:v3.30.5",
+          "quay.io/calico/cni:v3.30.5",
+          "quay.io/calico/kube-controllers:v3.30.5",
+          "quay.io/calico/typha:v3.30.5",
+          "quay.io/calico/apiserver:v3.30.5",
+          "docker.io/kubeovn/kube-ovn:v1.12.21",
+          "docker.io/cloudnativelabs/kube-router:v2.1.1",
+          "registry.k8s.io/pause:3.10",
+          "ghcr.io/kube-vip/kube-vip:v0.8.9",
+          "docker.io/library/nginx:1.28.0-alpine",
+          "docker.io/library/haproxy:3.2.4-alpine",
+          "registry.k8s.io/coredns/coredns:v1.12.0",
+          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+          "docker.io/library/registry:2.8.1",
+          "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+          "docker.io/rancher/local-path-provisioner:v0.0.32",
+          "registry.k8s.io/ingress-nginx/controller:v1.13.3",
+          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+          "quay.io/jetstack/cert-manager-controller:v1.15.3",
+          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
+          "registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
+          "registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
+          "registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
+          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+          "registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
+          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+          "docker.io/kubernetesui/dashboard:v2.7.0",
+          "docker.io/kubernetesui/metrics-scraper:v1.0.8",
+          "quay.io/metallb/speaker:v0.13.9",
+          "quay.io/metallb/controller:v0.13.9",
+          "registry.k8s.io/kube-apiserver:v1.33.5",
+          "registry.k8s.io/kube-controller-manager:v1.33.5",
+          "registry.k8s.io/kube-scheduler:v1.33.5",
+          "registry.k8s.io/kube-proxy:v1.33.5"
+        ],
+        "files": [
+          {
+            "variable": "calico_crds_download_url",
+            "source": "https://github.com/projectcalico/calico/archive/v3.30.5.tar.gz",
+            "localPath": "github.com/projectcalico/calico/archive/v3.30.5.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/3a38f91596c204b43c70f642a3e686d8c3fbfdfa5caa7824b716aa2f4a4e568b",
+            "sha256": "3a38f91596c204b43c70f642a3e686d8c3fbfdfa5caa7824b716aa2f4a4e568b",
+            "size": 5917779
+          },
+          {
+            "variable": "calicoctl_download_url",
+            "source": "https://github.com/projectcalico/calico/releases/download/v3.30.5/calicoctl-linux-amd64",
+            "localPath": "github.com/projectcalico/calico/releases/download/v3.30.5/calicoctl-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/6cdfb17b0276f648f4fdb051a5d75617a50b3c328d4cccfc40d087b96c361d80",
+            "sha256": "6cdfb17b0276f648f4fdb051a5d75617a50b3c328d4cccfc40d087b96c361d80",
+            "size": 81774144
+          },
+          {
+            "variable": "ciliumcli_download_url",
+            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "size": 62892239
+          },
+          {
+            "variable": "cni_download_url",
+            "source": "https://github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
+            "localPath": "github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
+            "sha256": "ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
+            "size": 55350615
+          },
+          {
+            "variable": "containerd_download_url",
+            "source": "https://github.com/containerd/containerd/releases/download/v2.1.5/containerd-2.1.5-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/containerd/releases/download/v2.1.5/containerd-2.1.5-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/403af72d9f956ed8a5ad5b0ac0f1e8e371a1488f2b9edf9b4ba13db0653936ea",
+            "sha256": "403af72d9f956ed8a5ad5b0ac0f1e8e371a1488f2b9edf9b4ba13db0653936ea",
+            "size": 33995053
+          },
+          {
+            "variable": "cri_dockerd_download_url",
+            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd-0.3.21.amd64.tgz",
+            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd-0.3.21.amd64.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/6c35838bc4b1aef74f9113670e114ca729a5f295f9457b226791e18e86e91698",
+            "sha256": "6c35838bc4b1aef74f9113670e114ca729a5f295f9457b226791e18e86e91698",
+            "size": 15974505
+          },
+          {
+            "variable": "crictl_download_url",
+            "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.33.0/crictl-v1.33.0-linux-amd64.tar.gz",
+            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.33.0/crictl-v1.33.0-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8307399e714626e69d1213a4cd18c8dec3d0201ecdac009b1802115df8973f0f",
+            "sha256": "8307399e714626e69d1213a4cd18c8dec3d0201ecdac009b1802115df8973f0f",
+            "size": 20370694
+          },
+          {
+            "variable": "crio_download_url",
+            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.33.7.tar.gz",
+            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.33.7.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/e2999436a272c77370241a4f962c80737698dd8c2400fe75e5c7cf2142c96001",
+            "sha256": "e2999436a272c77370241a4f962c80737698dd8c2400fe75e5c7cf2142c96001",
+            "size": 114416327
+          },
+          {
+            "variable": "crun_download_url",
+            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "size": 2943736
+          },
+          {
+            "variable": "etcd_download_url",
+            "source": "https://github.com/etcd-io/etcd/releases/download/v3.5.25/etcd-v3.5.25-linux-amd64.tar.gz",
+            "localPath": "github.com/etcd-io/etcd/releases/download/v3.5.25/etcd-v3.5.25-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/168af82b59772e1811a9af7b358d42f5c6df44e0d9767afb006ecf12c4bbd607",
+            "sha256": "168af82b59772e1811a9af7b358d42f5c6df44e0d9767afb006ecf12c4bbd607",
+            "size": 22337715
+          },
+          {
+            "variable": "gateway_api_crds_download_url",
+            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml",
+            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/97598bf6ab3b33b9b5c5432bdd24de091e4e9c3aa0575ebb0710a2a19cd64d64",
+            "sha256": "97598bf6ab3b33b9b5c5432bdd24de091e4e9c3aa0575ebb0710a2a19cd64d64",
+            "size": 598441
+          },
+          {
+            "variable": "gvisor_containerd_shim_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/containerd-shim-runsc-v1",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/containerd-shim-runsc-v1",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8e41b283300450de24de24d4794f4e957cc116184690d8691dd28946f99bb113",
+            "sha256": "8e41b283300450de24de24d4794f4e957cc116184690d8691dd28946f99bb113",
+            "size": 14152700
+          },
+          {
+            "variable": "gvisor_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/runsc",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/runsc",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/4a83c4e3515bf1baee49d1a30f4452ca7386d767668c8c650ca3f8ec94a0ba58",
+            "sha256": "4a83c4e3515bf1baee49d1a30f4452ca7386d767668c8c650ca3f8ec94a0ba58",
+            "size": 64266402
+          },
+          {
+            "variable": "helm_download_url",
+            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "size": 17831569
+          },
+          {
+            "variable": "kata_containers_download_url",
+            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "size": 425067276
+          },
+          {
+            "variable": "kubeadm_download_url",
+            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubeadm",
+            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubeadm",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
+            "sha256": "6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
+            "size": 74547384
+          },
+          {
+            "variable": "kubectl_download_url",
+            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl",
+            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc",
+            "sha256": "6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc",
+            "size": 60133560
+          },
+          {
+            "variable": "kubelet_download_url",
+            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubelet",
+            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubelet",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
+            "sha256": "8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
+            "size": 81715492
+          },
+          {
+            "variable": "nerdctl_download_url",
+            "source": "https://github.com/containerd/nerdctl/releases/download/v2.1.6/nerdctl-2.1.6-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/nerdctl/releases/download/v2.1.6/nerdctl-2.1.6-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/22857b373edea479a4534ba62cae1c77f2af38f0aac4c91c1c68cf09e29d6f9e",
+            "sha256": "22857b373edea479a4534ba62cae1c77f2af38f0aac4c91c1c68cf09e29d6f9e",
+            "size": 11096277
+          },
+          {
+            "variable": "prometheus_operator_crds_download_url",
+            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
+            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
+            "sha256": "8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
+            "size": 1447589
+          },
+          {
+            "variable": "runc_download_url",
+            "source": "https://github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
+            "localPath": "github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
+            "sha256": "5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
+            "size": 13031032
+          },
+          {
+            "variable": "skopeo_download_url",
+            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "size": 39225704
+          },
+          {
+            "variable": "youki_download_url",
+            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "size": 2766029
+          },
+          {
+            "variable": "yq_download_url",
+            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "size": 9928856
+          }
+        ],
+        "images": [
+          "kubespray-apiserver-85ba6a8d3824",
+          "kubespray-aws-alb-ingress-controller-29b987dd4951",
+          "kubespray-aws-ebs-csi-driver-61044fd4e148",
+          "kubespray-cert-manager-cainjector-142b028ec4b1",
+          "kubespray-cert-manager-controller-aa76aaadadd6",
+          "kubespray-cert-manager-webhook-05059ded9a52",
+          "kubespray-certgen-e453d89b438f",
+          "kubespray-cilium-5651485d8c29",
+          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cinder-csi-plugin-fafe59d0f62e",
+          "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
+          "kubespray-cni-2a722760a7e1",
+          "kubespray-controller-27840469ef8d",
+          "kubespray-controller-74a944e7ad97",
+          "kubespray-coredns-19e9472ad36d",
+          "kubespray-csi-attacher-c020451f8db4",
+          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
+          "kubespray-csi-provisioner-b1c0015e8797",
+          "kubespray-csi-resizer-cbf66a4bf48d",
+          "kubespray-csi-snapshotter-9b1b230f4947",
+          "kubespray-dashboard-d40878c7d46f",
+          "kubespray-etcd-3c5d6be819ca",
+          "kubespray-flannel-4a66f2488d69",
+          "kubespray-flannel-cni-plugin-628a10cfbf92",
+          "kubespray-haproxy-e759b61b7326",
+          "kubespray-hubble-relay-af135d8ceffb",
+          "kubespray-hubble-ui-aa9daec9d667",
+          "kubespray-hubble-ui-backend-80373e4df8f7",
+          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
+          "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
+          "kubespray-k8s-netchecker-server-0648e3074092",
+          "kubespray-kube-apiserver-7a7a5e018a18",
+          "kubespray-kube-controller-manager-200d516fa1b9",
+          "kubespray-kube-controllers-569b5b422819",
+          "kubespray-kube-ovn-d5b7e3e6a128",
+          "kubespray-kube-proxy-2a95f8e3469a",
+          "kubespray-kube-router-a15345e0ac99",
+          "kubespray-kube-scheduler-98ff489f17d0",
+          "kubespray-kube-vip-f8a2ed10eb61",
+          "kubespray-local-path-provisioner-bea410f5d32c",
+          "kubespray-local-volume-provisioner-647b2d0ec790",
+          "kubespray-metrics-scraper-411975044da7",
+          "kubespray-metrics-server-78a748c4b508",
+          "kubespray-multus-cni-da567c68368a",
+          "kubespray-nginx-4fbf2a6c1299",
+          "kubespray-node-f33bf95c654d",
+          "kubespray-operator-7c35bff2c3cc",
+          "kubespray-operator-generic-c6b4e2064d8e",
+          "kubespray-pause-6f731803067f",
+          "kubespray-registry-8a454201835a",
+          "kubespray-snapshot-controller-714b107c1ee8",
+          "kubespray-speaker-665977c8efe1",
+          "kubespray-typha-e994ea476f5f"
+        ]
+      },
+      {
+        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "kubernetesVersion": "1.34.3",
+        "kubesprayCommit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a",
+        "officialScript": "contrib/offline/generate_list.sh",
+        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
+        "inventoryScope": "full-upstream-offline",
+        "inventorySha256": "edba3c6a17eb31f762b104a0c37e20962f0b52843ca4c60fdfdca0cc1fd0912a",
+        "officialImages": [
+          "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+          "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+          "quay.io/coreos/etcd:v3.5.26",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator:v1.19.4",
+          "quay.io/cilium/hubble-relay:v1.19.4",
+          "quay.io/cilium/certgen:v0.2.4",
+          "quay.io/cilium/hubble-ui:v0.13.3",
+          "quay.io/cilium/hubble-ui-backend:v0.13.3",
+          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+          "docker.io/flannel/flannel:v0.27.3",
+          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+          "quay.io/calico/node:v3.30.6",
+          "quay.io/calico/cni:v3.30.6",
+          "quay.io/calico/kube-controllers:v3.30.6",
+          "quay.io/calico/typha:v3.30.6",
+          "quay.io/calico/apiserver:v3.30.6",
+          "docker.io/kubeovn/kube-ovn:v1.12.21",
+          "docker.io/cloudnativelabs/kube-router:v2.1.1",
+          "registry.k8s.io/pause:3.10.1",
+          "ghcr.io/kube-vip/kube-vip:v1.0.3",
+          "docker.io/library/nginx:1.28.0-alpine",
+          "docker.io/library/haproxy:3.2.4-alpine",
+          "registry.k8s.io/coredns/coredns:v1.12.1",
+          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+          "docker.io/library/registry:2.8.1",
+          "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+          "docker.io/rancher/local-path-provisioner:v0.0.32",
+          "registry.k8s.io/ingress-nginx/controller:v1.13.3",
+          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+          "quay.io/jetstack/cert-manager-controller:v1.15.3",
+          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
+          "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+          "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+          "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+          "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+          "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+          "docker.io/kubernetesui/dashboard:v2.7.0",
+          "docker.io/kubernetesui/metrics-scraper:v1.0.8",
+          "quay.io/metallb/speaker:v0.13.9",
+          "quay.io/metallb/controller:v0.13.9",
+          "registry.k8s.io/kube-apiserver:v1.34.3",
+          "registry.k8s.io/kube-controller-manager:v1.34.3",
+          "registry.k8s.io/kube-scheduler:v1.34.3",
+          "registry.k8s.io/kube-proxy:v1.34.3"
+        ],
+        "files": [
+          {
+            "variable": "calico_crds_download_url",
+            "source": "https://github.com/projectcalico/calico/archive/v3.30.6.tar.gz",
+            "localPath": "github.com/projectcalico/calico/archive/v3.30.6.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/d61aa5bcddfc78b0094acd54e0358009fa79e1cbe6d8c23bdacb34ff7a2c6c82",
+            "sha256": "d61aa5bcddfc78b0094acd54e0358009fa79e1cbe6d8c23bdacb34ff7a2c6c82",
+            "size": 5947333
+          },
+          {
+            "variable": "calicoctl_download_url",
+            "source": "https://github.com/projectcalico/calico/releases/download/v3.30.6/calicoctl-linux-amd64",
+            "localPath": "github.com/projectcalico/calico/releases/download/v3.30.6/calicoctl-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/2017e19727dca689d8bb73a9d8dff3c6a8ba7d8c75049f99ee207272161b5749",
+            "sha256": "2017e19727dca689d8bb73a9d8dff3c6a8ba7d8c75049f99ee207272161b5749",
+            "size": 81844219
+          },
+          {
+            "variable": "ciliumcli_download_url",
+            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "size": 62892239
+          },
+          {
+            "variable": "cni_download_url",
+            "source": "https://github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
+            "localPath": "github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
+            "sha256": "ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
+            "size": 55350615
+          },
+          {
+            "variable": "containerd_download_url",
+            "source": "https://github.com/containerd/containerd/releases/download/v2.2.1/containerd-2.2.1-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/containerd/releases/download/v2.2.1/containerd-2.2.1-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f5d8e90ecb6c1c7e33ecddf8cc268a93b9e5b54e0e850320d765511d76624f41",
+            "sha256": "f5d8e90ecb6c1c7e33ecddf8cc268a93b9e5b54e0e850320d765511d76624f41",
+            "size": 35057737
+          },
+          {
+            "variable": "cri_dockerd_download_url",
+            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-dockerd-0.3.23.amd64.tgz",
+            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-dockerd-0.3.23.amd64.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/c7fe5db7f9396186193b58ded0e62a31eca7b3c58ad8691d57017986f96482ee",
+            "sha256": "c7fe5db7f9396186193b58ded0e62a31eca7b3c58ad8691d57017986f96482ee",
+            "size": 15665638
+          },
+          {
+            "variable": "crictl_download_url",
+            "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.34.0/crictl-v1.34.0-linux-amd64.tar.gz",
+            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.34.0/crictl-v1.34.0-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/a8ff2a3edb37a98daf3aba7c3b284fe0aa5bff24166d896ab9ef64c8913c9f51",
+            "sha256": "a8ff2a3edb37a98daf3aba7c3b284fe0aa5bff24166d896ab9ef64c8913c9f51",
+            "size": 19610258
+          },
+          {
+            "variable": "crio_download_url",
+            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.34.4.tar.gz",
+            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.34.4.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f6348a781c34b433fe1c5150da3408e51e828b610eacbe734405e9c31136d810",
+            "sha256": "f6348a781c34b433fe1c5150da3408e51e828b610eacbe734405e9c31136d810",
+            "size": 113896815
+          },
+          {
+            "variable": "crun_download_url",
+            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "size": 2943736
+          },
+          {
+            "variable": "etcd_download_url",
+            "source": "https://github.com/etcd-io/etcd/releases/download/v3.5.26/etcd-v3.5.26-linux-amd64.tar.gz",
+            "localPath": "github.com/etcd-io/etcd/releases/download/v3.5.26/etcd-v3.5.26-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/0a682a91201dc8351d507210bc30b021a11e254eab806f03224b51e8fad29abb",
+            "sha256": "0a682a91201dc8351d507210bc30b021a11e254eab806f03224b51e8fad29abb",
+            "size": 22349782
+          },
+          {
+            "variable": "gateway_api_crds_download_url",
+            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml",
+            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/73b91b77f6be023a8c92c969fc664e5bd3b1a28aea59eac9ebc904607354dad2",
+            "sha256": "73b91b77f6be023a8c92c969fc664e5bd3b1a28aea59eac9ebc904607354dad2",
+            "size": 696473
+          },
+          {
+            "variable": "gvisor_containerd_shim_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/containerd-shim-runsc-v1",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/containerd-shim-runsc-v1",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/392284202c14ad273e06312d17778d4227a6568054facab4777d5dadc9be2991",
+            "sha256": "392284202c14ad273e06312d17778d4227a6568054facab4777d5dadc9be2991",
+            "size": 13857159
+          },
+          {
+            "variable": "gvisor_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/runsc",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/runsc",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/0cc6a64b6cc7d6bd468a2c7c1080dc9da527204827ccf2f2d40ba2571f63981f",
+            "sha256": "0cc6a64b6cc7d6bd468a2c7c1080dc9da527204827ccf2f2d40ba2571f63981f",
+            "size": 62595997
+          },
+          {
+            "variable": "helm_download_url",
+            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "size": 17831569
+          },
+          {
+            "variable": "kata_containers_download_url",
+            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "size": 425067276
+          },
+          {
+            "variable": "kubeadm_download_url",
+            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubeadm",
+            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubeadm",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
+            "sha256": "f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
+            "size": 74027192
+          },
+          {
+            "variable": "kubectl_download_url",
+            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubectl",
+            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubectl",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212",
+            "sha256": "ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212",
+            "size": 60563640
+          },
+          {
+            "variable": "kubelet_download_url",
+            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubelet",
+            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubelet",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
+            "sha256": "0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
+            "size": 59203876
+          },
+          {
+            "variable": "nerdctl_download_url",
+            "source": "https://github.com/containerd/nerdctl/releases/download/v2.2.1/nerdctl-2.2.1-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/nerdctl/releases/download/v2.2.1/nerdctl-2.2.1-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/34144de7f12756aa4b9dc42a907fd95b0c5eb82a63566a650ca10c8abe7a26a0",
+            "sha256": "34144de7f12756aa4b9dc42a907fd95b0c5eb82a63566a650ca10c8abe7a26a0",
+            "size": 11362531
+          },
+          {
+            "variable": "prometheus_operator_crds_download_url",
+            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
+            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
+            "sha256": "8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
+            "size": 1447589
+          },
+          {
+            "variable": "runc_download_url",
+            "source": "https://github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
+            "localPath": "github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
+            "sha256": "5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
+            "size": 13031032
+          },
+          {
+            "variable": "skopeo_download_url",
+            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "size": 39225704
+          },
+          {
+            "variable": "youki_download_url",
+            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "size": 2766029
+          },
+          {
+            "variable": "yq_download_url",
+            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "size": 9928856
+          }
+        ],
+        "images": [
+          "kubespray-apiserver-1d7c4ffd1961",
+          "kubespray-aws-alb-ingress-controller-29b987dd4951",
+          "kubespray-aws-ebs-csi-driver-61044fd4e148",
+          "kubespray-cert-manager-cainjector-142b028ec4b1",
+          "kubespray-cert-manager-controller-aa76aaadadd6",
+          "kubespray-cert-manager-webhook-05059ded9a52",
+          "kubespray-certgen-e453d89b438f",
+          "kubespray-cilium-5651485d8c29",
+          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cinder-csi-plugin-fafe59d0f62e",
+          "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
+          "kubespray-cni-255e166abdb6",
+          "kubespray-controller-27840469ef8d",
+          "kubespray-controller-74a944e7ad97",
+          "kubespray-coredns-eb936e6d1fb6",
+          "kubespray-csi-attacher-54214cd5c68a",
+          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
+          "kubespray-csi-provisioner-c95b16a748c1",
+          "kubespray-csi-resizer-17c09eac50f2",
+          "kubespray-csi-snapshotter-0eecf4b68dbb",
+          "kubespray-dashboard-d40878c7d46f",
+          "kubespray-etcd-303eba369353",
+          "kubespray-flannel-4a66f2488d69",
+          "kubespray-flannel-cni-plugin-628a10cfbf92",
+          "kubespray-haproxy-e759b61b7326",
+          "kubespray-hubble-relay-af135d8ceffb",
+          "kubespray-hubble-ui-aa9daec9d667",
+          "kubespray-hubble-ui-backend-80373e4df8f7",
+          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
+          "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
+          "kubespray-k8s-netchecker-server-0648e3074092",
+          "kubespray-kube-apiserver-35a4e8593b81",
+          "kubespray-kube-controller-manager-cb79eac61c34",
+          "kubespray-kube-controllers-b9b25dbd1bb6",
+          "kubespray-kube-ovn-d5b7e3e6a128",
+          "kubespray-kube-proxy-01d2fe37ba1b",
+          "kubespray-kube-router-a15345e0ac99",
+          "kubespray-kube-scheduler-21faa420e1ed",
+          "kubespray-kube-vip-d0dc4887640c",
+          "kubespray-livenessprobe-3f00aa1aa37d",
+          "kubespray-local-path-provisioner-bea410f5d32c",
+          "kubespray-local-volume-provisioner-647b2d0ec790",
+          "kubespray-metrics-scraper-411975044da7",
+          "kubespray-metrics-server-78a748c4b508",
+          "kubespray-multus-cni-da567c68368a",
+          "kubespray-nginx-4fbf2a6c1299",
+          "kubespray-node-117e4c2a0fbf",
+          "kubespray-operator-7c35bff2c3cc",
+          "kubespray-operator-generic-c6b4e2064d8e",
+          "kubespray-pause-6bafff9caf95",
+          "kubespray-registry-8a454201835a",
+          "kubespray-snapshot-controller-714b107c1ee8",
+          "kubespray-speaker-665977c8efe1",
+          "kubespray-typha-a2c9cbcbd89b"
+        ]
+      },
+      {
+        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "kubernetesVersion": "1.35.4",
+        "kubesprayCommit": "1c9add48975060f45396b34d8e022c30d7f80dab",
+        "officialScript": "contrib/offline/generate_list.sh",
+        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
+        "inventoryScope": "full-upstream-offline",
+        "inventorySha256": "05f3980dd933e9e46d89717b6386e955af6a6708e6581122ecb7854f00b8e8f5",
+        "officialImages": [
+          "quay.io/coreos/etcd:v3.6.10",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator:v1.19.4",
+          "quay.io/cilium/hubble-relay:v1.19.4",
+          "quay.io/cilium/certgen:v0.2.4",
+          "quay.io/cilium/hubble-ui:v0.13.3",
+          "quay.io/cilium/hubble-ui-backend:v0.13.3",
+          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+          "docker.io/flannel/flannel:v0.28.4",
+          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+          "quay.io/calico/node:v3.31.5",
+          "quay.io/calico/cni:v3.31.5",
+          "quay.io/calico/kube-controllers:v3.31.5",
+          "quay.io/calico/typha:v3.31.5",
+          "quay.io/calico/apiserver:v3.31.5",
+          "docker.io/kubeovn/kube-ovn:v1.12.21",
+          "docker.io/cloudnativelabs/kube-router:v2.1.1",
+          "registry.k8s.io/pause:3.10.1",
+          "ghcr.io/kube-vip/kube-vip:v1.0.3",
+          "docker.io/library/nginx:1.28.2-alpine",
+          "docker.io/library/haproxy:3.2.13-alpine",
+          "registry.k8s.io/coredns/coredns:v1.12.4",
+          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+          "docker.io/library/registry:2.8.1",
+          "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+          "docker.io/rancher/local-path-provisioner:v0.0.32",
+          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+          "quay.io/jetstack/cert-manager-controller:v1.15.3",
+          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
+          "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+          "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+          "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+          "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+          "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+          "quay.io/metallb/speaker:v0.13.9",
+          "quay.io/metallb/controller:v0.13.9",
+          "registry.k8s.io/kube-apiserver:v1.35.4",
+          "registry.k8s.io/kube-controller-manager:v1.35.4",
+          "registry.k8s.io/kube-scheduler:v1.35.4",
+          "registry.k8s.io/kube-proxy:v1.35.4"
+        ],
+        "files": [
+          {
+            "variable": "calico_crds_download_url",
+            "source": "https://github.com/projectcalico/calico/raw/v3.31.5/manifests/crds.yaml",
+            "localPath": "github.com/projectcalico/calico/raw/v3.31.5/manifests/crds.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/1d6d5e523f92ee1e8227a48c016229c668f94035431b82f19139affeb45dbeff",
+            "sha256": "1d6d5e523f92ee1e8227a48c016229c668f94035431b82f19139affeb45dbeff",
+            "size": 305670
+          },
+          {
+            "variable": "calicoctl_download_url",
+            "source": "https://github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64",
+            "localPath": "github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/d1dd3a3fb2f5640987eab589dc1dcb03c47c11b32bc19a65c45c39421cd887d2",
+            "sha256": "d1dd3a3fb2f5640987eab589dc1dcb03c47c11b32bc19a65c45c39421cd887d2",
+            "size": 82760842
+          },
+          {
+            "variable": "ciliumcli_download_url",
+            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
+            "size": 62892239
+          },
+          {
+            "variable": "cni_download_url",
+            "source": "https://github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-amd64-v1.9.1.tgz",
+            "localPath": "github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-amd64-v1.9.1.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/b98f74a0f8522f0a83867178729c1aa70f2158f90c45a2ca8fa791db1c76b303",
+            "sha256": "b98f74a0f8522f0a83867178729c1aa70f2158f90c45a2ca8fa791db1c76b303",
+            "size": 55418181
+          },
+          {
+            "variable": "containerd_download_url",
+            "source": "https://github.com/containerd/containerd/releases/download/v2.2.3/containerd-2.2.3-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/containerd/releases/download/v2.2.3/containerd-2.2.3-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ca26ef5138f17b847bbeeec36d4bf5e002b54d25858197a870c125d57f44d32f",
+            "sha256": "ca26ef5138f17b847bbeeec36d4bf5e002b54d25858197a870c125d57f44d32f",
+            "size": 35352990
+          },
+          {
+            "variable": "cri_dockerd_download_url",
+            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.24/cri-dockerd-0.3.24.amd64.tgz",
+            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.24/cri-dockerd-0.3.24.amd64.tgz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/dd4b7f514c248a3aaca398f467430a4c58aae9a77ea8b96a2f5b5d6fba0948d1",
+            "sha256": "dd4b7f514c248a3aaca398f467430a4c58aae9a77ea8b96a2f5b5d6fba0948d1",
+            "size": 15672652
+          },
+          {
+            "variable": "crictl_download_url",
+            "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.35.0/crictl-v1.35.0-linux-amd64.tar.gz",
+            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.35.0/crictl-v1.35.0-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/2e141e5b22cb189c40365a11807d69b76b9b3caced89fac2f4ec879408ce2177",
+            "sha256": "2e141e5b22cb189c40365a11807d69b76b9b3caced89fac2f4ec879408ce2177",
+            "size": 19185064
+          },
+          {
+            "variable": "crio_download_url",
+            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.35.0.tar.gz",
+            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.35.0.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/55b6d3e9fc9a5864ab5cdf0b24d54b1dcbaf6d4919274b3b9eb37bfc4b0b8cb5",
+            "sha256": "55b6d3e9fc9a5864ab5cdf0b24d54b1dcbaf6d4919274b3b9eb37bfc4b0b8cb5",
+            "size": 114410470
+          },
+          {
+            "variable": "crun_download_url",
+            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
+            "size": 2943736
+          },
+          {
+            "variable": "etcd_download_url",
+            "source": "https://github.com/etcd-io/etcd/releases/download/v3.6.10/etcd-v3.6.10-linux-amd64.tar.gz",
+            "localPath": "github.com/etcd-io/etcd/releases/download/v3.6.10/etcd-v3.6.10-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ed579fafab5701e3aaa95509969e7bc74776a4ae5269d32e3928408b406456ec",
+            "sha256": "ed579fafab5701e3aaa95509969e7bc74776a4ae5269d32e3928408b406456ec",
+            "size": 24798802
+          },
+          {
+            "variable": "gateway_api_crds_download_url",
+            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml",
+            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8",
+            "sha256": "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8",
+            "size": 1024333
+          },
+          {
+            "variable": "gvisor_containerd_shim_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/containerd-shim-runsc-v1",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/containerd-shim-runsc-v1",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/34f115376316c8c052d4a281f9c1a27ef062b804ce84de2183f9341a6ccd530d",
+            "sha256": "34f115376316c8c052d4a281f9c1a27ef062b804ce84de2183f9341a6ccd530d",
+            "size": 13884088
+          },
+          {
+            "variable": "gvisor_runsc_download_url",
+            "source": "https://storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/runsc",
+            "localPath": "storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/runsc",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/df61fefa05237aa7aa549e776071abfa947b19fbe5908393f5902257a2961ca9",
+            "sha256": "df61fefa05237aa7aa549e776071abfa947b19fbe5908393f5902257a2961ca9",
+            "size": 63517161
+          },
+          {
+            "variable": "helm_download_url",
+            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
+            "size": 17831569
+          },
+          {
+            "variable": "kata_containers_download_url",
+            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
+            "size": 425067276
+          },
+          {
+            "variable": "kubeadm_download_url",
+            "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
+            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
+            "sha256": "0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
+            "size": 72413368
+          },
+          {
+            "variable": "kubectl_download_url",
+            "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl",
+            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd",
+            "sha256": "b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd",
+            "size": 58613944
+          },
+          {
+            "variable": "kubelet_download_url",
+            "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubelet",
+            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubelet",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
+            "sha256": "983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
+            "size": 58138916
+          },
+          {
+            "variable": "nerdctl_download_url",
+            "source": "https://github.com/containerd/nerdctl/releases/download/v2.2.2/nerdctl-2.2.2-linux-amd64.tar.gz",
+            "localPath": "github.com/containerd/nerdctl/releases/download/v2.2.2/nerdctl-2.2.2-linux-amd64.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/6f637760fb2875e3454e97c3de7438fd17281b5996908cbd8ee1c872b0653cc8",
+            "sha256": "6f637760fb2875e3454e97c3de7438fd17281b5996908cbd8ee1c872b0653cc8",
+            "size": 11373900
+          },
+          {
+            "variable": "prometheus_operator_crds_download_url",
+            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.88.1/stripped-down-crds.yaml",
+            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.88.1/stripped-down-crds.yaml",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/b827b8ec478e6b31cc1b85c1736570a3575953fe9f470fc29d0ffdb2803d94c4",
+            "sha256": "b827b8ec478e6b31cc1b85c1736570a3575953fe9f470fc29d0ffdb2803d94c4",
+            "size": 1514974
+          },
+          {
+            "variable": "runc_download_url",
+            "source": "https://github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64",
+            "localPath": "github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/ac8a90f9e225bb9322189937b230cdc5478d5753f0e31e1bda98a5cf06bd9539",
+            "sha256": "ac8a90f9e225bb9322189937b230cdc5478d5753f0e31e1bda98a5cf06bd9539",
+            "size": 12233104
+          },
+          {
+            "variable": "skopeo_download_url",
+            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
+            "size": 39225704
+          },
+          {
+            "variable": "youki_download_url",
+            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
+            "size": 2766029
+          },
+          {
+            "variable": "yq_download_url",
+            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
+            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
+            "size": 9928856
+          }
+        ],
+        "images": [
+          "kubespray-apiserver-ffd3bba1be1d",
+          "kubespray-aws-alb-ingress-controller-29b987dd4951",
+          "kubespray-aws-ebs-csi-driver-61044fd4e148",
+          "kubespray-cert-manager-cainjector-142b028ec4b1",
+          "kubespray-cert-manager-controller-aa76aaadadd6",
+          "kubespray-cert-manager-webhook-05059ded9a52",
+          "kubespray-certgen-e453d89b438f",
+          "kubespray-cilium-5651485d8c29",
+          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cinder-csi-plugin-fafe59d0f62e",
+          "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
+          "kubespray-cni-1e7d398d64e9",
+          "kubespray-controller-27840469ef8d",
+          "kubespray-coredns-c0a1763e2e8b",
+          "kubespray-csi-attacher-54214cd5c68a",
+          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
+          "kubespray-csi-provisioner-c95b16a748c1",
+          "kubespray-csi-resizer-17c09eac50f2",
+          "kubespray-csi-snapshotter-0eecf4b68dbb",
+          "kubespray-etcd-ca5f72edf851",
+          "kubespray-flannel-05cceee7aa3e",
+          "kubespray-flannel-cni-plugin-628a10cfbf92",
+          "kubespray-haproxy-c627c8545636",
+          "kubespray-hubble-relay-af135d8ceffb",
+          "kubespray-hubble-ui-aa9daec9d667",
+          "kubespray-hubble-ui-backend-80373e4df8f7",
+          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
+          "kubespray-kube-apiserver-a41c80c0ea0e",
+          "kubespray-kube-controller-manager-6380ebf00c81",
+          "kubespray-kube-controllers-ab24c787861c",
+          "kubespray-kube-ovn-d5b7e3e6a128",
+          "kubespray-kube-proxy-f41a80af8ea3",
+          "kubespray-kube-router-a15345e0ac99",
+          "kubespray-kube-scheduler-ec5cf060af83",
+          "kubespray-kube-vip-d0dc4887640c",
+          "kubespray-livenessprobe-3f00aa1aa37d",
+          "kubespray-local-path-provisioner-bea410f5d32c",
+          "kubespray-local-volume-provisioner-647b2d0ec790",
+          "kubespray-metrics-server-96c8158a4a11",
+          "kubespray-multus-cni-da567c68368a",
+          "kubespray-nginx-7167e4ebc08b",
+          "kubespray-node-77c1a7981006",
+          "kubespray-operator-7c35bff2c3cc",
+          "kubespray-operator-generic-c6b4e2064d8e",
+          "kubespray-pause-6bafff9caf95",
+          "kubespray-registry-8a454201835a",
+          "kubespray-snapshot-controller-714b107c1ee8",
+          "kubespray-speaker-665977c8efe1",
+          "kubespray-typha-32be33bfb81f"
+        ]
+      }
+    ],
     "bigBang": {
       "url": "https://repo1.dso.mil/big-bang/bigbang.git",
-      "version": "3.31.0",
-      "commit": "5a6955fe38f6e7506c49208f629c3979d5aa424c",
+      "version": "3.31.1",
+      "commit": "b9a49842b930b4e5706265d26867ee7f0ba79d5b",
       "kubeVersion": "\u003e=1.34.0-0"
     },
     "flux": {
@@ -61,7 +993,7 @@
           "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
           "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
           "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
-          "sha256": "97da4654bc11de5637d7f506b0a73707e1e6a1f7a8e9fa8e307063c0b9befa1f"
+          "sha256": "c25997b4cfbcbc72f70b2c30dbb1609e2773a0cfc462ffebf54c2f07029ebb4b"
         }
       ]
     },
@@ -213,14 +1145,14 @@
       {
         "id": "keycloak",
         "valuesPath": "addons.keycloak",
-        "license": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git @ 63f3f02f4b5d32f970bb9d4525331cc8e96cd832",
+        "license": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git @ 3aa7c85c77d5a3700fbf4a228a57ca5255fa9f6f",
         "integration": "integrated",
         "chartPath": "chart",
         "source": {
           "url": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git",
-          "version": "7.2.2-bb.1",
+          "version": "7.3.0-bb.0",
           "branch": "main",
-          "commit": "63f3f02f4b5d32f970bb9d4525331cc8e96cd832"
+          "commit": "3aa7c85c77d5a3700fbf4a228a57ca5255fa9f6f"
         }
       },
       {
@@ -386,25 +1318,24 @@
     ],
     "charts": [
       {
-        "id": "opensearch-operator",
-        "name": "opensearch-operator",
-        "valuesPath": "packages.opensearch-operator",
-        "fluxSource": "platform/apps/bigbang/source-opensearch-operator.yaml",
-        "version": "2.8.2",
-        "appVersion": "2.8.0",
+        "id": "cert-manager",
+        "name": "cert-manager",
+        "valuesPath": "packages.cert-manager",
+        "version": "v1.21.1",
+        "appVersion": "v1.21.1",
         "license": "Apache-2.0",
+        "kubeVersion": "\u003e= 1.22.0-0",
         "source": {
-          "type": "https",
-          "url": "https://github.com/opensearch-project/opensearch-k8s-operator/releases/download/opensearch-operator-2.8.2/opensearch-operator-2.8.2.tgz",
-          "indexUrl": "https://opensearch-project.github.io/opensearch-k8s-operator/index.yaml"
+          "type": "oci",
+          "url": "oci://quay.io/jetstack/charts/cert-manager",
+          "digest": "sha256:15c0b46d9006ce8eb9ff14d1bf54d1bbfcc587bb9e24cd9fe186fb8fec56af1f"
         },
-        "archiveSha256": "285895a09a9faa8600e1a41c66713c6f1603eebaeb3f3daa74628f30fe9fa78d"
+        "archiveSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc"
       },
       {
         "id": "opensearch",
         "name": "opensearch",
         "valuesPath": "packages.opensearch",
-        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
         "version": "3.8.0",
         "appVersion": "3.8.0",
         "license": "Apache-2.0",
@@ -419,7 +1350,6 @@
         "id": "opensearch-dashboards",
         "name": "opensearch-dashboards",
         "valuesPath": "packages.opensearch-dashboards",
-        "fluxSource": "platform/apps/bigbang/source-opensearch.yaml",
         "version": "3.8.0",
         "appVersion": "3.8.0",
         "license": "Apache-2.0",
@@ -429,6 +1359,523 @@
           "indexUrl": "https://opensearch-project.github.io/helm-charts/index.yaml"
         },
         "archiveSha256": "d932c62d60743f2837c7b9a4248ef7719c3049fe11b2dd8d44bc6ede43641a0e"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "bigbang",
+        "kind": "root",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/bigbang.git",
+        "sourceCommit": "b9a49842b930b4e5706265d26867ee7f0ba79d5b",
+        "chartPath": "chart",
+        "name": "bigbang",
+        "version": "3.31.1",
+        "upstreamSha256": "9e9bc9f95fac4fe888d77e047780c6cc282879509008e87f01896eb8a62ed160",
+        "archiveSha256": "ee5faf1b58ca8904bf4cedb13b8c863b7468e4d4c42704f543f5271c271853b0",
+        "size": 142440,
+        "file": ".atum/cache/packaged-charts/ee5faf1b58ca8904bf4cedb13b8c863b7468e4d4c42704f543f5271c271853b0.tgz",
+        "target": "10.77.0.9:32443/charts/bigbang:3.31.1",
+        "normalizations": [
+          {
+            "path": "bigbang.addons.gitlab.sso.groups",
+            "from": "list",
+            "to": "map"
+          }
+        ]
+      },
+      {
+        "id": "bootstrap/kube-vip",
+        "kind": "bootstrap",
+        "sourceUrl": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-0.11.1/kube-vip-0.11.1.tgz",
+        "chartPath": "kube-vip",
+        "name": "kube-vip",
+        "version": "0.11.1",
+        "upstreamSha256": "739401e81471d2d485df614d484aecbf8364ca5c4cab0f998631394d75b9e1dd",
+        "archiveSha256": "65db5aca4a74e7133787e8aada876ee9b89761214fe644f2d7754ea6f077fc38",
+        "size": 2921,
+        "file": ".atum/cache/packaged-charts/65db5aca4a74e7133787e8aada876ee9b89761214fe644f2d7754ea6f077fc38.tgz",
+        "target": "10.77.0.9:32443/charts/kube-vip:0.11.1"
+      },
+      {
+        "id": "bootstrap/kube-vip-cloud-provider",
+        "kind": "bootstrap",
+        "sourceUrl": "https://github.com/kube-vip/helm-charts/releases/download/kube-vip-cloud-provider-0.2.10/kube-vip-cloud-provider-0.2.10.tgz",
+        "chartPath": "kube-vip-cloud-provider",
+        "name": "kube-vip-cloud-provider",
+        "version": "0.2.10",
+        "upstreamSha256": "6a9c9d7540cd3d7a4ebfaf205c4df07c809b19b463e6a764d59c011387d2695e",
+        "archiveSha256": "18614bddaf0755b2202287d6ccd820f65b03597de100ac1b883adb256593e52e",
+        "size": 2642,
+        "file": ".atum/cache/packaged-charts/18614bddaf0755b2202287d6ccd820f65b03597de100ac1b883adb256593e52e.tgz",
+        "target": "10.77.0.9:32443/charts/kube-vip-cloud-provider:0.2.10"
+      },
+      {
+        "id": "bootstrap/local-path-provisioner",
+        "kind": "bootstrap",
+        "sourceUrl": "oci://ghcr.io/rancher/local-path-provisioner/charts/local-path-provisioner",
+        "chartPath": "local-path-provisioner",
+        "name": "local-path-provisioner",
+        "version": "0.0.37",
+        "upstreamSha256": "5fdbc13018711551041bb7112a2f9f7b5a2d9cad534866e389efe1b015871068",
+        "archiveSha256": "75500dcfc21aa6d3d72335a2bf12ae7c96aa9567b9ecea7874bd9edddb7338c9",
+        "size": 6714,
+        "file": ".atum/cache/packaged-charts/75500dcfc21aa6d3d72335a2bf12ae7c96aa9567b9ecea7874bd9edddb7338c9.tgz",
+        "target": "10.77.0.9:32443/charts/local-path-provisioner:0.0.37"
+      },
+      {
+        "id": "chart/cert-manager",
+        "kind": "generic",
+        "sourceUrl": "oci://quay.io/jetstack/charts/cert-manager",
+        "chartPath": "cert-manager",
+        "name": "cert-manager",
+        "version": "v1.21.1",
+        "upstreamSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
+        "archiveSha256": "f530140099940876d4c02cbc546fb3134ea3384dcc1c1a5537284fd2b3d7f3f4",
+        "size": 140773,
+        "file": ".atum/cache/packaged-charts/f530140099940876d4c02cbc546fb3134ea3384dcc1c1a5537284fd2b3d7f3f4.tgz",
+        "target": "10.77.0.9:32443/charts/cert-manager:v1.21.1"
+      },
+      {
+        "id": "chart/opensearch",
+        "kind": "generic",
+        "sourceUrl": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-3.8.0/opensearch-3.8.0.tgz",
+        "chartPath": "opensearch",
+        "name": "opensearch",
+        "version": "3.8.0",
+        "upstreamSha256": "cad6c77d04ec2389be6f61b5422ce61e7264eb7145e42b4c78dbc00e9d7dbe4d",
+        "archiveSha256": "8a7f4f0fde3c1dc2dc68991203dd284233da86ffc888bc8ad5656aafd8c68950",
+        "size": 21535,
+        "file": ".atum/cache/packaged-charts/8a7f4f0fde3c1dc2dc68991203dd284233da86ffc888bc8ad5656aafd8c68950.tgz",
+        "target": "10.77.0.9:32443/charts/opensearch:3.8.0"
+      },
+      {
+        "id": "chart/opensearch-dashboards",
+        "kind": "generic",
+        "sourceUrl": "https://github.com/opensearch-project/helm-charts/releases/download/opensearch-dashboards-3.8.0/opensearch-dashboards-3.8.0.tgz",
+        "chartPath": "opensearch-dashboards",
+        "name": "opensearch-dashboards",
+        "version": "3.8.0",
+        "upstreamSha256": "d932c62d60743f2837c7b9a4248ef7719c3049fe11b2dd8d44bc6ede43641a0e",
+        "archiveSha256": "20423a2a573c73663bb716914ec3ffa4c12716379a265a0c8959828b74aaf2fe",
+        "size": 9708,
+        "file": ".atum/cache/packaged-charts/20423a2a573c73663bb716914ec3ffa4c12716379a265a0c8959828b74aaf2fe.tgz",
+        "target": "10.77.0.9:32443/charts/opensearch-dashboards:3.8.0"
+      },
+      {
+        "id": "package/authservice",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/authservice.git",
+        "sourceCommit": "5fd08540ea1b83d1e697e2f5507b6f04c5cc5c53",
+        "chartPath": "chart",
+        "name": "authservice",
+        "version": "1.1.5-bb.7",
+        "upstreamSha256": "568c575ad3a060439b5cba548f5a587eb0a8a23e28a0b0fadf38073c8a2972bb",
+        "archiveSha256": "e6b33b36e0d59e839fae243bee0cfb2e345c75dcc5f35047c330dafd104168b9",
+        "size": 188536,
+        "file": ".atum/cache/packaged-charts/e6b33b36e0d59e839fae243bee0cfb2e345c75dcc5f35047c330dafd104168b9.tgz",
+        "target": "10.77.0.9:32443/charts/authservice:1.1.5-bb.7"
+      },
+      {
+        "id": "package/cloudnative-pg",
+        "kind": "generic",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/maintained/cloudnative-pg.git",
+        "sourceCommit": "8067614001663dba175f5d229c9e6bb5cb23ccf8",
+        "chartPath": "chart",
+        "name": "cloudnative-pg",
+        "version": "0.29.0-bb.0",
+        "upstreamSha256": "5a6cfed3bb202b7af700526f81339e62ad003d597ea31fa0c41d8d0b4f677e26",
+        "archiveSha256": "104df3dbad2a686255734003826ace09db059486313e35e4f3c5d943e86effda",
+        "size": 232782,
+        "file": ".atum/cache/packaged-charts/104df3dbad2a686255734003826ace09db059486313e35e4f3c5d943e86effda.tgz",
+        "target": "10.77.0.9:32443/charts/cloudnative-pg:0.29.0-bb.0"
+      },
+      {
+        "id": "package/fluentbit",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/fluentbit.git",
+        "sourceCommit": "c85d4ca665b9a59645c68f1246ff653d68e5d82b",
+        "chartPath": "chart",
+        "name": "fluentbit",
+        "version": "0.57.9-bb.0",
+        "upstreamSha256": "0598f50f7490c8c10275a4fa3d24deacb1bb2436cd89dfaf5e4c1fdd3c060094",
+        "archiveSha256": "0bf62b7db483bf341e9413544a45e7365848b7f78c495861a7d1ea7815639d7e",
+        "size": 59314,
+        "file": ".atum/cache/packaged-charts/0bf62b7db483bf341e9413544a45e7365848b7f78c495861a7d1ea7815639d7e.tgz",
+        "target": "10.77.0.9:32443/charts/fluentbit:0.57.9-bb.0",
+        "normalizations": [
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.definition.external-elastic",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.definition.external-fluentd",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.definition.external-loki",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.definition.kubeAPI",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.definition.storage-subnets",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.k8s.logging/logging-loki:3100",
+            "from": "boolean",
+            "to": "map"
+          },
+          {
+            "path": "fluentbit.networkPolicies.egress.from.fluent-bit.to.k8s.tempo/tempo:9411",
+            "from": "boolean",
+            "to": "map"
+          }
+        ]
+      },
+      {
+        "id": "package/garage",
+        "kind": "generic",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/maintained/garage.git",
+        "sourceCommit": "fb39e54e3d4d4263161e53e78f209739346882b2",
+        "chartPath": "chart",
+        "name": "garage",
+        "version": "0.9.3-bb.2",
+        "upstreamSha256": "6880d264732c7aae630eab081388f52f4ded8345bd71fcd13db50acdf7daf093",
+        "archiveSha256": "099218baa0f9942d04664480463c7b91e669b852e5f1ce68838df52639ab8117",
+        "size": 60918,
+        "file": ".atum/cache/packaged-charts/099218baa0f9942d04664480463c7b91e669b852e5f1ce68838df52639ab8117.tgz",
+        "target": "10.77.0.9:32443/charts/garage:0.9.3-bb.2",
+        "normalizations": [
+          {
+            "path": "garage.upstream.environment",
+            "from": "map",
+            "to": "list"
+          },
+          {
+            "path": "garage.upstream.extraVolumeMounts",
+            "from": "map",
+            "to": "list"
+          },
+          {
+            "path": "garage.upstream.extraVolumes",
+            "from": "map",
+            "to": "list"
+          }
+        ]
+      },
+      {
+        "id": "package/gitlab",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/gitlab.git",
+        "sourceCommit": "f8e82e63650b1783f720fb868eb9ade4f0df3eb3",
+        "chartPath": "chart",
+        "name": "gitlab",
+        "version": "10.2.4-bb.0",
+        "upstreamSha256": "e8f9868375aa8838b6017588cd3395db932da068be919bb5ba58b2dec22dbde9",
+        "archiveSha256": "4a3966d4e2f20506bde66c471e3e4b24934f115554804d2c7837f788e32e514f",
+        "size": 1276316,
+        "file": ".atum/cache/packaged-charts/4a3966d4e2f20506bde66c471e3e4b24934f115554804d2c7837f788e32e514f.tgz",
+        "target": "10.77.0.9:32443/charts/gitlab:10.2.4-bb.0",
+        "normalizations": [
+          {
+            "path": "gitlab.upstream.prometheus.scrapeConfigs",
+            "from": "map",
+            "to": "list"
+          }
+        ]
+      },
+      {
+        "id": "package/grafana",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/grafana.git",
+        "sourceCommit": "70293e4da4fbbfda8ee8676ca70cce67f1b8b381",
+        "chartPath": "chart",
+        "name": "grafana",
+        "version": "10.5.15-bb.6",
+        "upstreamSha256": "162a2d610c8ff4b9886a99a902af542abd67d1ca2accc96c8198038db42e0135",
+        "archiveSha256": "801fcd185700b55b77ee24717ba504b32a5ff19784ab1380ca7c092ae29f2607",
+        "size": 129899,
+        "file": ".atum/cache/packaged-charts/801fcd185700b55b77ee24717ba504b32a5ff19784ab1380ca7c092ae29f2607.tgz",
+        "target": "10.77.0.9:32443/charts/grafana:10.5.15-bb.6"
+      },
+      {
+        "id": "package/harbor",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/harbor.git",
+        "sourceCommit": "d9c43a3ee00b593f308939d6730be8d73773f54f",
+        "chartPath": "chart",
+        "name": "harbor",
+        "version": "1.19.2-bb.0",
+        "upstreamSha256": "fd5e72ac6c43527146ed3beaa010350d7187dd807caa350f16d0c71f510b8a4b",
+        "archiveSha256": "6f35d7201e792c016c3f3e99d6ded016356a47fe1a30ec1f500c5e4f0a1aa181",
+        "size": 306751,
+        "file": ".atum/cache/packaged-charts/6f35d7201e792c016c3f3e99d6ded016356a47fe1a30ec1f500c5e4f0a1aa181.tgz",
+        "target": "10.77.0.9:32443/charts/harbor:1.19.2-bb.0",
+        "normalizations": [
+          {
+            "path": "harbor.upstream.imagePullSecrets",
+            "from": "null",
+            "to": "list"
+          }
+        ]
+      },
+      {
+        "id": "package/headlamp",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/headlamp.git",
+        "sourceCommit": "bdee331b4cba0ddece5b9b2e2b5b72a32f6e5ebd",
+        "chartPath": "chart",
+        "name": "headlamp",
+        "version": "0.44.0-bb.0",
+        "upstreamSha256": "431441ac7b2a3d373574900c257d704a965d0dae02967ba7eb100afa99763189",
+        "archiveSha256": "67581a76731e590081f86ba0e3748e26092f4b49246e0b541e6d6a06e67d0189",
+        "size": 107582,
+        "file": ".atum/cache/packaged-charts/67581a76731e590081f86ba0e3748e26092f4b49246e0b541e6d6a06e67d0189.tgz",
+        "target": "10.77.0.9:32443/charts/headlamp:0.44.0-bb.0"
+      },
+      {
+        "id": "package/istio-crds",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/istio-crds.git",
+        "sourceCommit": "bf478aca88cbeaaa9a6b74579d339333e0e17bb6",
+        "chartPath": "chart",
+        "name": "istio-crds",
+        "version": "1.30.3-bb.0",
+        "upstreamSha256": "4080c6224a92c78aecabd011b69b3b8231161e6d216184086e1924eb57b3d7e7",
+        "archiveSha256": "2e8db2a0eb5907635506f7d5fd5210b9150db2d812d06eb377a16d4a28c712a4",
+        "size": 73418,
+        "file": ".atum/cache/packaged-charts/2e8db2a0eb5907635506f7d5fd5210b9150db2d812d06eb377a16d4a28c712a4.tgz",
+        "target": "10.77.0.9:32443/charts/istio-crds:1.30.3-bb.0"
+      },
+      {
+        "id": "package/istio-gateway",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/istio-gateway.git",
+        "sourceCommit": "4e0520ebbed7b8be114602a8f7e9993b4a75a9b2",
+        "chartPath": "chart",
+        "name": "gateway",
+        "version": "1.30.3-bb.0",
+        "upstreamSha256": "64d0c9f37d4cbb3c7fd8b94e2b550c91c8381c7561df5b3fdfcc31edf465d9fd",
+        "archiveSha256": "e956f74f38a7f1a5d246b0cea937d8d2570f85ec441f646d7dc84fd12b401858",
+        "size": 54648,
+        "file": ".atum/cache/packaged-charts/e956f74f38a7f1a5d246b0cea937d8d2570f85ec441f646d7dc84fd12b401858.tgz",
+        "target": "10.77.0.9:32443/charts/gateway:1.30.3-bb.0"
+      },
+      {
+        "id": "package/istiod",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/istiod.git",
+        "sourceCommit": "31fe272d29c84e3c88b586891bde1e00322090a9",
+        "chartPath": "chart",
+        "name": "istiod",
+        "version": "1.30.3-bb.0",
+        "upstreamSha256": "02f187f881c1facdeaec6ed2d70dd753a3f0b43adf157c38beb698a4cc1d1000",
+        "archiveSha256": "f3e8abc3b05b1c03d0b5e7a821db09787fd0d8c5e16080ff8537bc66e515cde8",
+        "size": 85344,
+        "file": ".atum/cache/packaged-charts/f3e8abc3b05b1c03d0b5e7a821db09787fd0d8c5e16080ff8537bc66e515cde8.tgz",
+        "target": "10.77.0.9:32443/charts/istiod:1.30.3-bb.0"
+      },
+      {
+        "id": "package/keycloak",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/keycloak.git",
+        "sourceCommit": "3aa7c85c77d5a3700fbf4a228a57ca5255fa9f6f",
+        "chartPath": "chart",
+        "name": "keycloak",
+        "version": "7.3.0-bb.0",
+        "upstreamSha256": "4ec790a31ee8c6eb1782558f4542a8c8132e7964c8a7ed9d5cba6aa256d20ad8",
+        "archiveSha256": "fe0e0d37c3c3c9ede87a8aca37da5ee35e504bc02e80a0ba227511af2b4d19b9",
+        "size": 169244,
+        "file": ".atum/cache/packaged-charts/fe0e0d37c3c3c9ede87a8aca37da5ee35e504bc02e80a0ba227511af2b4d19b9.tgz",
+        "target": "10.77.0.9:32443/charts/keycloak:7.3.0-bb.0"
+      },
+      {
+        "id": "package/kiali",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/kiali.git",
+        "sourceCommit": "1febcc0edd7d866441674625e8eb69d1c01ed4dc",
+        "chartPath": "chart",
+        "name": "kiali",
+        "version": "2.30.0-bb.0",
+        "upstreamSha256": "9aab088bd5813d88dc30d709662aa4e7ed6081ca3ddb2a54bf045ee89df5738b",
+        "archiveSha256": "74c3201ba9cc3a01a87112f14f9ef15c7a23bdd9ef5bfcbdd8f75b545d5222c7",
+        "size": 102512,
+        "file": ".atum/cache/packaged-charts/74c3201ba9cc3a01a87112f14f9ef15c7a23bdd9ef5bfcbdd8f75b545d5222c7.tgz",
+        "target": "10.77.0.9:32443/charts/kiali:2.30.0-bb.0"
+      },
+      {
+        "id": "package/kyverno",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/kyverno.git",
+        "sourceCommit": "bef758d5cb05fd4d9a65785354395ed424d5fe3a",
+        "chartPath": "chart",
+        "name": "kyverno",
+        "version": "3.8.2-bb.2",
+        "upstreamSha256": "3f78817ad91f092bc1b947f6eb19230ec8167461f7fe28f2f4bf07820b7cba62",
+        "archiveSha256": "f1f4b43933bbdefd659f6bfeb45de38dfa4168b30694736d87c60eeb4c9ea154",
+        "size": 729534,
+        "file": ".atum/cache/packaged-charts/f1f4b43933bbdefd659f6bfeb45de38dfa4168b30694736d87c60eeb4c9ea154.tgz",
+        "target": "10.77.0.9:32443/charts/kyverno:3.8.2-bb.2"
+      },
+      {
+        "id": "package/kyverno-policies",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/kyverno-policies.git",
+        "sourceCommit": "4a5b32d4b3dda100b661ca04a9f4608705c9224e",
+        "chartPath": "chart",
+        "name": "kyverno-policies",
+        "version": "3.3.4-bb.87",
+        "upstreamSha256": "a28f0d267e83615b6a13ec04f3e5dcff964cc77c6d9977110e792ec458f3647b",
+        "archiveSha256": "954e060da669f755b8c71b2610c21d1a96eb71c846dd265332d35f6bead989ec",
+        "size": 126678,
+        "file": ".atum/cache/packaged-charts/954e060da669f755b8c71b2610c21d1a96eb71c846dd265332d35f6bead989ec.tgz",
+        "target": "10.77.0.9:32443/charts/kyverno-policies:3.3.4-bb.87"
+      },
+      {
+        "id": "package/kyverno-reporter",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/kyverno-reporter.git",
+        "sourceCommit": "9f0d6c810035b09b8e232c305a1ca413ff354347",
+        "chartPath": "chart",
+        "name": "kyverno-reporter",
+        "version": "3.9.0-bb.1",
+        "upstreamSha256": "96f27694498561a26b524265bd696cceb2d84a1fe6aebe4320e6bac0971cb5f9",
+        "archiveSha256": "c1cbbfa13cc2330ab1b2de919efcadff93d63464571e745c2910cf3a589c059d",
+        "size": 99682,
+        "file": ".atum/cache/packaged-charts/c1cbbfa13cc2330ab1b2de919efcadff93d63464571e745c2910cf3a589c059d.tgz",
+        "target": "10.77.0.9:32443/charts/kyverno-reporter:3.9.0-bb.1"
+      },
+      {
+        "id": "package/metrics-server",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/metrics-server.git",
+        "sourceCommit": "ac71d009703207024e92f30bb5e38eba7b45043d",
+        "chartPath": "chart",
+        "name": "metrics-server",
+        "version": "3.13.1-bb.1",
+        "upstreamSha256": "e9ba1b1d6342d6313329ca56da5f75b12b45f6a046545212c6521a1e770d651a",
+        "archiveSha256": "85a1c76d808daf33ea18c0548a22ecdc2d45f6098e3497a467fa5ce4e5ff62d4",
+        "size": 19812,
+        "file": ".atum/cache/packaged-charts/85a1c76d808daf33ea18c0548a22ecdc2d45f6098e3497a467fa5ce4e5ff62d4.tgz",
+        "target": "10.77.0.9:32443/charts/metrics-server:3.13.1-bb.1"
+      },
+      {
+        "id": "package/monitoring",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/monitoring.git",
+        "sourceCommit": "f6c4fad5f5a89f2b33c5fdadc557f7f7a8d3117a",
+        "chartPath": "chart",
+        "name": "monitoring",
+        "version": "88.3.0-bb.0",
+        "upstreamSha256": "8125487121fb8579a8df0569515e9ca05480c131912959332020b06d2d7d360c",
+        "archiveSha256": "12f5a58546d8dca15b761e2cb9b684ecb4e8454cf436ca3c1015b62320f64c94",
+        "size": 904955,
+        "file": ".atum/cache/packaged-charts/12f5a58546d8dca15b761e2cb9b684ecb4e8454cf436ca3c1015b62320f64c94.tgz",
+        "target": "10.77.0.9:32443/charts/monitoring:88.3.0-bb.0"
+      },
+      {
+        "id": "package/postgresql",
+        "kind": "generic",
+        "sourceUrl": "https://github.com/cloudnative-pg/charts.git",
+        "sourceCommit": "e5fd7c192b39d7d03d7183c73784cc27f1f0bc79",
+        "chartPath": "charts/cluster",
+        "name": "cluster",
+        "version": "0.8.1",
+        "upstreamSha256": "d7e808f9331a1546d237f299bd12a7e396d520713ac14b037dbeea5aba38297e",
+        "archiveSha256": "9267cc16f25d886b4a6bb9e839b9217d2f73df50d45766c34f6b5a265b75fbe9",
+        "size": 73445,
+        "file": ".atum/cache/packaged-charts/9267cc16f25d886b4a6bb9e839b9217d2f73df50d45766c34f6b5a265b75fbe9.tgz",
+        "target": "10.77.0.9:32443/charts/cluster:0.8.1"
+      },
+      {
+        "id": "package/prometheus-operator-crds",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/prometheus-operator-crds.git",
+        "sourceCommit": "f595b0e3a23e7558895796d9ec810aa7ca3400fa",
+        "chartPath": "chart",
+        "name": "prometheus-operator-crds",
+        "version": "31.0.1-bb.0",
+        "upstreamSha256": "0d58955a7f5585b241e44288164b9486f778d3ff3c4e1b681d7b18d59e356f7b",
+        "archiveSha256": "38332d11e042c814d14bcd536dc460fdba1c7e94cfa462b5a27e884065e1ce7a",
+        "size": 447775,
+        "file": ".atum/cache/packaged-charts/38332d11e042c814d14bcd536dc460fdba1c7e94cfa462b5a27e884065e1ce7a.tgz",
+        "target": "10.77.0.9:32443/charts/prometheus-operator-crds:31.0.1-bb.0"
+      },
+      {
+        "id": "package/redis",
+        "kind": "generic",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/maintained/redis.git",
+        "sourceCommit": "ce97559691d4b493a44c7f95b5f04f0a19fdebbd",
+        "chartPath": "chart",
+        "name": "redis",
+        "version": "27.0.14-bb.0",
+        "upstreamSha256": "b0e9352e364a9792cadb44f6db447e60e46f0b18c2349edb2693bb394e5ec585",
+        "archiveSha256": "3e91dc3b2307c7c4ad514cc1a1648eeafd0cfbdda1ee81d43a6b8644823721b0",
+        "size": 122136,
+        "file": ".atum/cache/packaged-charts/3e91dc3b2307c7c4ad514cc1a1648eeafd0cfbdda1ee81d43a6b8644823721b0.tgz",
+        "target": "10.77.0.9:32443/charts/redis:27.0.14-bb.0"
+      },
+      {
+        "id": "package/tempo",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/tempo.git",
+        "sourceCommit": "00e3261d933da31330be94e44a36c19dafaaa865",
+        "chartPath": "chart",
+        "name": "tempo",
+        "version": "2.1.0-bb.2",
+        "upstreamSha256": "bbd2f5ff6d77d9ef08dca368622df71c9c423b89a8c9c851c53c5dc58df4414b",
+        "archiveSha256": "9aad28b7dd4a9466903c0a02938a5373ee96ad3b166f1e252ce593cb763d0bef",
+        "size": 102882,
+        "file": ".atum/cache/packaged-charts/9aad28b7dd4a9466903c0a02938a5373ee96ad3b166f1e252ce593cb763d0bef.tgz",
+        "target": "10.77.0.9:32443/charts/tempo:2.1.0-bb.2"
+      },
+      {
+        "id": "package/vault",
+        "kind": "integrated",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/vault.git",
+        "sourceCommit": "51721eb137561b518f22cba0e2e28a7610c03043",
+        "chartPath": "chart",
+        "name": "vault",
+        "version": "0.34.0-bb.0",
+        "upstreamSha256": "295844dedbf3a7beb86bdb5b6fc2a0779aad335206b9e4913c6fcea6755bddd3",
+        "archiveSha256": "dddd47cb1f8587d337f5ec562325766ffee0b436e7383a710075a9207e40964e",
+        "size": 153944,
+        "file": ".atum/cache/packaged-charts/dddd47cb1f8587d337f5ec562325766ffee0b436e7383a710075a9207e40964e.tgz",
+        "target": "10.77.0.9:32443/charts/vault:0.34.0-bb.0",
+        "normalizations": [
+          {
+            "path": "vault.upstream.server.volumeMounts",
+            "from": "null",
+            "to": "list"
+          },
+          {
+            "path": "vault.upstream.server.volumes",
+            "from": "null",
+            "to": "list"
+          }
+        ]
+      },
+      {
+        "id": "wrapper/wrapper",
+        "kind": "wrapper",
+        "sourceUrl": "https://repo1.dso.mil/big-bang/product/packages/wrapper.git",
+        "sourceCommit": "86b9ecc74169cb4f9635e7a5ed695014390e9efc",
+        "chartPath": "chart",
+        "name": "wrapper",
+        "version": "0.4.15",
+        "upstreamSha256": "85450176d5f412c60f38a932eb80e69b0f7cb7c50f8a939544c921c08f688c21",
+        "archiveSha256": "ff0a7d2e5ffac26d09bfbe89e5737db612c6aed595599edd37b1fed6ab966b11",
+        "size": 26269,
+        "file": ".atum/cache/packaged-charts/ff0a7d2e5ffac26d09bfbe89e5737db612c6aed595599edd37b1fed6ab966b11.tgz",
+        "target": "10.77.0.9:32443/charts/wrapper:0.4.15"
       }
     ],
     "vendors": [],
@@ -464,46 +1911,6 @@
           "file": "local-path-provisioner-0.0.37.tgz",
           "archiveSha256": "5fdbc13018711551041bb7112a2f9f7b5a2d9cad534866e389efe1b015871068",
           "target": "10.77.0.9:32443/charts/local-path-provisioner:0.0.37"
-        },
-        {
-          "id": "cert-manager",
-          "name": "cert-manager",
-          "version": "v1.21.1",
-          "appVersion": "v1.21.1",
-          "imageBindings": [
-            {
-              "id": "cert-manager-controller",
-              "valuesPath": "image"
-            },
-            {
-              "id": "cert-manager-webhook",
-              "valuesPath": "webhook.image"
-            },
-            {
-              "id": "cert-manager-cainjector",
-              "valuesPath": "cainjector.image"
-            },
-            {
-              "id": "cert-manager-startupapicheck",
-              "valuesPath": "startupapicheck.image"
-            },
-            {
-              "id": "cert-manager-acmesolver",
-              "valuesPath": "acmesolver.image"
-            }
-          ],
-          "kubeVersion": "\u003e= 1.22.0-0",
-          "license": "Apache-2.0",
-          "source": {
-            "type": "oci",
-            "url": "oci://quay.io/jetstack/charts/cert-manager",
-            "digest": "sha256:15c0b46d9006ce8eb9ff14d1bf54d1bbfcc587bb9e24cd9fe186fb8fec56af1f"
-          },
-          "values": "platform/apps/prep/cert-manager/values.yaml",
-          "fluxSource": "platform/apps/prep/cert-manager/source.yaml",
-          "file": "cert-manager-v1.21.1.tgz",
-          "archiveSha256": "c27101f3f3e2349fb4a9e704316105bf7b52ad73b8c8257d3498ef7f2f6a4adc",
-          "target": "10.77.0.9:32443/charts/cert-manager:v1.21.1"
         },
         {
           "id": "kube-vip",
@@ -572,12 +1979,12 @@
         "constraint": "\u003e=1.34.0-0"
       },
       {
-        "id": "bootstrap/cert-manager",
-        "constraint": "\u003e= 1.22.0-0"
-      },
-      {
         "id": "bootstrap/local-path-provisioner",
         "constraint": "\u003e=1.12.0-r0"
+      },
+      {
+        "id": "chart/cert-manager",
+        "constraint": "\u003e= 1.22.0-0"
       },
       {
         "id": "package/grafana",
@@ -610,8 +2017,8 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "144810000bf25757506aa8ecb355f93758defb1812272accc73c4bc45547a6f0",
-    "graphSha256": "9ab98f2bdb830b4b3a4ed7e989ee9a4943d95522120d2e439fdd3b7cf89b23d6",
+    "inventorySha256": "88d32359c8f4ad1094cc46c76042504d84a327d2a461080f0cf2041c15c23711",
+    "graphSha256": "393218e5c3a4e9a8f422b553089da9450219c8cb94a45c7abbabaf1ee76a0b9e",
     "images": [
       {
         "id": "alertmanager",
@@ -622,6 +2029,24 @@
           "type": "mirror",
           "source": "quay.io/prometheus/alertmanager:v0.33.1",
           "digest": "sha256:a89f8d4520954079275441eecdb71444328bd90633dd4eddfc33b9ed657f349b",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "atum-operator",
+        "target": "10.77.0.9:32443/atum/atum-operator:0.1.0",
+        "digest": "",
+        "inputSha256": "7a1496fb25c3daa278ce69ccad2179978d300096c8515403e801aa8415c12b80",
+        "delivery": {
+          "type": "build",
+          "bakeTarget": "atum-operator",
+          "materials": [
+            "platform/build/docker/Dockerfile.operator",
+            "cmd/atum-operator",
+            "operator",
+            "go.mod",
+            "go.sum"
+          ],
           "sourceProfile": "platform"
         }
       },
@@ -770,54 +2195,6 @@
         }
       },
       {
-        "id": "flux-helm-controller",
-        "target": "10.77.0.9:32443/atum/flux-helm-controller:v1.6.3",
-        "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
-        "inputSha256": "ab8e9e28e32bfb7b8bf9868d484a3983c751e965ed31bb1c0984ac97007265a3",
-        "delivery": {
-          "type": "mirror",
-          "source": "ghcr.io/fluxcd/helm-controller:v1.6.3",
-          "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
-          "sourceProfile": "platform"
-        }
-      },
-      {
-        "id": "flux-kustomize-controller",
-        "target": "10.77.0.9:32443/atum/flux-kustomize-controller:v1.9.4",
-        "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
-        "inputSha256": "248a734923635cc0660dbb7203ede104404c2dc768b32de16d0a47b291d147f4",
-        "delivery": {
-          "type": "mirror",
-          "source": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
-          "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
-          "sourceProfile": "platform"
-        }
-      },
-      {
-        "id": "flux-notification-controller",
-        "target": "10.77.0.9:32443/atum/flux-notification-controller:v1.9.3",
-        "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
-        "inputSha256": "3d09e78de6d3d25d4753fe345fbd33a42565a893100d644acfaf4901280fa72f",
-        "delivery": {
-          "type": "mirror",
-          "source": "ghcr.io/fluxcd/notification-controller:v1.9.3",
-          "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
-          "sourceProfile": "platform"
-        }
-      },
-      {
-        "id": "flux-source-controller",
-        "target": "10.77.0.9:32443/atum/flux-source-controller:v1.9.4",
-        "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
-        "inputSha256": "878eae7b0121ba48fd36193f4b4ea2c83a824bef6e79b6d8790a76c001896c56",
-        "delivery": {
-          "type": "mirror",
-          "source": "ghcr.io/fluxcd/source-controller:v1.9.4",
-          "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
-          "sourceProfile": "platform"
-        }
-      },
-      {
         "id": "garage",
         "target": "10.77.0.9:32443/atum/garage:v2.3.0",
         "digest": "sha256:dac0c92add4f1a0b41035e94b41036a270ffbe88a37c7ac9c3f19e6dc5bdccf2",
@@ -833,7 +2210,7 @@
         "id": "garage-init-helper",
         "target": "10.77.0.9:32443/atum/garage-init-helper:2.1.0",
         "digest": "",
-        "inputSha256": "9466a35cd7f4e8156485ff4d0d4d85d51f34f98f0f8de548eb5e2e47579fed4b",
+        "inputSha256": "f3b570ecc905e877b332749331174837089968ac36a97c64edaceecf24f1a869",
         "delivery": {
           "type": "build",
           "bakeTarget": "garage-init-helper",
@@ -872,24 +2249,24 @@
       {
         "id": "gitlab-container-registry",
         "target": "10.77.0.9:32443/atum/gitlab-container-registry:v4.40.2-gitlab",
-        "digest": "sha256:acbbeea61d1fe4cbdd58d061e6573d8d880889518350447b1652f524a55ab8f0",
-        "inputSha256": "e5ce8fb48d1d640713f4808b5be923f090f08bab8ff77968287cce6328bd6154",
+        "digest": "sha256:2962b4b72175d8ec43e508ab621718028574462f46c14744614959ce113bc54f",
+        "inputSha256": "9566d0f271e8b38858ca36772a8a25ea8dd284b2f63e7500507a58bfe96a07c5",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-container-registry:v4.40.2-gitlab",
-          "digest": "sha256:acbbeea61d1fe4cbdd58d061e6573d8d880889518350447b1652f524a55ab8f0",
+          "digest": "sha256:2962b4b72175d8ec43e508ab621718028574462f46c14744614959ce113bc54f",
           "sourceProfile": "platform"
         }
       },
       {
         "id": "gitlab-exporter",
         "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0",
-        "digest": "sha256:a716cec2e5b55f1c5b7a3a782d3973d3ef289229ca0fa2909f6f22e40fb3efba",
-        "inputSha256": "7072f15e124d7a41c89f1d607911ab655d3d90f3e1351655f610bfe9c364be72",
+        "digest": "sha256:5c626469140b246db681f787fbb0269db8439a2c59a609bd814317b39323e2b1",
+        "inputSha256": "3007e4ee4784adb3d9713a040569a17d553061a1cee83339ec3f8dfa3b169144",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-exporter:16.9.0",
-          "digest": "sha256:a716cec2e5b55f1c5b7a3a782d3973d3ef289229ca0fa2909f6f22e40fb3efba",
+          "digest": "sha256:5c626469140b246db681f787fbb0269db8439a2c59a609bd814317b39323e2b1",
           "sourceProfile": "platform"
         }
       },
@@ -908,12 +2285,12 @@
       {
         "id": "gitlab-shell",
         "target": "10.77.0.9:32443/atum/gitlab-shell:v14.56.1",
-        "digest": "sha256:7602b495cfcab3a6ecbb304b5ffac2c04506d828c7cbaa81fdd21941ec44d0b6",
-        "inputSha256": "0134b3ccfef3d649d0ff5ed258a19207bc457b2918fe9e28c3f78b86fa9daa30",
+        "digest": "sha256:531dc40928bdffdf1ea61930b1478944351f48664aaf49350ecd171b3695cafa",
+        "inputSha256": "d8acefc42f79f8b91796dad19d7dfa3e4d0ab06344f84ad72b8c7368ba3247fc",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-shell:v14.56.1",
-          "digest": "sha256:7602b495cfcab3a6ecbb304b5ffac2c04506d828c7cbaa81fdd21941ec44d0b6",
+          "digest": "sha256:531dc40928bdffdf1ea61930b1478944351f48664aaf49350ecd171b3695cafa",
           "sourceProfile": "platform"
         }
       },
@@ -969,7 +2346,7 @@
         "id": "grafana-plugins",
         "target": "10.77.0.9:32443/atum/grafana-plugins:13.0.1",
         "digest": "",
-        "inputSha256": "7046e68de1d654074084bf63df4c8c010bd286cede7e59c66912bc435088cb7e",
+        "inputSha256": "7a9f004c54a158bc3f544ce3216e8a062c2423692b2aae768c777f39a2b876d4",
         "delivery": {
           "type": "build",
           "bakeTarget": "grafana-plugins",
@@ -978,6 +2355,7 @@
             "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
             "https://github.com/RedisGrafana/grafana-redis-datasource/releases/download/v2.2.0/redis-datasource-2.2.0.zip#sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f501a8ab",
             "https://github.com/grafana/grafana-polystat-panel/releases/download/v2.1.16/grafana-polystat-panel-2.1.16.zip#sha256:3e1791f83b4db03134dac24521a52407c1990a1b56356dc440580ee4664f214c",
+            "https://github.com/grafana/piechart-panel/releases/download/v1.6.4/grafana-piechart-panel-1.6.4.zip#sha256:c8637c0331eb0270cb127e19ea0d839b2b4107aecb27ed518d0794d90ffcb52e",
             "platform/build/compat/debian",
             "platform/build/docker/Dockerfile.delivery"
           ],
@@ -1081,6 +2459,18 @@
         }
       },
       {
+        "id": "helm-controller",
+        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3",
+        "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
+        "inputSha256": "5e1a1ff8ac3e5e19eab746f9226c71c899f3a45f9abbe2c6f492940880feb446",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/fluxcd/helm-controller:v1.6.3",
+          "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
+          "sourceProfile": "platform"
+        }
+      },
+      {
         "id": "k8s-sidecar",
         "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
         "digest": "sha256:44065fae116464099acd5bfddb62dcb2cf53c8fa18948d215109d64a5560306e",
@@ -1094,13 +2484,13 @@
       },
       {
         "id": "keycloak",
-        "target": "10.77.0.9:32443/atum/keycloak:26.7.0",
-        "digest": "sha256:26939e1318d6f008fc2ee6e10cec1cf8f1ba8a21846c1bc81b91ed0506bc2a7a",
-        "inputSha256": "4ec6b73be674722d52f916347dc8bc1e74c5510fc0c1156c822ff745bdf81738",
+        "target": "10.77.0.9:32443/atum/keycloak:26.7.2",
+        "digest": "sha256:c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f661a9efa0911463b0",
+        "inputSha256": "afbf8ed6fc25b8db8513b43d223db5985c28b0e5bf7213384e818f453eff69ed",
         "delivery": {
           "type": "mirror",
-          "source": "quay.io/keycloak/keycloak:26.7.0",
-          "digest": "sha256:26939e1318d6f008fc2ee6e10cec1cf8f1ba8a21846c1bc81b91ed0506bc2a7a",
+          "source": "quay.io/keycloak/keycloak:26.7.2",
+          "digest": "sha256:c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f661a9efa0911463b0",
           "sourceProfile": "platform"
         }
       },
@@ -1177,53 +2567,1046 @@
         }
       },
       {
-        "id": "kubectl",
-        "target": "10.77.0.9:32443/atum/kubectl:v1.35.4",
-        "digest": "",
-        "inputSha256": "f84d97a4c4e9b0b16d11fc9cb15a645a918e842202812baf0e32fdd094502443",
+        "id": "kubespray-apiserver-1d7c4ffd1961",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6",
+        "digest": "sha256:955d0c0b2e46dfb64f675ea6fd7ca58b102ffc9af6bbe386bdb0d4f3c672e944",
+        "inputSha256": "b55af22e21fa7683f587197fcba7465dbaf3a136321d056482d210394f784969",
         "delivery": {
-          "type": "build",
-          "bakeTarget": "kubectl-helper-1-35-4-compat",
-          "materials": [
-            "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
-            "platform/build/compat/debian",
-            "platform/build/docker/Dockerfile.delivery",
-            "registry.k8s.io/kubectl@sha256:fbb3a3d16034b16ba346f9104323bbc0bfa712119878c34b97a7d1bfb51254a3"
-          ],
+          "type": "mirror",
+          "source": "quay.io/calico/apiserver:v3.30.6",
+          "digest": "sha256:955d0c0b2e46dfb64f675ea6fd7ca58b102ffc9af6bbe386bdb0d4f3c672e944",
           "sourceProfile": "platform"
         }
       },
       {
-        "id": "kubectl-helper-1-34-11",
-        "target": "10.77.0.9:32443/atum/kubectl-helper-1-34-11:v1.34.11",
-        "digest": "",
-        "inputSha256": "ded5a4937ff510b1af4d158eee107f6d5ac582c115c44ca13806da312b78cf57",
+        "id": "kubespray-apiserver-85ba6a8d3824",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5",
+        "digest": "sha256:7ee459630a68fc6872773033b6b9d281c4d5804950e3d054fe423376d4f695cf",
+        "inputSha256": "748cfcf98f887d7cdbd700aecaf63a866b306d969a37013d9f3563f76b68c841",
         "delivery": {
-          "type": "build",
-          "bakeTarget": "kubectl-helper-1-34-11-compat",
-          "materials": [
-            "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
-            "platform/build/compat/debian",
-            "platform/build/docker/Dockerfile.delivery",
-            "registry.k8s.io/kubectl@sha256:027597916e278c1334fc49aa27abef40a94662f4deb8665a42bbb0c84dfe4d2f"
-          ],
+          "type": "mirror",
+          "source": "quay.io/calico/apiserver:v3.30.5",
+          "digest": "sha256:7ee459630a68fc6872773033b6b9d281c4d5804950e3d054fe423376d4f695cf",
           "sourceProfile": "platform"
         }
       },
       {
-        "id": "kubectl-helper-1-35-7",
-        "target": "10.77.0.9:32443/atum/kubectl-helper-1-35-7:v1.35.7",
-        "digest": "",
-        "inputSha256": "586911f0b3583c04f9203300a03418ba6a8060a51a54b4e79f46f519dd1d32bb",
+        "id": "kubespray-apiserver-ffd3bba1be1d",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5",
+        "digest": "sha256:8a487c14daa06afaf11695fdd5556e493a21288131742c8a5114d3b0860677b7",
+        "inputSha256": "73ec1c1f65501d6664ffd63d9895d8ccb432ddd56a192630eecf0d1a12a47205",
         "delivery": {
-          "type": "build",
-          "bakeTarget": "kubectl-helper-1-35-7-compat",
-          "materials": [
-            "docker.io/library/debian@sha256:32ccbb2ff8fdcb839bbe9c03c33e4e962b51fe8859249f821638d674b0b88d66",
-            "platform/build/compat/debian",
-            "platform/build/docker/Dockerfile.delivery",
-            "registry.k8s.io/kubectl@sha256:206f9e4e5ec8cc6bd02fa3152baca45e6d06b6ea0bb1022fed4d488e7d886190"
-          ],
+          "type": "mirror",
+          "source": "quay.io/calico/apiserver:v3.31.5",
+          "digest": "sha256:8a487c14daa06afaf11695fdd5556e493a21288131742c8a5114d3b0860677b7",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-aws-alb-ingress-controller-29b987dd4951",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+        "digest": "sha256:43d732b96fd96ec4b5a42878df648cf805d3677eba8277e616972302caf9a14f",
+        "inputSha256": "9b00510fd8cea86b7b1b65839bc6ada73a445c60b84c63819c15422f6ac9b8e6",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+          "digest": "sha256:43d732b96fd96ec4b5a42878df648cf805d3677eba8277e616972302caf9a14f",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-aws-ebs-csi-driver-61044fd4e148",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+        "digest": "sha256:eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f540a29a070362c66",
+        "inputSha256": "748df553b99451487e35237bd36bf14bebab9eed6448a19ddbc414fc3461fcf2",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+          "digest": "sha256:eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f540a29a070362c66",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cert-manager-cainjector-142b028ec4b1",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+        "digest": "sha256:6802c6afea2da91f5782880b79008179bb98147a23ce00f3cab5ba799807b5d6",
+        "inputSha256": "86b7930e3e8fdefa4dfb95e0dce2a3d161a6c4bb54010c531935f5fda6747892",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+          "digest": "sha256:6802c6afea2da91f5782880b79008179bb98147a23ce00f3cab5ba799807b5d6",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cert-manager-controller-aa76aaadadd6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3",
+        "digest": "sha256:631ba2b3bf7be0bd0d446b8bfcbeb56f8fe735cd02a267567a8d94682d03165b",
+        "inputSha256": "947fc87c3f79c34a616e232a7fb59cf5cf268131ebf04da82adf0df609da07cc",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/jetstack/cert-manager-controller:v1.15.3",
+          "digest": "sha256:631ba2b3bf7be0bd0d446b8bfcbeb56f8fe735cd02a267567a8d94682d03165b",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cert-manager-webhook-05059ded9a52",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3",
+        "digest": "sha256:373e3acd7b96c87a574f9234bb4fbfd576e3205c502d6da5dade41165c9dc828",
+        "inputSha256": "c88cc8d5eeead7b0fe5a76d984ab6dfc521ee0531709445cb2abc61f4c9824d7",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/jetstack/cert-manager-webhook:v1.15.3",
+          "digest": "sha256:373e3acd7b96c87a574f9234bb4fbfd576e3205c502d6da5dade41165c9dc828",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-certgen-e453d89b438f",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4",
+        "digest": "sha256:cf231218850d22ee160347a67483860e85606d6d3ad0649b5b7daef168cc84da",
+        "inputSha256": "b7d3671ac2bb90760b88103229dc4da194d60d18554f5e5e86122f98c0cc9563",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/certgen:v0.2.4",
+          "digest": "sha256:cf231218850d22ee160347a67483860e85606d6d3ad0649b5b7daef168cc84da",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cilium-5651485d8c29",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4",
+        "digest": "sha256:2eb67991eaa9368ba199c2fac2c573cb0ffdeb79184533344f42fc9a7ff6af3c",
+        "inputSha256": "dbc21e78bfabc5c106fb5e67ddb38b5fcd63b3c44af0d2c68afbef84d04717e2",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/cilium:v1.19.4",
+          "digest": "sha256:2eb67991eaa9368ba199c2fac2c573cb0ffdeb79184533344f42fc9a7ff6af3c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cilium-envoy-9bde4c7d141f",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+        "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3",
+        "inputSha256": "71e3ba6592d83200711abc1452c1389c9c44eb0f911fd98ce279cc6de9c8900e",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cinder-csi-plugin-fafe59d0f62e",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+        "digest": "sha256:cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4ea246c54e753e82d6",
+        "inputSha256": "06f327dc2e973ae93cd7b5cecb9a890871b87b9c7d8974747839dcf4818abae0",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+          "digest": "sha256:cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4ea246c54e753e82d6",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+        "digest": "sha256:93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183094df8daee1094a1",
+        "inputSha256": "9b7043da974cbfb72b540909189cb75e0d817a6af54feef42a29fdd4f0da3c36",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+          "digest": "sha256:93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183094df8daee1094a1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cni-1e7d398d64e9",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5",
+        "digest": "sha256:2a0ce169973b1531cc50af7c2164474a741061c5a37886fab1553ad77e4ac272",
+        "inputSha256": "2f13ed50d1533b5ef04ae2c2b72f5956bf9045a67a813f499ecd82c29f6ac45b",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/cni:v3.31.5",
+          "digest": "sha256:2a0ce169973b1531cc50af7c2164474a741061c5a37886fab1553ad77e4ac272",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cni-255e166abdb6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6",
+        "digest": "sha256:6ab06560b689151ad2ed24f01d6bf18661881627babcd47b2e1463529ed22005",
+        "inputSha256": "41f05e08aa7a8fe09b5cad9dc577f5bf1e5371651044a42d32ca3ebc14b582f9",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/cni:v3.30.6",
+          "digest": "sha256:6ab06560b689151ad2ed24f01d6bf18661881627babcd47b2e1463529ed22005",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-cni-2a722760a7e1",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5",
+        "digest": "sha256:5f00517832659c081467fc1cf768510d368eb6b0a8ffd71e4e2ae84b3f7ce2a7",
+        "inputSha256": "3d4dc64beaf1393de2f2fce20e2e4d1bd80e63882bc60733e47b9773b57852b7",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/cni:v3.30.5",
+          "digest": "sha256:5f00517832659c081467fc1cf768510d368eb6b0a8ffd71e4e2ae84b3f7ce2a7",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-controller-27840469ef8d",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9",
+        "digest": "sha256:3fb6daa527ccd65db369f02cb1a6aa52523f406adda33244fac1b4e1f983f088",
+        "inputSha256": "dd4dfe3d8389ece3748c8151f888b9318e68c03150d680c51e06a49f7c410d78",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/metallb/controller:v0.13.9",
+          "digest": "sha256:3fb6daa527ccd65db369f02cb1a6aa52523f406adda33244fac1b4e1f983f088",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-controller-74a944e7ad97",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3",
+        "digest": "sha256:7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822bcd394fc2bcd8e83",
+        "inputSha256": "7046966b4a1ae6283e0e582cc0a9ed91f9928ff5a430bf518163afd20a8fdc19",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/ingress-nginx/controller:v1.13.3",
+          "digest": "sha256:7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822bcd394fc2bcd8e83",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-coredns-19e9472ad36d",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0",
+        "digest": "sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee",
+        "inputSha256": "074c6e887d9c5e66092c4c510a648a890579c6fd13f55ab18414373e1b64c595",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/coredns/coredns:v1.12.0",
+          "digest": "sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-coredns-c0a1763e2e8b",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4",
+        "digest": "sha256:5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff00878325f3f2645d9d465c",
+        "inputSha256": "8748d0d95c7d83b440ed6c601f1122950b0c75d6d0a27074cb4008cc42465d43",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/coredns/coredns:v1.12.4",
+          "digest": "sha256:5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff00878325f3f2645d9d465c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-coredns-eb936e6d1fb6",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1",
+        "digest": "sha256:4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ecbf14004181f91998",
+        "inputSha256": "dd23a05d0ca0bf42fda531c807caaaf9bc2364e3812f3861f727827839265d67",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/coredns/coredns:v1.12.1",
+          "digest": "sha256:4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ecbf14004181f91998",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-attacher-54214cd5c68a",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+        "digest": "sha256:304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f92645d898757db1e0",
+        "inputSha256": "7ef13e6039368433924eb41d98eb767bfca47c2d1322296d951ea0e6d9658fa5",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+          "digest": "sha256:304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f92645d898757db1e0",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-attacher-c020451f8db4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
+        "digest": "sha256:ac8d4216d1684f5469319f9d665f91c5582bf32d063d037ec8666173407e4db1",
+        "inputSha256": "453ae27e582d87305f8b25c47f836a51e8b447fc9eab31116d88b9d88d0fa011",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
+          "digest": "sha256:ac8d4216d1684f5469319f9d665f91c5582bf32d063d037ec8666173407e4db1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+        "digest": "sha256:0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07972b1ce8858d9cb7",
+        "inputSha256": "41b582f1439e6da05fdbcb8e1130395275be4ef7497c7a8487fb11edccde9ffe",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+          "digest": "sha256:0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07972b1ce8858d9cb7",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-provisioner-b1c0015e8797",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
+        "digest": "sha256:875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d402ee1e2efdf70450",
+        "inputSha256": "7c3181f5ab36b158e104860b23df166eb9cd934e03fbe4d570a9bfc9eba28a7e",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
+          "digest": "sha256:875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d402ee1e2efdf70450",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-provisioner-c95b16a748c1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+        "digest": "sha256:ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a709fbf3e16a782ca",
+        "inputSha256": "3094b89487ebd055bbc30613666ea8392ea72a8aa9e8db7b9bfdb208f5046b43",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+          "digest": "sha256:ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a709fbf3e16a782ca",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-resizer-17c09eac50f2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+        "digest": "sha256:8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd4870192d1c586bd0",
+        "inputSha256": "fca503f817a8691d5b9f41b0e02b2cbd4620f536591163f0c9f0c7f9ee3438ee",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+          "digest": "sha256:8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd4870192d1c586bd0",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-resizer-cbf66a4bf48d",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
+        "digest": "sha256:35ec0c736ec8266bd4a46f9e942315f148f3139beed99879d0ad8b8e5074d641",
+        "inputSha256": "bade4d9c14cbf97b3cea2ad1a1e32045a68a8c3c0079509d86ad39ce06c6da9d",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
+          "digest": "sha256:35ec0c736ec8266bd4a46f9e942315f148f3139beed99879d0ad8b8e5074d641",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-snapshotter-0eecf4b68dbb",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+        "digest": "sha256:651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406da659878729d799db",
+        "inputSha256": "1c390ac6be82635abd5bf8e7bb8b9b6c2e943c2dc1eb992834f3b10035049ff3",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+          "digest": "sha256:651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406da659878729d799db",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-csi-snapshotter-9b1b230f4947",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
+        "digest": "sha256:640e0275af6df4ad84339d4c449ea52559c25ae11c92ea4655252bed789a3bb3",
+        "inputSha256": "64701221ec0fdb4e7bddf542c59903d8a686dd7a284fe23fb4df69244fd0a6f5",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
+          "digest": "sha256:640e0275af6df4ad84339d4c449ea52559c25ae11c92ea4655252bed789a3bb3",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-dashboard-d40878c7d46f",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0",
+        "digest": "sha256:ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71b053cdf8b5dc3029",
+        "inputSha256": "bd952165fd60f4ebf86239c9e9554561050b09bd56e3a4e4030e8a871568c18b",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/kubernetesui/dashboard:v2.7.0",
+          "digest": "sha256:ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71b053cdf8b5dc3029",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-etcd-303eba369353",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26",
+        "digest": "sha256:8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc4cde280aec910c33",
+        "inputSha256": "f1c58834b0da948bbe9b548ea5190a3215d96741d78b34108280fc12854a98d6",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/coreos/etcd:v3.5.26",
+          "digest": "sha256:8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc4cde280aec910c33",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-etcd-3c5d6be819ca",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25",
+        "digest": "sha256:dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf509fd409d7162a9d",
+        "inputSha256": "6593dbcff0f538394a193ce976ae42e4b49d596c516eba5bd8ccef9e2de970a2",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/coreos/etcd:v3.5.25",
+          "digest": "sha256:dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf509fd409d7162a9d",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-etcd-ca5f72edf851",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10",
+        "digest": "sha256:8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43efae659d882999e32",
+        "inputSha256": "458b05b18a00c76ee72378bddc785437b6f2c1e60a43df6469d43a4a1e42cfe9",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/coreos/etcd:v3.6.10",
+          "digest": "sha256:8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43efae659d882999e32",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-flannel-05cceee7aa3e",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4",
+        "digest": "sha256:e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e94096687858db111",
+        "inputSha256": "cabae7d26d602da17f432e1ba1d43f0649596c896bf155fec9b947c43607487a",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/flannel/flannel:v0.28.4",
+          "digest": "sha256:e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e94096687858db111",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-flannel-4a66f2488d69",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3",
+        "digest": "sha256:0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd156fcbf6d2f083d1",
+        "inputSha256": "4468803abd96d4f244ea0ed1e690d98f4fd4067c3255c1d5d56d90987c7133fe",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/flannel/flannel:v0.27.3",
+          "digest": "sha256:0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd156fcbf6d2f083d1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-flannel-cni-plugin-628a10cfbf92",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+        "digest": "sha256:003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a58d0421d721305ea",
+        "inputSha256": "e546c121336e4f4621c0d718914f732dbd12043f8f5d41c622a35d69b4c9f7d0",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+          "digest": "sha256:003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a58d0421d721305ea",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-haproxy-c627c8545636",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine",
+        "digest": "sha256:4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5bc874e89b9554a71",
+        "inputSha256": "fee6d711832ae3b7066f86cfe357ae17998b355e100e455ef014e3001198fbd9",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/library/haproxy:3.2.13-alpine",
+          "digest": "sha256:4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5bc874e89b9554a71",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-haproxy-e759b61b7326",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine",
+        "digest": "sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
+        "inputSha256": "6a0dbc99a322b74844b912ce4693aa92f40d384bb0b64801d2dea511b825c92d",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/library/haproxy:3.2.4-alpine",
+          "digest": "sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-hubble-relay-af135d8ceffb",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4",
+        "digest": "sha256:5da3a57ae08c6e85816e93cb4cd44abe7021b319da2a21d2c6e4e6560ac21135",
+        "inputSha256": "4c0cf86dd64f14480a160decf44d6c7f312b65837436a148e1370e10d4ea7cfc",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/hubble-relay:v1.19.4",
+          "digest": "sha256:5da3a57ae08c6e85816e93cb4cd44abe7021b319da2a21d2c6e4e6560ac21135",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-hubble-ui-aa9daec9d667",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3",
+        "digest": "sha256:e1fd0debd32db200273ed3f98afa358dd19870dea14f03945714d079cea8101c",
+        "inputSha256": "559f4e39e4abb6450d9b2689835cebe3a5947c826429da7600b639606021b277",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/hubble-ui:v0.13.3",
+          "digest": "sha256:e1fd0debd32db200273ed3f98afa358dd19870dea14f03945714d079cea8101c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-hubble-ui-backend-80373e4df8f7",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3",
+        "digest": "sha256:c05242a910241a6d0aa46e9d7409dc5e9a8a505a38d4849802a9d7b406b56367",
+        "inputSha256": "f777b5a2f79ed58eb5b7cfe45502384885b431b84c0aba56eb5e1a5c4bcb814d",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/hubble-ui-backend:v0.13.3",
+          "digest": "sha256:c05242a910241a6d0aa46e9d7409dc5e9a8a505a38d4849802a9d7b406b56367",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-k8s-dns-node-cache-eaa2f69f0965",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+        "digest": "sha256:926add157b0563f30bdf49a6299f4401a1a4b007814fc41fe903a685166cfc0a",
+        "inputSha256": "1795c1668fea6367aa4ac4d4dc0d3cc6de0ddd0b4bf88c4ce39522587141dd89",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+          "digest": "sha256:926add157b0563f30bdf49a6299f4401a1a4b007814fc41fe903a685166cfc0a",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+        "digest": "sha256:a7c6fcc0700c394583ed0cb61410ee399f7fc0c2fdec1a5495c583f136846067",
+        "inputSha256": "af6398012ac5320d48157b463cbcdd1752fd65582205ad4f5f63b49bbf53a1b1",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+          "digest": "sha256:a7c6fcc0700c394583ed0cb61410ee399f7fc0c2fdec1a5495c583f136846067",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-k8s-netchecker-server-0648e3074092",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+        "digest": "sha256:f33c8071ee1a3333213a6a7bee80cbc75675dc465ccc1491cbe558d0823b46be",
+        "inputSha256": "50dac3c7ec013d6a499a93d65605e3039e50efcf83f593c98b04305564142890",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+          "digest": "sha256:f33c8071ee1a3333213a6a7bee80cbc75675dc465ccc1491cbe558d0823b46be",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-apiserver-35a4e8593b81",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3",
+        "digest": "sha256:9b2e9bae4dc94991e51c601ba6a00369b45064243ba7822143b286edb9d41f9e",
+        "inputSha256": "d868eeab6fd09d20284d6090827d3bba4da46e238a69affdc7e84a61606c5740",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-apiserver:v1.34.3",
+          "digest": "sha256:9b2e9bae4dc94991e51c601ba6a00369b45064243ba7822143b286edb9d41f9e",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-apiserver-7a7a5e018a18",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5",
+        "digest": "sha256:9a6035a846ee85e400b68183b82194157c2717851a067ac8ec99fe4eaadcd540",
+        "inputSha256": "f70b553bfe4a77714bb2a47046e1b861d5c7a45a5b5ff6b78cbe9480b13b7805",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-apiserver:v1.33.5",
+          "digest": "sha256:9a6035a846ee85e400b68183b82194157c2717851a067ac8ec99fe4eaadcd540",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-apiserver-a41c80c0ea0e",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4",
+        "digest": "sha256:683fc83d3a14a364071ecace749ad42642655fa63d7b2233a996c7a6fc3a8242",
+        "inputSha256": "2f92d0080f45946a4ecaa65a8f7a8671b722520b3d507a895fbd8dcdbaff67eb",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-apiserver:v1.35.4",
+          "digest": "sha256:683fc83d3a14a364071ecace749ad42642655fa63d7b2233a996c7a6fc3a8242",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controller-manager-200d516fa1b9",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5",
+        "digest": "sha256:b29bb573acfc2d9b9b1e777be2c32ab2711e3384dcccbdd652a1519cde47b9ef",
+        "inputSha256": "3c483c1504564650fb76f4e27d7048140f062c129bf2896dcf6f1bfc248619ed",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-controller-manager:v1.33.5",
+          "digest": "sha256:b29bb573acfc2d9b9b1e777be2c32ab2711e3384dcccbdd652a1519cde47b9ef",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controller-manager-6380ebf00c81",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4",
+        "digest": "sha256:71e603d3f0e6edf5cccb06ae09387e24ea43e21096d39aef60714a3b25a82b49",
+        "inputSha256": "6fed9a7871caed6201432317a30125392faefc05f116f17a3f99ba9e5791dcc7",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-controller-manager:v1.35.4",
+          "digest": "sha256:71e603d3f0e6edf5cccb06ae09387e24ea43e21096d39aef60714a3b25a82b49",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controller-manager-cb79eac61c34",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3",
+        "digest": "sha256:90ceecee64b3dac0e619928b9b21522bde1a120bb039971110ab68d830c1f1a2",
+        "inputSha256": "e8291facab3d5ffdcf348f49d52b8bc74ff51ca8c3f8f245d30b96abf38f8b51",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-controller-manager:v1.34.3",
+          "digest": "sha256:90ceecee64b3dac0e619928b9b21522bde1a120bb039971110ab68d830c1f1a2",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controllers-569b5b422819",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5",
+        "digest": "sha256:ec80d7515ed843483cf0895781bc1fbbc44c750953a84c2073c1de8adc60fee5",
+        "inputSha256": "e5bdae6a05b5f1c3bdb00937dd719b8f3f0265e85b728998c5f3b93d1befb3b5",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/kube-controllers:v3.30.5",
+          "digest": "sha256:ec80d7515ed843483cf0895781bc1fbbc44c750953a84c2073c1de8adc60fee5",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controllers-ab24c787861c",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5",
+        "digest": "sha256:4a1c3d86e8501edb1429226b4b8939b57d2b297ef990703c5dbea30a0b3bd84d",
+        "inputSha256": "04329f542c11ab662e212d3a5f414ae8d1fa3d2eb67c37a3f3c328869b35e427",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/kube-controllers:v3.31.5",
+          "digest": "sha256:4a1c3d86e8501edb1429226b4b8939b57d2b297ef990703c5dbea30a0b3bd84d",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-controllers-b9b25dbd1bb6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6",
+        "digest": "sha256:424441c7d5e6b78ee8800f645b08a3c0174096dca33234bbac1a716c6e336df1",
+        "inputSha256": "711a59dc163171a95fc55e97b443bbb0bf5d75bc5652f9c8766d8d20be318ed2",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/kube-controllers:v3.30.6",
+          "digest": "sha256:424441c7d5e6b78ee8800f645b08a3c0174096dca33234bbac1a716c6e336df1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-ovn-d5b7e3e6a128",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21",
+        "digest": "sha256:b24bf383511da382c928de8b69df518b3d4375684a477204fc7e7f3a7e7bcb4b",
+        "inputSha256": "4477350188652efa0fbd0dee9752b27360e482298a7b9e359bb8e14cc9de5be0",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/kubeovn/kube-ovn:v1.12.21",
+          "digest": "sha256:b24bf383511da382c928de8b69df518b3d4375684a477204fc7e7f3a7e7bcb4b",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-proxy-01d2fe37ba1b",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3",
+        "digest": "sha256:aee44d152c9eaa4f3e10584e61ee501a094880168db257af1201c806982a0945",
+        "inputSha256": "6a683cfc7621d1342d7dcc52efb39b7dc76915abeecda5ed2959dae1a72350e4",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-proxy:v1.34.3",
+          "digest": "sha256:aee44d152c9eaa4f3e10584e61ee501a094880168db257af1201c806982a0945",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-proxy-2a95f8e3469a",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5",
+        "digest": "sha256:1a1a228e08acc4129edb1798dc7eff54bbd129aecc82a1642e1737ef19297354",
+        "inputSha256": "d0ebb73e0a1b52a6150f6e0c0803fd917b6b909284a641e80d8b7ced823ad5e9",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-proxy:v1.33.5",
+          "digest": "sha256:1a1a228e08acc4129edb1798dc7eff54bbd129aecc82a1642e1737ef19297354",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-proxy-f41a80af8ea3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4",
+        "digest": "sha256:1fdd5616de6ae625723a988c036f9976e42b507bc5ad3ea140ffdd4ecf5ffeb7",
+        "inputSha256": "2fc63ccf8d265a2608eb88ec509d346c35d427b3d618a87031d642c048635725",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-proxy:v1.35.4",
+          "digest": "sha256:1fdd5616de6ae625723a988c036f9976e42b507bc5ad3ea140ffdd4ecf5ffeb7",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-router-a15345e0ac99",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1",
+        "digest": "sha256:6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c151a461bec02b706",
+        "inputSha256": "19e4977a6ce66b2ec8fdb73120c189bc9ae4864af550b59ce7306730e6ff11ec",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/cloudnativelabs/kube-router:v2.1.1",
+          "digest": "sha256:6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c151a461bec02b706",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-scheduler-21faa420e1ed",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3",
+        "digest": "sha256:490ff7b484d67db4a77e8d4bba9f12da68f6a3cae8da3b977522b60c8b5092c9",
+        "inputSha256": "8c92bbe6481bcf274a04dfee6be3877a26872fb6c747197e12a20a6574b08d03",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-scheduler:v1.34.3",
+          "digest": "sha256:490ff7b484d67db4a77e8d4bba9f12da68f6a3cae8da3b977522b60c8b5092c9",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-scheduler-98ff489f17d0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5",
+        "digest": "sha256:a0eb16738760343f3b81dab6154de066695a41c6a27a2f5632954121729bb8a1",
+        "inputSha256": "93ace4f8efe5e8412f919b2fc3ad4ffa98504d95f0e5af41c66cb810c3b70228",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-scheduler:v1.33.5",
+          "digest": "sha256:a0eb16738760343f3b81dab6154de066695a41c6a27a2f5632954121729bb8a1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-scheduler-ec5cf060af83",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4",
+        "digest": "sha256:7b652cb033c8f48b345351a969bf1ca9cdcb6ea65f4f8cfcee6d3b97691361a3",
+        "inputSha256": "57eb852343689d38d1c00a9404e968fa44bbb13ef1c8eab03b49c5a5186bccf8",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/kube-scheduler:v1.35.4",
+          "digest": "sha256:7b652cb033c8f48b345351a969bf1ca9cdcb6ea65f4f8cfcee6d3b97691361a3",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-vip-d0dc4887640c",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3",
+        "digest": "sha256:682e231fd0759906b65ed56ac124cc8ae093b9506aac00063c66c2ffa7fb5d9e",
+        "inputSha256": "2f7529511aed8fb55d0f202101fcee4fcfb3f3602a2195ac969350de2cd162dd",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/kube-vip/kube-vip:v1.0.3",
+          "digest": "sha256:682e231fd0759906b65ed56ac124cc8ae093b9506aac00063c66c2ffa7fb5d9e",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-kube-vip-f8a2ed10eb61",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9",
+        "digest": "sha256:0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931acb5c5729dcf094345",
+        "inputSha256": "bc623bbd6fac5a930db17a40eb5b3ceb465069b013fccb3a3d5adb07f461185a",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/kube-vip/kube-vip:v0.8.9",
+          "digest": "sha256:0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931acb5c5729dcf094345",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-livenessprobe-3f00aa1aa37d",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+        "digest": "sha256:4a1e22167d03746e6748cdc41b6374262c666bc85999e90112edc236dfb2c95a",
+        "inputSha256": "14af3cb7e4128a1aea958535a5c9d105716a60f53793906f0c7220101dfdc7e8",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+          "digest": "sha256:4a1e22167d03746e6748cdc41b6374262c666bc85999e90112edc236dfb2c95a",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-local-path-provisioner-bea410f5d32c",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32",
+        "digest": "sha256:64975a72cb31bda96fea61f4b59e6cca4545e531487a13fab7ba1b7aba95bd6c",
+        "inputSha256": "43186496ae08d5afc475ab0bb75d11de01547bc14d2dfe60d901099ebd92ffab",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/rancher/local-path-provisioner:v0.0.32",
+          "digest": "sha256:64975a72cb31bda96fea61f4b59e6cca4545e531487a13fab7ba1b7aba95bd6c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-local-volume-provisioner-647b2d0ec790",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+        "digest": "sha256:19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3fd84a2e42023aba22",
+        "inputSha256": "461d9f19491a78cdefd88c49790b4d45c073fea2a2c798cc70bc256d33c4ebc7",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+          "digest": "sha256:19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3fd84a2e42023aba22",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-metrics-scraper-411975044da7",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
+        "digest": "sha256:43227e8286fd379ee0415a5e2156a9439c4056807e3caa38e1dd413b0644807a",
+        "inputSha256": "4aa81f45549483d792b27fc44209309f5afc5ad265686e8a30a567a2e3c06ca8",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
+          "digest": "sha256:43227e8286fd379ee0415a5e2156a9439c4056807e3caa38e1dd413b0644807a",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-metrics-server-78a748c4b508",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+        "digest": "sha256:5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f9f54cf9f54cddbc1",
+        "inputSha256": "b7bbdc997e6d1e304bf1467a63db0acc3336d5e6fae7987ea9e89635b88daff0",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+          "digest": "sha256:5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f9f54cf9f54cddbc1",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-metrics-server-96c8158a4a11",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+        "digest": "sha256:6231fb0a1ffab76c92ab880f51a0d11b290f688373647bcedff85af025dfd8a9",
+        "inputSha256": "7429fb49b9c0d125dc29da058a316a34678d827d8b4772d8b9ec77543f85a981",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+          "digest": "sha256:6231fb0a1ffab76c92ab880f51a0d11b290f688373647bcedff85af025dfd8a9",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-multus-cni-da567c68368a",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+        "digest": "sha256:9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc951ab06d0a0144be8",
+        "inputSha256": "e288b27c608366f50ddf501fa2ac5337f0d1e5c304de8aa7fce3255aa1d2554f",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+          "digest": "sha256:9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc951ab06d0a0144be8",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-nginx-4fbf2a6c1299",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine",
+        "digest": "sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c",
+        "inputSha256": "2a883522b9b00a86acd48127ba0d9d2850043ac9f11a0faa587e2eb2b53ce304",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/library/nginx:1.28.0-alpine",
+          "digest": "sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-nginx-7167e4ebc08b",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine",
+        "digest": "sha256:0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c469d507095dd2c77e",
+        "inputSha256": "64670598a8f17e893720d4330fefe53fceef60fefdc3360d9444f4fb4c837f97",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/library/nginx:1.28.2-alpine",
+          "digest": "sha256:0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c469d507095dd2c77e",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-node-117e4c2a0fbf",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6",
+        "digest": "sha256:3a1cdf9512ca47555fd450fd26444ab35d4c77081c25e4ab0699375e9d1651ff",
+        "inputSha256": "6e73a667ade96c08d39e05fd81ca2bd9dd8ad72e7e352772c877567d550e3ca5",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/node:v3.30.6",
+          "digest": "sha256:3a1cdf9512ca47555fd450fd26444ab35d4c77081c25e4ab0699375e9d1651ff",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-node-77c1a7981006",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5",
+        "digest": "sha256:584e225717b812c55c5d7b3d1b99a565002733976ed4dde6eb9392423fd727e8",
+        "inputSha256": "9b86ca9a25b333098f5cc2a757aa1c180872023ab8f9ff5c898f98b4e2059baa",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/node:v3.31.5",
+          "digest": "sha256:584e225717b812c55c5d7b3d1b99a565002733976ed4dde6eb9392423fd727e8",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-node-f33bf95c654d",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5",
+        "digest": "sha256:71c8c021c6aa8fbf70bb3cfaedc01bdcc4a4b493e52efd1a18112c6f1b1e58ad",
+        "inputSha256": "f04bf8c8746368e8510bcf6d2719e5a2bb54e66cbfcec88d634b2e3e97cd9de2",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/node:v3.30.5",
+          "digest": "sha256:71c8c021c6aa8fbf70bb3cfaedc01bdcc4a4b493e52efd1a18112c6f1b1e58ad",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-operator-7c35bff2c3cc",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4",
+        "digest": "sha256:f4e6d781137b6709cccc2c9f8e18528a6a05559c04cae419b9ced30c818f082a",
+        "inputSha256": "dbb58851d2c6fb656ba76dc79fdd9f334fb2c127f7f0bc2aa17e73849e5a7398",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/operator:v1.19.4",
+          "digest": "sha256:f4e6d781137b6709cccc2c9f8e18528a6a05559c04cae419b9ced30c818f082a",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-operator-generic-c6b4e2064d8e",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4",
+        "digest": "sha256:1aa2b62735e7d8ab49ee840ae59c346932024c88901579121395c1271b435f71",
+        "inputSha256": "0f3d156f07591806560211db090ce1088d68711c524719c6aafb9ad521c554d3",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/cilium/operator-generic:v1.19.4",
+          "digest": "sha256:1aa2b62735e7d8ab49ee840ae59c346932024c88901579121395c1271b435f71",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-pause-6bafff9caf95",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1",
+        "digest": "sha256:e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd3afcf9d890cf1f41",
+        "inputSha256": "6b2e3c690eea4f3a960f0a483f02eaacea37cd00c1ceb67cd277801ab03f53db",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/pause:3.10.1",
+          "digest": "sha256:e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd3afcf9d890cf1f41",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-pause-6f731803067f",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10",
+        "digest": "sha256:7c38f24774e3cbd906d2d33c38354ccf787635581c122965132c9bd309754d4a",
+        "inputSha256": "5c4bba59c2396b4a074feaba8acb4e55b22d4a99b280ed1002a168c38cd9bbb6",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/pause:3.10",
+          "digest": "sha256:7c38f24774e3cbd906d2d33c38354ccf787635581c122965132c9bd309754d4a",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-registry-8a454201835a",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1",
+        "digest": "sha256:85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507add9faca39064bf9b0",
+        "inputSha256": "a9fbd128923aead6b82cbcffc6085b16803790bb84b620a34b942b0646fba150",
+        "delivery": {
+          "type": "mirror",
+          "source": "index.docker.io/library/registry:2.8.1",
+          "digest": "sha256:85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507add9faca39064bf9b0",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-snapshot-controller-714b107c1ee8",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+        "digest": "sha256:fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919747d1c83204d2684",
+        "inputSha256": "d591934156c4c79a55d2b464ec5bf4022fff35d2f3d3bb28f7a96e6073ec0419",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+          "digest": "sha256:fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919747d1c83204d2684",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-speaker-665977c8efe1",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9",
+        "digest": "sha256:d314a4140a5b2341718d7185f4129f8776141ce64874487743ebe42ec9cf275f",
+        "inputSha256": "14b0a415ed65fd842afa2e5e9e309e4a44c62f3592fbc05ba78a5f6fb52ea18a",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/metallb/speaker:v0.13.9",
+          "digest": "sha256:d314a4140a5b2341718d7185f4129f8776141ce64874487743ebe42ec9cf275f",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-typha-32be33bfb81f",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5",
+        "digest": "sha256:edd3c5b8ba1af10a77a21865bdbbbd8584eba84e20feceb99645aa6b48c31e99",
+        "inputSha256": "689318bb8dc5a886727eeb0a32471fc466a73343cbb0adbd6a0e44baa3aad850",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/typha:v3.31.5",
+          "digest": "sha256:edd3c5b8ba1af10a77a21865bdbbbd8584eba84e20feceb99645aa6b48c31e99",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-typha-a2c9cbcbd89b",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6",
+        "digest": "sha256:47e9f0eac793d3c122a761b1c47ac699882737085e095a22d90372535cfc000b",
+        "inputSha256": "be1e420c5ac2eacba8b52a75b7a4b163d339fba188b649d8e6aad08c60b2d015",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/typha:v3.30.6",
+          "digest": "sha256:47e9f0eac793d3c122a761b1c47ac699882737085e095a22d90372535cfc000b",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kubespray-typha-e994ea476f5f",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5",
+        "digest": "sha256:c8ed836f43aa3b7a13582c7d7dfdc21ad338b9fc62e77ca360a0c01ee123737c",
+        "inputSha256": "0356865dca6efb3e46f582a2c9a933b4651a4dd00dd284986001fdfbc42242b0",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/calico/typha:v3.30.5",
+          "digest": "sha256:c8ed836f43aa3b7a13582c7d7dfdc21ad338b9fc62e77ca360a0c01ee123737c",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kustomize-controller",
+        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4",
+        "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
+        "inputSha256": "e595030944adaa2d6eaecf95ba963203bfffab27cbd69bbcd6951d8e5dd47b8a",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
+          "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
           "sourceProfile": "platform"
         }
       },
@@ -1324,6 +3707,18 @@
         }
       },
       {
+        "id": "notification-controller",
+        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3",
+        "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
+        "inputSha256": "ced5aab73305bb920beeb1d59b1b05b4a7a5b1a892dc498bb7dfa3850682c354",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/fluxcd/notification-controller:v1.9.3",
+          "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
+          "sourceProfile": "platform"
+        }
+      },
+      {
         "id": "opensearch",
         "target": "10.77.0.9:32443/atum/opensearch:3.8.0",
         "digest": "sha256:39a8f8c63028e8b5d6b70539af1d0339b15a6729002dd5b3f4a65f520376fd30",
@@ -1348,14 +3743,14 @@
         }
       },
       {
-        "id": "opensearch-operator",
-        "target": "10.77.0.9:32443/atum/opensearch-operator:2.8.0",
-        "digest": "sha256:833271fe2367b076414fd0dbb23d1cdf62a0630fbfaea65a9af54e74105601d9",
-        "inputSha256": "fb20c19f9530a2a9315173d22998bff85de78202f69d598f573a882edde6ca51",
+        "id": "operator-builder",
+        "target": "10.77.0.9:32443/atum/operator-builder:1.26.0",
+        "digest": "sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135",
+        "inputSha256": "56d0991a6ae278fcdb4db9d197982d06ec3208c6f1fb2389f394ea3b2fe6003f",
         "delivery": {
           "type": "mirror",
-          "source": "docker.io/opensearchproject/opensearch-operator:2.8.0",
-          "digest": "sha256:833271fe2367b076414fd0dbb23d1cdf62a0630fbfaea65a9af54e74105601d9",
+          "source": "docker.io/library/golang:1.26.0-alpine",
+          "digest": "sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135",
           "sourceProfile": "platform"
         }
       },
@@ -1423,7 +3818,7 @@
         "id": "postgresql-18",
         "target": "10.77.0.9:32443/atum/postgresql-18:18.4",
         "digest": "",
-        "inputSha256": "1d1ac37d1f3d895af18c0c9e36a8a7037286fe427b1c9a264e9b46a43eee9d08",
+        "inputSha256": "e3d573c80776eedaa0f05a9853d6f58cc0f7ab948d415e986f70b78e301796f6",
         "delivery": {
           "type": "build",
           "bakeTarget": "postgresql-18-compat",
@@ -1520,6 +3915,18 @@
         }
       },
       {
+        "id": "source-controller",
+        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4",
+        "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
+        "inputSha256": "c80c9ca11d2f70c439b67d57e1afeb2d97f30b62a897867a5e96e2e7230c04f1",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/fluxcd/source-controller:v1.9.4",
+          "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
+          "sourceProfile": "platform"
+        }
+      },
+      {
         "id": "tempo",
         "target": "10.77.0.9:32443/atum/tempo:2.10.5",
         "digest": "sha256:7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3be21e97fe83de502",
@@ -1547,7 +3954,7 @@
         "id": "vault",
         "target": "10.77.0.9:32443/atum/vault:1.21.4",
         "digest": "",
-        "inputSha256": "ec9b3b78bb448304a294167433bea0b246661d34583aa6dcc833f1a0663a7dfd",
+        "inputSha256": "45b38f3a2f0a7d979f53c95e47e1721d77f78ec97aa00f75cadbb2cb221c78e5",
         "delivery": {
           "type": "build",
           "bakeTarget": "vault-curl-compat",

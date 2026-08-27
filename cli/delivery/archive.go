@@ -135,6 +135,32 @@ func materializeGitFile(entry gitsnapshot.File, path string, mode os.FileMode, b
 	return nil
 }
 
+func writeRegular(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return err
+	}
+	written, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
 func writeReaderEntry(writer *tar.Writer, buffer []byte, reader io.Reader, name string, mode, size int64) error {
 	if err := writer.WriteHeader(normalizedHeader(name, mode, size, tar.TypeReg, "")); err != nil {
 		return err

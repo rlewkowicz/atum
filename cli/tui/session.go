@@ -37,9 +37,9 @@ type Options struct {
 }
 
 type eventSignature struct {
-	state          progress.State
-	detail         string
-	current, total int
+	state                    progress.State
+	detail                   string
+	current, total           int
 	bytesCurrent, bytesTotal int64
 }
 

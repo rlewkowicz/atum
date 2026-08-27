@@ -235,8 +235,7 @@ func TestArtifactsPublishExposesOnlyCanonicalPublicationControls(t *testing.T) {
 			t.Errorf("artifacts publish omits --%s", name)
 		}
 	}
-	if command, _, err := root.Find([]string{"images", "publish"});
-		err == nil && command.Name() == "images" {
+	if command, _, err := root.Find([]string{"images", "publish"}); err == nil && command.Name() == "images" {
 		t.Fatal("stale images publish command remains available")
 	}
 }

@@ -11,6 +11,7 @@ func TestOfficialImageEvidenceRequiresOnePermittedImmutableRepository(t *testing
 	digest := "sha256:" + strings.Repeat("a", 64)
 	policy := DeliveryPolicy{
 		ForbiddenArtifactPrefixes: []string{"registry1.dso.mil/ironbank"},
+		MutableTagsForbidden:      true,
 	}
 	tests := []struct {
 		name     string
@@ -42,10 +43,9 @@ func TestOfficialImageEvidenceRequiresOnePermittedImmutableRepository(t *testing
 			wantErr:  true,
 		},
 		{
-			name:     "non-tag source",
+			name:     "immutable source",
 			source:   "docker.io/hashicorp/vault@" + digest,
 			material: "docker.io/hashicorp/vault@" + digest,
-			wantErr:  true,
 		},
 	}
 	for _, test := range tests {

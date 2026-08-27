@@ -19,7 +19,7 @@ type kubesprayContractFile struct {
 	counts   map[string]int
 }
 
-var kubesprayNoAnonymousContract = [...]kubesprayContractFile{
+var kubesprayScopedAnonymousContract = [...]kubesprayContractFile{
 	{
 		name:     "structured authentication defaults",
 		relative: filepath.Join("roles", "kubespray_defaults", "defaults", "main", "main.yml"),
@@ -30,6 +30,7 @@ var kubesprayNoAnonymousContract = [...]kubesprayContractFile{
 			"'v1beta1' if kube_version is version('1.34.0', '<') else 'v1'",
 			"kube_apiserver_authentication_config_jwt: []",
 			"kube_apiserver_authentication_config_anonymous:",
+			"conditions: []",
 		},
 	},
 	{
@@ -110,13 +111,11 @@ var kubesprayNoAnonymousContract = [...]kubesprayContractFile{
 		},
 	},
 	{
-		name:     "authenticated control-plane restart API probe",
+		name:     "scoped-anonymous control-plane restart API probe",
 		relative: filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"),
 		task:     "Control plane | wait for the apiserver to be running",
 		evidence: []string{
 			`url: "{{ kube_apiserver_endpoint }}/healthz"`,
-			`client_cert: "{{ kube_apiserver_client_cert }}"`,
-			`client_key: "{{ kube_apiserver_client_key }}"`,
 			"- Control plane | restart kubelet",
 			"- Control plane | Restart apiserver",
 		},
@@ -130,13 +129,11 @@ var kubesprayNoAnonymousContract = [...]kubesprayContractFile{
 		},
 	},
 	{
-		name:     "authenticated upgrade API probe",
+		name:     "scoped-anonymous upgrade API probe",
 		relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "check-api.yml"),
 		task:     "Kubeadm | Check api is up",
 		evidence: []string{
 			"/healthz",
-			`client_cert: "{{ kube_apiserver_client_cert }}"`,
-			`client_key: "{{ kube_apiserver_client_key }}"`,
 		},
 	},
 	{
@@ -192,14 +189,20 @@ var kubesprayNoAnonymousContract = [...]kubesprayContractFile{
 	},
 }
 
-// ValidateKubesprayNoAnonymousLifecycle verifies that an immutable Kubespray
-// source can run the selected Kubernetes lifecycle without anonymous API
-// authentication.
-func ValidateKubesprayNoAnonymousLifecycle(checkout, kubernetes string) error {
+// ScopedAnonymousHealthPaths returns the complete anonymous API path allowlist
+// required by kubeadm's static-pod probes and Kubespray's lifecycle checks.
+func ScopedAnonymousHealthPaths() [3]string {
+	return [3]string{"/healthz", "/livez", "/readyz"}
+}
+
+// ValidateKubesprayScopedAnonymousLifecycle verifies that an immutable
+// Kubespray source uses only the selected Kubernetes health allowlist for
+// lifecycle checks that do not carry a client identity.
+func ValidateKubesprayScopedAnonymousLifecycle(checkout, kubernetes string) error {
 	if _, err := AuthenticationConfigAPIVersion(kubernetes); err != nil {
 		return err
 	}
-	for _, file := range kubesprayNoAnonymousContract {
+	for _, file := range kubesprayScopedAnonymousContract {
 		data, err := readKubesprayEvidence(filepath.Join(checkout, file.relative))
 		if err != nil {
 			return fmt.Errorf("inspect Kubespray %s: %w", file.name, err)

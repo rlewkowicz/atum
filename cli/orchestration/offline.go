@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -16,14 +17,20 @@ import (
 	"atum/cli/delivery"
 	"atum/cli/fssecure"
 	atumoci "atum/cli/oci"
+	"atum/cli/process"
 
 	"golang.org/x/sync/errgroup"
 )
 
 type kubesprayOfflineServer struct {
-	server   *http.Server
-	listener net.Listener
-	result   chan error
+	server      *http.Server
+	listener    net.Listener
+	result      chan error
+	cleanupCtx  context.Context
+	firewallBin string
+	runner      process.Runner
+	port        int
+	openedPort  bool
 }
 
 func (server *kubesprayOfflineServer) Close() error {
@@ -35,7 +42,69 @@ func (server *kubesprayOfflineServer) Close() error {
 	if errors.Is(serveErr, http.ErrServerClosed) {
 		serveErr = nil
 	}
-	return errors.Join(closeErr, serveErr)
+	firewallErr := server.closeFirewallPort()
+	return errors.Join(closeErr, serveErr, firewallErr)
+}
+
+func (server *kubesprayOfflineServer) closeFirewallPort() error {
+	if !server.openedPort {
+		return nil
+	}
+	server.openedPort = false
+	err := server.runner.Run(server.cleanupCtx, process.Command{
+		Name: server.firewallBin,
+		Args: []string{
+			"--quiet",
+			"--zone=libvirt",
+			"--remove-port=" + strconv.Itoa(server.port) + "/tcp",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"close temporary Kubespray offline port %d/tcp: %w",
+			server.port,
+			err,
+		)
+	}
+	return nil
+}
+
+func (server *kubesprayOfflineServer) openFirewallPort(ctx context.Context) error {
+	if server.runner == nil {
+		return errors.New("Kubespray offline server command runner is unavailable")
+	}
+	if server.firewallBin == "" {
+		return errors.New("validated firewalld preflight identity is required")
+	}
+	port := strconv.Itoa(server.port) + "/tcp"
+	queryErr := server.runner.Run(ctx, process.Command{
+		Name: server.firewallBin,
+		Args: []string{"--quiet", "--zone=libvirt", "--query-port=" + port},
+	})
+	if queryErr == nil {
+		// A pre-existing rule is not Atum-owned and must not be removed.
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(queryErr, &exitErr) || exitErr.ExitCode() != 1 {
+		return fmt.Errorf(
+			"query temporary Kubespray offline port %s: %w",
+			port,
+			queryErr,
+		)
+	}
+	if err := server.runner.Run(ctx, process.Command{
+		Name: server.firewallBin,
+		Args: []string{"--quiet", "--zone=libvirt", "--add-port=" + port},
+	}); err != nil {
+		return fmt.Errorf(
+			"open temporary Kubespray offline port %s: %w",
+			port,
+			err,
+		)
+	}
+	server.openedPort = true
+	return nil
 }
 
 func (service Service) kubesprayOfflineInputs(
@@ -105,13 +174,6 @@ func (service Service) kubesprayOfflineInputs(
 	); err != nil {
 		return nil, nil, err
 	}
-	target, exists := service.Project.Desired.ActiveTarget()
-	if !exists || target.LocalAccess == nil ||
-		net.ParseIP(target.LocalAccess.DNSServer) == nil {
-		return nil, nil, errors.New(
-			"Kubespray offline delivery requires the active local access address",
-		)
-	}
 	routes := make(map[string]config.KubesprayFile, len(inventory.Files))
 	variables := make(map[string]any, len(inventory.Files))
 	for _, file := range inventory.Files {
@@ -124,10 +186,25 @@ func (service Service) kubesprayOfflineInputs(
 		}
 		routes[route] = file
 	}
+	targetName := service.Project.Desired.Infrastructure.Active
+	target, found := service.Project.Desired.Infrastructure.Targets[targetName]
+	if !found {
+		return nil, nil, fmt.Errorf(
+			"active infrastructure target %q is absent",
+			targetName,
+		)
+	}
+	if target.LocalAccess == nil {
+		return nil, nil, fmt.Errorf(
+			"active infrastructure target %q has no local access contract",
+			targetName,
+		)
+	}
+	offlineHost := target.LocalAccess.DNSServer
 	listener, err := (&net.ListenConfig{}).Listen(
 		ctx,
 		"tcp",
-		net.JoinHostPort(target.LocalAccess.DNSServer, "0"),
+		net.JoinHostPort(offlineHost, "0"),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf(
@@ -137,12 +214,16 @@ func (service Service) kubesprayOfflineInputs(
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	base := "http://" + net.JoinHostPort(
-		target.LocalAccess.DNSServer,
+		offlineHost,
 		strconv.Itoa(port),
 	)
 	for route, file := range routes {
 		variables[file.Variable] = base + route
 	}
+	// Let Kubespray fetch pinned files directly on each node. This is its normal
+	// download path and avoids the controller-side rsync cache, whose SSH
+	// subprocess is denied by the Fedora SELinux rsync domain. The content-only
+	// server is exposed to the libvirt zone for exactly this convergence.
 	variables["download_container"] = true
 	variables["download_force_cache"] = false
 	variables["download_localhost"] = false
@@ -152,7 +233,17 @@ func (service Service) kubesprayOfflineInputs(
 	}
 	httpServer := &http.Server{Handler: handler}
 	running := &kubesprayOfflineServer{
-		server: httpServer, listener: listener, result: make(chan error, 1),
+		server:      httpServer,
+		listener:    listener,
+		result:      make(chan error, 1),
+		cleanupCtx:  context.WithoutCancel(ctx),
+		firewallBin: service.FirewallBin,
+		runner:      service.Runner,
+		port:        port,
+	}
+	if err := running.openFirewallPort(ctx); err != nil {
+		_ = listener.Close()
+		return nil, nil, err
 	}
 	go func() {
 		running.result <- httpServer.Serve(listener)

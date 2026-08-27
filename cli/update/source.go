@@ -22,9 +22,10 @@ type resolvedGit struct {
 }
 
 type resolvedPackage struct {
-	Package  config.Package
-	Checkout string
-	ChartName string
+	Package      config.Package
+	Checkout     string
+	ChartName    string
+	ChartVersion string
 }
 
 type resolvedSupportSource struct {
@@ -206,7 +207,10 @@ func resolvePackages(
 			}
 			current.License = packageLicenseReference(checkout, current.Source)
 			resolved[i] = resolvedPackage{
-				Package: current, Checkout: checkout, ChartName: metadata.Name,
+				Package:      current,
+				Checkout:     checkout,
+				ChartName:    metadata.Name,
+				ChartVersion: metadata.Version,
 			}
 			return nil
 		})
@@ -487,6 +491,23 @@ func configureBigBangChartRef(
 	if version == "" || registry.Host == "" || registry.Project == "" {
 		return errors.New("Big Bang OCI chart reference requires version and registry")
 	}
+	if registry.TLSVerify {
+		delete(spec, "postRenderers")
+		return nil
+	}
+	spec["postRenderers"] = []any{map[string]any{
+		"kustomize": map[string]any{
+			"patches": []any{map[string]any{
+				"target": map[string]any{
+					"group":   "source.toolkit.fluxcd.io",
+					"version": "v1",
+					"kind":    "HelmRepository",
+					"name":    "atum",
+				},
+				"patch": "- op: add\n  path: /spec/insecure\n  value: true\n",
+			}},
+		},
+	}}
 	return nil
 }
 

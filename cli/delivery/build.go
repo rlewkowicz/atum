@@ -259,10 +259,23 @@ func (service *Service) runBake(
 			return fmt.Errorf("create local cache for %s: %w", target, err)
 		}
 		cachePaths[target] = cachePath
-		cacheOverrides = append(cacheOverrides,
-			"--set", target+".cache-from=type=local,src="+cachePath,
-			"--set", target+".cache-to=",
+		index, openErr := fssecure.OpenRegular(
+			project.Root,
+			filepath.Join(cacheRelative, ocispec.ImageIndexFile),
 		)
+		switch {
+		case openErr == nil:
+			if err := index.Close(); err != nil {
+				return fmt.Errorf("close local cache index for %s: %w", target, err)
+			}
+			cacheOverrides = append(
+				cacheOverrides,
+				"--set", target+".cache-from=type=local,src="+cachePath,
+			)
+		case !errors.Is(openErr, os.ErrNotExist):
+			return fmt.Errorf("inspect local cache index for %s: %w", target, openErr)
+		}
+		cacheOverrides = append(cacheOverrides, "--set", target+".cache-to=")
 	}
 	arguments = append(arguments, cacheOverrides...)
 	arguments = append(arguments, targets...)
@@ -305,7 +318,6 @@ func (service *Service) runBake(
 		cacheArguments = append(cacheArguments,
 			"--set", target+".tags="+targetTags[target],
 			"--set", target+".output=type=cacheonly",
-			"--set", target+".cache-from=type=local,src="+cachePath,
 			"--set", target+".cache-to=type=local,dest="+cachePath+",mode=max",
 			target,
 		)

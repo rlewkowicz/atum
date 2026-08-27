@@ -1,19 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
+configMapGenerator:
+    - files:
+        - values.yaml=values.yaml
+      name: bigbang-operational-values
+    - files:
+        - values.yaml=generated-values.yaml
+      name: bigbang-generated-values
+generatorOptions:
+    disableNameSuffixHash: true
+    labels:
+        reconcile.fluxcd.io/watch: Enabled
 kind: Kustomization
 namespace: bigbang
 resources:
-  - source-opensearch.yaml
-  - source-opensearch-operator.yaml
-  - source-bigbang.yaml
-  - helmrelease.yaml
-configMapGenerator:
-  - name: bigbang-operational-values
-    files:
-      - values.yaml=values.yaml
-  - name: bigbang-generated-values
-    files:
-      - values.yaml=generated-values.yaml
-generatorOptions:
-  disableNameSuffixHash: true
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
+    - source-bigbang.yaml
+    - helmrelease.yaml

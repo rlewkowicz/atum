@@ -24,11 +24,15 @@ func TestRequirementsForScope(t *testing.T) {
 		want  requirementSet
 	}{
 		{"infrastructure", Infrastructure, requirementSet{terraform: true, localTarget: true}},
+		{"orchestration converge", OrchestrationConverge, requirementSet{
+			terraform: true, python: true, ssh: true, firewall: true,
+		}},
 		{"terraform passthrough", TerraformDirect, requirementSet{terraform: true}},
 		{"committed secrets", CommittedSecrets, requirementSet{sops: true}},
 		{"platform", Platform, requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}},
 		{"full", Full, requirementSet{
 			terraform: true, docker: true, python: true, ssh: true, flux: true, sops: true, localTarget: true,
+			firewall: true,
 		}},
 		{"DNS access", AccessDNS, requirementSet{resolver: true, serviceManager: true, sudo: true}},
 		{"CA access", AccessCA, requirementSet{sudo: true, trust: true}},

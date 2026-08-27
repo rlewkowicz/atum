@@ -44,15 +44,25 @@ func projectOperatorImage(tree *candidateTree, images []config.Image) error {
 	}
 	candidate := cloneMap(current)
 	spec, ok := candidate["spec"].(map[string]any)
-	if !ok { return errors.New("Atum operator deployment has no spec") }
+	if !ok {
+		return errors.New("Atum operator deployment has no spec")
+	}
 	template, ok := spec["template"].(map[string]any)
-	if !ok { return errors.New("Atum operator deployment has no pod template") }
+	if !ok {
+		return errors.New("Atum operator deployment has no pod template")
+	}
 	pod, ok := template["spec"].(map[string]any)
-	if !ok { return errors.New("Atum operator deployment has no pod spec") }
+	if !ok {
+		return errors.New("Atum operator deployment has no pod spec")
+	}
 	containers, ok := pod["containers"].([]any)
-	if !ok || len(containers) != 1 { return errors.New("Atum operator deployment must have exactly one container") }
+	if !ok || len(containers) != 1 {
+		return errors.New("Atum operator deployment must have exactly one container")
+	}
 	container, ok := containers[0].(map[string]any)
-	if !ok || container["name"] != "manager" { return errors.New("Atum operator manager container is invalid") }
+	if !ok || container["name"] != "manager" {
+		return errors.New("Atum operator manager container is invalid")
+	}
 	container["image"] = target
 	return setCandidateYAML(tree, relative, current, candidate)
 }
@@ -222,7 +232,7 @@ func refreshMirrorDigests(
 				return false, fmt.Errorf("mirror %s uses forbidden source %s", image.ID, image.Delivery.Default.Source)
 			}
 		}
-		if image.Delivery.Default.Digest != "" {
+		if isResolvedImageDigest(image.Delivery.Default.Digest) {
 			previous := currentSources[image.ID]
 			if previous.Source != image.Delivery.Default.Source ||
 				previous.Digest != image.Delivery.Default.Digest {
@@ -239,9 +249,11 @@ func refreshMirrorDigests(
 			)
 			continue
 		}
+		image.Delivery.Default.Digest = ""
 		pinned := ""
 		if previous, exists := currentSources[image.ID]; exists &&
-			previous.Source == image.Delivery.Default.Source {
+			previous.Source == image.Delivery.Default.Source &&
+			isResolvedImageDigest(previous.Digest) {
 			pinned = previous.Digest
 		}
 		key := request{source: image.Delivery.Default.Source, pinned: pinned}
@@ -307,10 +319,21 @@ func normalizedMirrorDigest(
 	pinned string,
 	resolved resolvedImageDigests,
 ) (string, error) {
+	if !isResolvedImageDigest(resolved.manifest) ||
+		!isResolvedImageDigest(resolved.tag) {
+		return "", fmt.Errorf(
+			"registry returned invalid manifest/root digests %q/%q",
+			resolved.manifest,
+			resolved.tag,
+		)
+	}
 	if pinned != "" && resolved.tag != pinned {
 		return "", fmt.Errorf(
 			"resolved root %s does not match requested digest %s",
 			resolved.tag, pinned)
+	}
+	if pinned != "" {
+		return pinned, nil
 	}
 	return resolved.manifest, nil
 }

@@ -89,38 +89,6 @@ stringData:
                             usePKCE: true
         keycloak:
             values:
-                networkPolicies:
-                    additionalPolicies:
-                        - name: allow-identity-reconcile-to-keycloak
-                          spec:
-                            egress:
-                                - ports:
-                                    - port: 53
-                                      protocol: TCP
-                                    - port: 53
-                                      protocol: UDP
-                                  to:
-                                    - namespaceSelector:
-                                        matchLabels:
-                                            kubernetes.io/metadata.name: kube-system
-                                      podSelector:
-                                        matchLabels:
-                                            k8s-app: kube-dns
-                                - ports:
-                                    - port: 8443
-                                      protocol: TCP
-                                  to:
-                                    - namespaceSelector:
-                                        matchLabels:
-                                            kubernetes.io/metadata.name: istio-gateway
-                                      podSelector:
-                                        matchLabels:
-                                            istio: ingressgateway
-                            podSelector:
-                                matchLabels:
-                                    atum.dev/identity-job: keycloak
-                            policyTypes:
-                                - Egress
                 upstream:
                     secrets:
                         env:
@@ -143,44 +111,6 @@ stringData:
                                       protocol: TLS
                                 resolution: DNS
                 networkPolicies:
-                    additionalPolicies:
-                        - name: allow-vault-identity-reconcile
-                          spec:
-                            egress:
-                                - ports:
-                                    - port: 53
-                                      protocol: TCP
-                                    - port: 53
-                                      protocol: UDP
-                                  to:
-                                    - namespaceSelector:
-                                        matchLabels:
-                                            kubernetes.io/metadata.name: kube-system
-                                      podSelector:
-                                        matchLabels:
-                                            k8s-app: kube-dns
-                                - ports:
-                                    - port: 8200
-                                      protocol: TCP
-                                  to:
-                                    - podSelector:
-                                        matchLabels:
-                                            app.kubernetes.io/name: vault
-                                - ports:
-                                    - port: 15012
-                                      protocol: TCP
-                                  to:
-                                    - namespaceSelector:
-                                        matchLabels:
-                                            kubernetes.io/metadata.name: istio-system
-                                      podSelector:
-                                        matchLabels:
-                                            app: istiod
-                            podSelector:
-                                matchLabels:
-                                    atum.dev/identity-job: vault
-                            policyTypes:
-                                - Egress
                     egress:
                         from:
                             vault:
@@ -310,20 +240,3 @@ stringData:
             token: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/token
             userinfo: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/userinfo
         url: https://keycloak.atum.test/auth/realms/master
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: atum-sso-ca
-  namespace: bigbang
-spec:
-  commonName: sso-ca.bigbang
-  dnsNames:
-    - sso-ca.bigbang
-  duration: 8760h
-  renewBefore: 720h
-  issuerRef:
-    group: cert-manager.io
-    kind: ClusterIssuer
-    name: atum-test-ca
-  secretName: atum-sso-ca

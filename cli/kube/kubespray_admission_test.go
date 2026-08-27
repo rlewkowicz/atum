@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestKubesprayOIDCLifecycleCompatibility(t *testing.T) {
+func TestKubesprayScopedAnonymousLifecycleCompatibility(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -18,6 +18,7 @@ kube_apiserver_use_authentication_config_file: false
 kube_apiserver_authentication_config_api_version: "{{ 'v1beta1' if kube_version is version('1.34.0', '<') else 'v1' }}"
 kube_apiserver_authentication_config_anonymous:
   enabled: true
+  conditions: []
 kube_apiserver_authentication_config_jwt: []
 `,
 		filepath.Join("roles", "kubernetes", "control-plane", "tasks", "main.yml"): `
@@ -57,8 +58,6 @@ kube_apiserver_authentication_config_jwt: []
 - name: Control plane | wait for the apiserver to be running
   uri:
     url: "{{ kube_apiserver_endpoint }}/healthz"
-    client_cert: "{{ kube_apiserver_client_cert }}"
-    client_key: "{{ kube_apiserver_client_key }}"
   listen:
     - Control plane | restart kubelet
     - Control plane | Restart apiserver
@@ -71,8 +70,6 @@ kube_apiserver_authentication_config_jwt: []
 - name: Kubeadm | Check api is up
   uri:
     url: "https://{{ main_ip }}:{{ kube_apiserver_port }}/healthz"
-    client_cert: "{{ kube_apiserver_client_cert }}"
-    client_key: "{{ kube_apiserver_client_key }}"
 `,
 		filepath.Join("roles", "kubernetes", "control-plane", "tasks", "kubeadm-upgrade.yml"): `
 - name: Ensure kube-apiserver is up before upgrade
@@ -123,10 +120,10 @@ backend kube_api_backend
 			t.Fatal(err)
 		}
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err != nil {
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err != nil {
 		t.Fatalf("exact lifecycle rejected: %v", err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.33.5"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.33.5"); err == nil ||
 		!strings.Contains(err.Error(), "lacks the required v1 AuthenticationConfiguration API") {
 		t.Fatalf("unsupported final observation boundary error = %v", err)
 	}
@@ -145,7 +142,7 @@ backend kube_api_backend
 	if err := os.WriteFile(defaults, []byte(withoutBootstrapBeta), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "structured authentication defaults") {
 		t.Fatalf("missing CA-less bootstrap API evidence error = %v", err)
 	}
@@ -161,7 +158,7 @@ backend kube_api_backend
 	if err := os.WriteFile(defaults, []byte(changedDefault), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "structured authentication defaults") {
 		t.Fatalf("changed kube_config_dir error = %v", err)
 	}
@@ -183,7 +180,7 @@ backend kube_api_backend
 	if err := os.WriteFile(task, []byte(withoutAnonymousProjection), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "structured authentication task") {
 		t.Fatalf("missing anonymous projection evidence error = %v", err)
 	}
@@ -205,7 +202,7 @@ backend kube_api_backend
 	if err := os.WriteFile(template, []byte(withoutLegacyGuard), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "kubeadm authentication mount") {
 		t.Fatalf("missing legacy anonymous-auth guard error = %v", err)
 	}
@@ -275,34 +272,10 @@ backend kube_api_backend
 			want:     "authenticated node-label API probe",
 		},
 		{
-			name:     "control-plane handler client certificate",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"),
-			remove:   `client_cert: "{{ kube_apiserver_client_cert }}"`,
-			want:     "authenticated control-plane restart API probe",
-		},
-		{
-			name:     "control-plane handler client key",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"),
-			remove:   `client_key: "{{ kube_apiserver_client_key }}"`,
-			want:     "authenticated control-plane restart API probe",
-		},
-		{
 			name:     "initial control-plane notification",
 			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "kubeadm-setup.yml"),
 			remove:   "notify: Control plane | restart kubelet",
 			want:     "initial control-plane restart notification",
-		},
-		{
-			name:     "upgrade probe client certificate",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "check-api.yml"),
-			remove:   `client_cert: "{{ kube_apiserver_client_cert }}"`,
-			want:     "authenticated upgrade API probe",
-		},
-		{
-			name:     "upgrade probe client key",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "check-api.yml"),
-			remove:   `client_key: "{{ kube_apiserver_client_key }}"`,
-			want:     "authenticated upgrade API probe",
 		},
 		{
 			name:     "before-upgrade probe import",
@@ -339,50 +312,6 @@ backend kube_api_backend
     client_key: "{{ kube_apiserver_client_key }}"
 `,
 			want: "authenticated node-label API probe",
-		},
-		{
-			name:     "control-plane handler decoy client certificate",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"),
-			remove:   `client_cert: "{{ kube_apiserver_client_cert }}"`,
-			decoy: `
-- name: Decoy control-plane certificate
-  uri:
-    client_cert: "{{ kube_apiserver_client_cert }}"
-`,
-			want: "authenticated control-plane restart API probe",
-		},
-		{
-			name:     "control-plane handler decoy client key",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "handlers", "main.yml"),
-			remove:   `client_key: "{{ kube_apiserver_client_key }}"`,
-			decoy: `
-- name: Decoy control-plane key
-  uri:
-    client_key: "{{ kube_apiserver_client_key }}"
-`,
-			want: "authenticated control-plane restart API probe",
-		},
-		{
-			name:     "upgrade probe decoy client certificate",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "check-api.yml"),
-			remove:   `client_cert: "{{ kube_apiserver_client_cert }}"`,
-			decoy: `
-- name: Decoy upgrade certificate
-  uri:
-    client_cert: "{{ kube_apiserver_client_cert }}"
-`,
-			want: "authenticated upgrade API probe",
-		},
-		{
-			name:     "upgrade probe decoy client key",
-			relative: filepath.Join("roles", "kubernetes", "control-plane", "tasks", "check-api.yml"),
-			remove:   `client_key: "{{ kube_apiserver_client_key }}"`,
-			decoy: `
-- name: Decoy upgrade key
-  uri:
-    client_key: "{{ kube_apiserver_client_key }}"
-`,
-			want: "authenticated upgrade API probe",
 		},
 		{
 			name:     "late resolver decoy gate",
@@ -473,7 +402,7 @@ backend kube_api_backend
 		if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+		if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 			!strings.Contains(err.Error(), testCase.want) {
 			t.Fatalf("%s error = %v", testCase.name, err)
 		}
@@ -491,9 +420,9 @@ backend kube_api_backend
 	if err := os.WriteFile(handler, append(handlerData, handlerData...), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "duplicate task") ||
-		!strings.Contains(err.Error(), "authenticated control-plane restart API probe") {
+		!strings.Contains(err.Error(), "scoped-anonymous control-plane restart API probe") {
 		t.Fatalf("duplicate control-plane handler error = %v", err)
 	}
 	if err := os.WriteFile(handler, handlerData, 0o600); err != nil {
@@ -502,13 +431,13 @@ backend kube_api_backend
 	if err := os.WriteFile(template, []byte("authentication-config"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateKubesprayNoAnonymousLifecycle(root, "1.35.4"); err == nil ||
+	if err := ValidateKubesprayScopedAnonymousLifecycle(root, "1.35.4"); err == nil ||
 		!strings.Contains(err.Error(), "kubeadm authentication mount") {
 		t.Fatalf("missing mount evidence error = %v", err)
 	}
 }
 
-func TestAtumKubesprayInventoryDisablesAnonymousAPI(t *testing.T) {
+func TestAtumKubesprayInventoryScopesAnonymousAPI(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join("..", "..")
@@ -545,10 +474,12 @@ func TestAtumKubesprayInventoryDisablesAnonymousAPI(t *testing.T) {
 			"dns_mode: coredns",
 			"kube_api_anonymous_auth: false",
 			"default({'enabled': false})",
+			"/healthz, /livez, and",
+			"/readyz",
 		},
 		[]string{
-			"/healthz",
 			"'conditions'",
+			"default({'enabled': true})",
 		},
 	)
 	assertInventoryEvidence(

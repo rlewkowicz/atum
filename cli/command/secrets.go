@@ -19,6 +19,9 @@ func (a *app) secretsCommand() *cobra.Command {
 		Use:   "init",
 		Short: "Generate SOPS-encrypted or local-only credentials",
 		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			"atum.dev/allow-missing-flux-secrets": "true",
+		},
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			if err := options.Validate(); err != nil {
 				return err

@@ -55,6 +55,9 @@ RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y unzip; \
     rm -rf /var/lib/apt/lists/*
+ADD --checksum=sha256:c8637c0331eb0270cb127e19ea0d839b2b4107aecb27ed518d0794d90ffcb52e \
+    https://github.com/grafana/piechart-panel/releases/download/v1.6.4/grafana-piechart-panel-1.6.4.zip \
+    /tmp/grafana-piechart-panel.zip
 ADD --checksum=sha256:3e1791f83b4db03134dac24521a52407c1990a1b56356dc440580ee4664f214c \
     https://github.com/grafana/grafana-polystat-panel/releases/download/v2.1.16/grafana-polystat-panel-2.1.16.zip \
     /tmp/grafana-polystat-panel.zip
@@ -63,8 +66,10 @@ ADD --checksum=sha256:6b86adf28d7ce5748ec8dc5964a7dbd3f8f5095a0a43d259c74a1fa0f5
     /tmp/redis-datasource.zip
 RUN set -eux; \
     install -d \
+      /out/bb-plugins/piechart-panel \
       /out/bb-plugins/polystat-panel \
       /out/bb-plugins/redis-datasource; \
+    unzip -q /tmp/grafana-piechart-panel.zip -d /out/bb-plugins/piechart-panel; \
     unzip -q /tmp/grafana-polystat-panel.zip -d /out/bb-plugins/polystat-panel; \
     unzip -q /tmp/redis-datasource.zip -d /out/bb-plugins/redis-datasource
 

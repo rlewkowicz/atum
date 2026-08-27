@@ -53,15 +53,25 @@ func TestInitialKubernetesOIDCProjectsCanonicalAuthentication(t *testing.T) {
 		t.Fatalf("claim mappings = %#v", authenticator.ClaimMappings)
 	}
 
-	if projection.Anonymous.Enabled {
+	wantAnonymous := anonymousAuth{
+		Enabled: true,
+		Conditions: [3]anonymousAuthCondition{
+			{Path: "/healthz"},
+			{Path: "/livez"},
+			{Path: "/readyz"},
+		},
+	}
+	if projection.Anonymous != wantAnonymous {
 		t.Fatalf("anonymous authentication = %#v", projection.Anonymous)
 	}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), `"conditions"`) ||
-		!strings.Contains(string(encoded), `"anonymous":{"enabled":false}`) {
+	if !strings.Contains(
+		string(encoded),
+		`"anonymous":{"enabled":true,"conditions":[{"path":"/healthz"},{"path":"/livez"},{"path":"/readyz"}]}`,
+	) {
 		t.Fatalf("anonymous authentication projection = %s", encoded)
 	}
 }

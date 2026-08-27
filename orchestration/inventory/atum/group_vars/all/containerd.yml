@@ -1,7 +1,50 @@
----
 containerd_registries_mirrors:
-  - prefix: 10.77.0.9:32443
-    mirrors:
-      - host: http://10.77.0.9:32443
-        capabilities: ["pull", "resolve"]
-        skip_verify: true
+    - mirrors:
+        - capabilities:
+            - pull
+            - resolve
+          host: http://10.77.0.9:32443
+          skip_verify: true
+      prefix: 10.77.0.9:32443
+      server: http://10.77.0.9:32443
+    - mirrors:
+        - capabilities:
+            - pull
+            - resolve
+          host: http://10.77.0.9:32443/atum/kubespray/ghcr.io
+          override_path: true
+          skip_verify: true
+      prefix: ghcr.io
+      server: http://10.77.0.9:32443/atum/kubespray/ghcr.io
+    - mirrors:
+        - capabilities:
+            - pull
+            - resolve
+          host: http://10.77.0.9:32443/atum/kubespray/index.docker.io
+          override_path: true
+          skip_verify: true
+      prefix: index.docker.io
+      server: http://10.77.0.9:32443/atum/kubespray/index.docker.io
+    - mirrors:
+        - capabilities:
+            - pull
+            - resolve
+          host: http://10.77.0.9:32443/atum/kubespray/quay.io
+          override_path: true
+          skip_verify: true
+      prefix: quay.io
+      server: http://10.77.0.9:32443/atum/kubespray/quay.io
+    - mirrors:
+        - capabilities:
+            - pull
+            - resolve
+          host: http://10.77.0.9:32443/atum/kubespray/registry.k8s.io
+          override_path: true
+          skip_verify: true
+      prefix: registry.k8s.io
+      server: http://10.77.0.9:32443/atum/kubespray/registry.k8s.io
+docker_image_repo: 10.77.0.9:32443/atum/kubespray/index.docker.io
+github_image_repo: 10.77.0.9:32443/atum/kubespray/ghcr.io
+kube_image_repo: 10.77.0.9:32443/atum/kubespray/registry.k8s.io
+kubeadm_image_repo: 10.77.0.9:32443/atum/kubespray/registry.k8s.io
+quay_image_repo: 10.77.0.9:32443/atum/kubespray/quay.io

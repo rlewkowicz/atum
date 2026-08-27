@@ -23,7 +23,7 @@ variable "SOURCE_DATE_EPOCH" {
 }
 
 group "default" {
-  targets = ["garage-init-helper", "grafana-plugins", "kubectl-helper-1-34-11-compat", "kubectl-helper-1-35-4-compat", "kubectl-helper-1-35-7-compat", "postgresql-18-compat", "vault-curl-compat"]
+  targets = ["atum-operator", "garage-init-helper", "grafana-plugins", "postgresql-18-compat", "vault-curl-compat"]
 }
 
 target "_common" {
@@ -43,6 +43,24 @@ target "_attested" {
     "type=provenance,mode=max",
     "type=sbom,generator=${ATUM_SBOM_GENERATOR_IMAGE}",
   ]
+}
+
+target "atum-operator" {
+  inherits   = ["_attested"]
+  dockerfile = "docker/Dockerfile.operator"
+  target     = "atum-operator"
+  tags       = ["10.77.0.9:32443/atum/atum-operator:0.1.0"]
+  contexts = {
+    atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135"
+    atum_source = "../.."
+  }
+  args = {
+    ATUM_IMAGE_LICENSE = "Apache-2.0"
+    ATUM_IMAGE_SOURCE = "https://github.com/rlewkowicz/atum"
+    ATUM_IMAGE_VERSION = "0.1.0"
+  }
+  cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/atum-operator:cache"]
+  cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/atum-operator:cache,mode=max,image-manifest=true,oci-mediatypes=true"]
 }
 
 target "garage-init-helper" {
@@ -69,63 +87,12 @@ target "grafana-plugins" {
   }
   args = {
     ATUM_IMAGE_LICENSE = "AGPL-3.0-only AND Apache-2.0"
-    ATUM_IMAGE_REVISION = "2ed2e51a9eb915ec676d1cb41f4c54ffd34b454090543a6654e69c70b364017a"
-    ATUM_IMAGE_SOURCE = "https://github.com/grafana/grafana;https://github.com/grafana/grafana-polystat-panel;https://github.com/RedisGrafana/grafana-redis-datasource"
+    ATUM_IMAGE_REVISION = "7ddda3018f83e4d28ecdb0a8176a351be35306535eb171bb2d026134885fed33"
+    ATUM_IMAGE_SOURCE = "https://github.com/grafana/grafana;https://github.com/grafana/piechart-panel;https://github.com/grafana/grafana-polystat-panel;https://github.com/RedisGrafana/grafana-redis-datasource"
     ATUM_IMAGE_VERSION = "13.0.1"
   }
   cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/grafana-plugins:cache"]
   cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/grafana-plugins:cache,mode=max,image-manifest=true,oci-mediatypes=true"]
-}
-
-target "kubectl-helper-1-34-11-compat" {
-  inherits   = ["_attested"]
-  dockerfile = "docker/Dockerfile.delivery"
-  target     = "kubectl-helper"
-  tags       = ["10.77.0.9:32443/atum/kubectl-helper-1-34-11:v1.34.11"]
-  contexts = {
-    atum_kubectl_upstream = "docker-image://registry.k8s.io/kubectl@sha256:027597916e278c1334fc49aa27abef40a94662f4deb8665a42bbb0c84dfe4d2f"
-  }
-  args = {
-    ATUM_IMAGE_LICENSE = "Apache-2.0 AND Debian"
-    ATUM_IMAGE_SOURCE = "https://github.com/kubernetes/kubernetes;https://snapshot.debian.org/"
-    ATUM_IMAGE_VERSION = "v1.34.11"
-  }
-  cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-34-11-compat:cache"]
-  cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-34-11-compat:cache,mode=max,image-manifest=true,oci-mediatypes=true"]
-}
-
-target "kubectl-helper-1-35-4-compat" {
-  inherits   = ["_attested"]
-  dockerfile = "docker/Dockerfile.delivery"
-  target     = "kubectl-helper"
-  tags       = ["10.77.0.9:32443/atum/kubectl:v1.35.4"]
-  contexts = {
-    atum_kubectl_upstream = "docker-image://registry.k8s.io/kubectl@sha256:fbb3a3d16034b16ba346f9104323bbc0bfa712119878c34b97a7d1bfb51254a3"
-  }
-  args = {
-    ATUM_IMAGE_LICENSE = "Apache-2.0 AND Debian"
-    ATUM_IMAGE_SOURCE = "https://github.com/kubernetes/kubernetes;https://snapshot.debian.org/"
-    ATUM_IMAGE_VERSION = "v1.35.4"
-  }
-  cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-35-4-compat:cache"]
-  cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-35-4-compat:cache,mode=max,image-manifest=true,oci-mediatypes=true"]
-}
-
-target "kubectl-helper-1-35-7-compat" {
-  inherits   = ["_attested"]
-  dockerfile = "docker/Dockerfile.delivery"
-  target     = "kubectl-helper"
-  tags       = ["10.77.0.9:32443/atum/kubectl-helper-1-35-7:v1.35.7"]
-  contexts = {
-    atum_kubectl_upstream = "docker-image://registry.k8s.io/kubectl@sha256:206f9e4e5ec8cc6bd02fa3152baca45e6d06b6ea0bb1022fed4d488e7d886190"
-  }
-  args = {
-    ATUM_IMAGE_LICENSE = "Apache-2.0 AND Debian"
-    ATUM_IMAGE_SOURCE = "https://github.com/kubernetes/kubernetes;https://snapshot.debian.org/"
-    ATUM_IMAGE_VERSION = "v1.35.7"
-  }
-  cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-35-7-compat:cache"]
-  cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/kubectl-helper-1-35-7-compat:cache,mode=max,image-manifest=true,oci-mediatypes=true"]
 }
 
 target "postgresql-18-compat" {

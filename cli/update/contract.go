@@ -269,7 +269,7 @@ func inspectLoadedChart(
 		return chartInspection{}, fmt.Errorf("render Helm chart %s: %w", loaded.Name(), err)
 	}
 	images, invocations, contractSHA, security, formerWait, err := inspectRenderedResources(
-		rendered, nil, annotated, collector,
+		rendered, nil, annotated, collector, options.Namespace,
 	)
 	if err != nil {
 		return chartInspection{}, err
@@ -599,6 +599,7 @@ func inspectManifestData(name string, data []byte) (chartInspection, error) {
 		nil,
 		nil,
 		nil,
+		"",
 	)
 	if err != nil {
 		return chartInspection{}, err
@@ -612,7 +613,7 @@ func inspectManifestData(name string, data []byte) (chartInspection, error) {
 }
 
 func inspectRendered(rendered map[string]string, images []string) ([]string, string, error) {
-	images, _, contractSHA, _, _, err := inspectRenderedResources(rendered, images, nil, nil)
+	images, _, contractSHA, _, _, err := inspectRenderedResources(rendered, images, nil, nil, "")
 	return images, contractSHA, err
 }
 
@@ -621,6 +622,7 @@ func inspectRenderedResources(
 	images []string,
 	annotated []string,
 	collector *releaseValueCollector,
+	defaultNamespace string,
 ) (
 	[]string,
 	[]containerInvocation,
@@ -666,8 +668,8 @@ func inspectRenderedResources(
 				}
 			}
 			location := filename + fmt.Sprintf("#%d", document)
-			observePlatformSecurity(value, location, &security)
-			observeFormerWaitResource(value, location, &formerWait)
+			observePlatformSecurity(value, location, defaultNamespace, &security)
+			observeFormerWaitResource(value, location, defaultNamespace, &formerWait)
 			if err := collectRenderedConfigFiles(value, configMaps, &mountedConfigBytes); err != nil {
 				return nil, nil, "", security, formerWait, fmt.Errorf("inspect rendered object %s: %w", filename, err)
 			}

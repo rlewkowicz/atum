@@ -79,7 +79,7 @@ func (service *Service) prepareMirrorOutput(
 	if err != nil {
 		return mirrorOutput{}, err
 	}
-	if err := atumoci.ValidateLinuxAMD64Manifest(ctx, store, descriptor); err != nil {
+	if err := atumoci.ValidateLinuxAMD64(ctx, store, descriptor); err != nil {
 		return mirrorOutput{}, fmt.Errorf("validate cached official image %s: %w", image.Image.ID, err)
 	}
 	return mirrorOutput{store: store, descriptor: descriptor}, nil
@@ -100,7 +100,7 @@ func openMirrorOutput(ctx context.Context, directory, digest string) (mirrorOutp
 	if descriptor.Digest.String() != digest {
 		return mirrorOutput{}, fmt.Errorf("cached OCI image resolves to %s, want %s", descriptor.Digest, digest)
 	}
-	if err := atumoci.ValidateLinuxAMD64Manifest(ctx, store, descriptor); err != nil {
+	if err := atumoci.ValidateLinuxAMD64(ctx, store, descriptor); err != nil {
 		return mirrorOutput{}, err
 	}
 	return mirrorOutput{store: store, descriptor: descriptor}, nil

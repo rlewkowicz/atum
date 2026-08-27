@@ -65,15 +65,15 @@ type Publication struct {
 }
 
 type Receipt struct {
-	SchemaVersion  string             `json:"schemaVersion"`
-	DesiredSHA256  string             `json:"desiredSha256"`
-	RootLockSHA256 string             `json:"rootLockSha256"`
-	SourceSHA256   string             `json:"sourceSha256"`
-	SourceCommit   string             `json:"sourceCommit"`
-	SourceTag      string             `json:"sourceTag"`
-	Delivery       config.ImageLock   `json:"delivery"`
-	Charts         []Chart            `json:"charts"`
-	Seed           ArtifactIdentity   `json:"seed"`
+	SchemaVersion  string           `json:"schemaVersion"`
+	DesiredSHA256  string           `json:"desiredSha256"`
+	RootLockSHA256 string           `json:"rootLockSha256"`
+	SourceSHA256   string           `json:"sourceSha256"`
+	SourceCommit   string           `json:"sourceCommit"`
+	SourceTag      string           `json:"sourceTag"`
+	Delivery       config.ImageLock `json:"delivery"`
+	Charts         []Chart          `json:"charts"`
+	Seed           ArtifactIdentity `json:"seed"`
 }
 
 func (service *Service) Prepare(ctx context.Context, options PreparationOptions) (*config.Project, *Publication, error) {
@@ -495,7 +495,7 @@ func validatePublishedImage(
 	descriptor ocispec.Descriptor,
 ) error {
 	if image.Delivery.Type == "mirror" {
-		if err := client.ValidateLinuxAMD64Manifest(
+		if err := client.ValidateLinuxAMD64(
 			ctx,
 			image.Target,
 			descriptor,

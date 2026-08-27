@@ -96,3 +96,81 @@ func TestOperatorBuildGraphUsesOneLocalAndOnePinnedOfficialContext(t *testing.T)
 		t.Fatalf("graph contains a malformed context:\n%s", text)
 	}
 }
+
+func TestOperatorBuilderDigestMustBeResolved(t *testing.T) {
+	t.Parallel()
+	desired := config.Document{
+		Delivery: config.Delivery{
+			Policy: config.DeliveryPolicy{
+				RuntimeRegistryPrefix: "10.77.0.9:32443/atum/",
+			},
+			Images: []config.Image{
+				{
+					ID: "operator-builder",
+					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+						Type:   "mirror",
+						Source: "docker.io/library/golang:old",
+						Digest: "sha256:" + strings.Repeat("a", 64),
+					}},
+				},
+			},
+		},
+	}
+	ensureOperatorImages(&desired)
+	var builder config.Image
+	for _, image := range desired.Delivery.Images {
+		if image.ID == "operator-builder" {
+			builder = image
+			break
+		}
+	}
+	if builder.Delivery.Default.Digest != "" {
+		t.Fatalf(
+			"canonical operator builder digest = %q, want unresolved",
+			builder.Delivery.Default.Digest,
+		)
+	}
+	for _, digest := range []string{
+		"",
+		"sha256:" + strings.Repeat("0", 64),
+		"sha256:" + strings.Repeat("g", 64),
+		"sha512:" + strings.Repeat("a", 64),
+	} {
+		if isResolvedImageDigest(digest) {
+			t.Errorf("unresolved digest %q was accepted", digest)
+		}
+	}
+	if !isResolvedImageDigest("sha256:" + strings.Repeat("a", 64)) {
+		t.Error("valid resolved digest was rejected")
+	}
+}
+
+func TestOperatorBuildGraphRejectsUnresolvedBuilder(t *testing.T) {
+	t.Parallel()
+	desired := config.Document{
+		Delivery: config.Delivery{
+			Images: []config.Image{
+				{
+					ID: "operator-builder",
+					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+						Type:   "mirror",
+						Source: "docker.io/library/golang:1.26.0-alpine",
+						Digest: "sha256:" + strings.Repeat("0", 64),
+					}},
+				},
+				{
+					ID:        "atum-operator",
+					Discovery: "first-party",
+					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+						Type:       "build",
+						BakeTarget: "atum-operator",
+					}},
+				},
+			},
+		},
+	}
+	if _, err := renderBuildGraph(desired); err == nil ||
+		!strings.Contains(err.Error(), "no immutable official builder image") {
+		t.Fatalf("render graph error = %v", err)
+	}
+}

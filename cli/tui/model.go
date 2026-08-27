@@ -29,15 +29,15 @@ var (
 )
 
 type itemModel struct {
-	id      string
-	label   string
-	detail  string
-	state   progress.State
-	current int
-	total   int
+	id           string
+	label        string
+	detail       string
+	state        progress.State
+	current      int
+	total        int
 	bytesCurrent int64
 	bytesTotal   int64
-	updated time.Time
+	updated      time.Time
 }
 
 type phaseModel struct {
