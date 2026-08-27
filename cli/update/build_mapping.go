@@ -82,8 +82,20 @@ func renderBuildGraph(desired config.Document) ([]byte, error) {
 		}
 		if image.Compatibility == nil ||
 			len(image.Compatibility.Observations) == 0 ||
+			image.Compatibility.RemovalCondition == "" ||
 			image.Compatibility.OfficialMaterial == "" {
 			return nil, fmt.Errorf("build image %s has no current compatibility evidence", image.ID)
+		}
+		if err := config.ValidateOfficialImageEvidence(
+			desired.Delivery.Policy,
+			image.Compatibility.OfficialSource,
+			image.Compatibility.OfficialMaterial,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"build image %s has invalid official compatibility evidence: %w",
+				image.ID,
+				err,
+			)
 		}
 		target := compatibilityTarget{
 			image:    image,

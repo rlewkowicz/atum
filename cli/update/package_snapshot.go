@@ -106,6 +106,25 @@ direct mirror or as material for one evidence-backed compatibility build.
 		desired.Platform.Flux.URL+" @ "+desired.Platform.Flux.Commit)
 
 	document.WriteString(`
+## Kubespray complete upstream offline inventories
+
+Each row describes the complete image list emitted by the selected release's
+official offline script. It is retained without an Atum CNI, addon, or runtime
+allowlist; alternative Calico, Flannel, MetalLB, Hubble, and other upstream
+entries remain part of the air-gap inventory.
+
+| Kubernetes | Kubespray commit | Official script | Script SHA-256 | Official image count | Inventory scope |
+| --- | --- | --- | --- | --- | --- |
+`)
+	kubesprayRows, err := renderKubesprayInventoryRows(
+		desired.Delivery.Kubespray,
+	)
+	if err != nil {
+		return nil, err
+	}
+	document.Write(kubesprayRows)
+
+	document.WriteString(`
 ## Big Bang and generic packages
 
 The function and project columns come from each exact selected chart's
@@ -233,6 +252,7 @@ as a workload coordinator.
 			} else {
 				if image.Compatibility == nil ||
 					strings.TrimSpace(image.Compatibility.Incompatibility) == "" ||
+					strings.TrimSpace(image.Compatibility.RemovalCondition) == "" ||
 					len(image.Compatibility.Observations) == 0 {
 					return nil, fmt.Errorf("compatibility build %s has no current rendered evidence", image.ID)
 				}
@@ -263,29 +283,14 @@ from the final selected candidate render.
 Registry1 values in the last column are non-fetchable comparison evidence,
 never build inputs.
 
-| ID | Consumers | Current incompatibility | Final rendered evidence | Pinned build inputs | Non-fetchable comparison evidence |
-| --- | --- | --- | --- | --- | --- |
+| ID | Consumers | Current incompatibility | Removal condition | Final rendered evidence | Pinned build inputs | Non-fetchable comparison evidence |
+| --- | --- | --- | --- | --- | --- | --- |
 `)
-	buildCount := 0
-	for _, image := range images {
-		if image.Delivery.Default.Type != "build" ||
-			image.Discovery == "first-party" {
-			continue
-		}
-		buildCount++
-		writeMarkdownRow(
-			&document,
-			image.ID,
-			strings.Join(image.Consumers, "<br>"),
-			image.Compatibility.Incompatibility,
-			renderedEvidence(image.Compatibility.Observations),
-			strings.Join(image.Delivery.Default.Materials, "<br>"),
-			strings.Join(image.BigBangRefs, "<br>"),
-		)
+	retainedBuildRows, err := renderRetainedCompatibilityBuildRows(images)
+	if err != nil {
+		return nil, err
 	}
-	if buildCount == 0 {
-		document.WriteString("| None | — | — | — | — | — |\n")
-	}
+	document.Write(retainedBuildRows)
 	document.WriteString(`
 Build output digests are publication facts and therefore never enter the root
 lock. The immutable publication receipt is written only to ignored
@@ -293,6 +298,66 @@ lock. The immutable publication receipt is written only to ignored
 claim an output that has not been produced.
 `)
 	return []byte(document.String()), nil
+}
+
+func renderKubesprayInventoryRows(
+	inventories []config.KubesprayArtifactInventory,
+) ([]byte, error) {
+	var rows strings.Builder
+	for _, inventory := range inventories {
+		if inventory.InventoryScope != config.KubesprayFullOfflineInventory ||
+			inventory.OfficialScript != config.KubesprayOfficialScript ||
+			!validHexSHA256(inventory.OfficialScriptSHA256) ||
+			len(inventory.OfficialImages) == 0 {
+			return nil, fmt.Errorf(
+				"Kubespray %s package snapshot lacks complete official offline provenance",
+				inventory.KubernetesVersion,
+			)
+		}
+		writeMarkdownRow(
+			&rows,
+			inventory.KubernetesVersion,
+			inventory.KubesprayCommit,
+			inventory.OfficialScript,
+			inventory.OfficialScriptSHA256,
+			fmt.Sprintf("%d", len(inventory.OfficialImages)),
+			inventory.InventoryScope,
+		)
+	}
+	return []byte(rows.String()), nil
+}
+
+func renderRetainedCompatibilityBuildRows(images []config.Image) ([]byte, error) {
+	var rows strings.Builder
+	buildCount := 0
+	for _, image := range images {
+		if image.Delivery.Default.Type != "build" ||
+			image.Discovery == "first-party" {
+			continue
+		}
+		if image.Compatibility == nil ||
+			strings.TrimSpace(image.Compatibility.RemovalCondition) == "" {
+			return nil, fmt.Errorf(
+				"compatibility build %s has no removal condition",
+				image.ID,
+			)
+		}
+		buildCount++
+		writeMarkdownRow(
+			&rows,
+			image.ID,
+			strings.Join(image.Consumers, "<br>"),
+			image.Compatibility.Incompatibility,
+			image.Compatibility.RemovalCondition,
+			renderedEvidence(image.Compatibility.Observations),
+			strings.Join(image.Delivery.Default.Materials, "<br>"),
+			strings.Join(image.BigBangRefs, "<br>"),
+		)
+	}
+	if buildCount == 0 {
+		rows.WriteString("| None | — | — | — | — | — | — |\n")
+	}
+	return []byte(rows.String()), nil
 }
 
 func packageDocumentationByID(

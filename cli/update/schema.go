@@ -24,7 +24,7 @@ func projectImageEvidenceSchema(tree *candidateTree) error {
               "link": {"$ref": "#/$defs/nonEmpty"},
               "mode": {"type": "string", "pattern": "^[0-7]{4}$"},`
 	if bytes.Contains(data, []byte(newProperties)) {
-		return projectGenericChartSchema(tree)
+		return projectPhase5EvidenceSchema(tree)
 	}
 	if bytes.Count(data, []byte(oldProperties)) != 1 {
 		return errors.New(
@@ -35,6 +35,92 @@ func projectImageEvidenceSchema(tree *candidateTree) error {
 		desiredSchemaFile,
 		bytes.Replace(data, []byte(oldProperties), []byte(newProperties), 1),
 	); err != nil {
+		return err
+	}
+	return projectPhase5EvidenceSchema(tree)
+}
+
+func projectPhase5EvidenceSchema(tree *candidateTree) error {
+	data, err := tree.CandidateData(desiredSchemaFile)
+	if err != nil {
+		return err
+	}
+	const oldCompatibilityRequired = `"required": ["contract", "observations", "incompatibility", "officialMaterial", "officialConfig"],`
+	const compatibilityRequired = `"required": ["contract", "observations", "incompatibility", "officialSource", "officialMaterial", "removalCondition", "officialConfig"],`
+	const oldCompatibilityProperties = `        "incompatibility": {"$ref": "#/$defs/nonEmpty"},
+        "officialMaterial": {"$ref": "#/$defs/nonEmpty"},`
+	const compatibilityProperties = `        "incompatibility": {"$ref": "#/$defs/nonEmpty"},
+        "officialSource": {"$ref": "#/$defs/nonEmpty"},
+        "officialMaterial": {"$ref": "#/$defs/nonEmpty"},
+        "removalCondition": {"$ref": "#/$defs/nonEmpty"},`
+	if bytes.Contains(data, []byte(oldCompatibilityRequired)) {
+		if bytes.Count(data, []byte(oldCompatibilityRequired)) != 1 ||
+			bytes.Count(data, []byte(oldCompatibilityProperties)) != 1 {
+			return errors.New(
+				"project desired schema: compatibility evidence shape is unsupported",
+			)
+		}
+		data = bytes.Replace(
+			data,
+			[]byte(oldCompatibilityRequired),
+			[]byte(compatibilityRequired),
+			1,
+		)
+		data = bytes.Replace(
+			data,
+			[]byte(oldCompatibilityProperties),
+			[]byte(compatibilityProperties),
+			1,
+		)
+	} else if !bytes.Contains(data, []byte(compatibilityRequired)) {
+		return errors.New(
+			"project desired schema: compatibility evidence requirements are unsupported",
+		)
+	}
+
+	const oldInventoryRequired = `"required": ["schemaVersion", "kubernetesVersion", "kubesprayCommit", "inventorySha256", "files", "images"],`
+	const inventoryRequired = `"required": ["schemaVersion", "kubernetesVersion", "kubesprayCommit", "officialScript", "officialScriptSha256", "inventoryScope", "inventorySha256", "officialImages", "files", "images"],`
+	const oldInventoryProperties = `        "schemaVersion": {"const": "atum.dev/kubespray-artifacts/v5"},
+        "kubernetesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "kubesprayCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "inventorySha256": {"$ref": "#/$defs/hexSha256"},`
+	const inventoryProperties = `        "schemaVersion": {"const": "atum.dev/kubespray-artifacts/v6"},
+        "kubernetesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "kubesprayCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "officialScript": {"const": "contrib/offline/generate_list.sh"},
+        "officialScriptSha256": {"$ref": "#/$defs/hexSha256"},
+        "inventoryScope": {"const": "full-upstream-offline"},
+        "inventorySha256": {"$ref": "#/$defs/hexSha256"},
+        "officialImages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/nonEmpty"}
+        },`
+	if bytes.Contains(data, []byte(oldInventoryRequired)) {
+		if bytes.Count(data, []byte(oldInventoryRequired)) != 1 ||
+			bytes.Count(data, []byte(oldInventoryProperties)) != 1 {
+			return errors.New(
+				"project desired schema: Kubespray inventory shape is unsupported",
+			)
+		}
+		data = bytes.Replace(
+			data,
+			[]byte(oldInventoryRequired),
+			[]byte(inventoryRequired),
+			1,
+		)
+		data = bytes.Replace(
+			data,
+			[]byte(oldInventoryProperties),
+			[]byte(inventoryProperties),
+			1,
+		)
+	} else if !bytes.Contains(data, []byte(inventoryRequired)) {
+		return errors.New(
+			"project desired schema: Kubespray inventory requirements are unsupported",
+		)
+	}
+	if err := tree.Set(desiredSchemaFile, data); err != nil {
 		return err
 	}
 	return projectGenericChartSchema(tree)

@@ -25,11 +25,12 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
+	"helm.sh/helm/v4/pkg/chart/v2/loader"
 )
 
 const (
-	kubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v2"
-	kubesprayListLimit       = 16 << 20
+	kubesprayListLimit = 16 << 20
 )
 
 type kubesprayOfflineVars struct {
@@ -48,6 +49,11 @@ type discoveredKubesprayFile struct {
 	localPath string
 }
 
+type kubesprayReleaseArtifacts struct {
+	inventory config.KubesprayArtifactInventory
+	images    []config.Image
+}
+
 func (service *Service) reconstructKubesprayReleaseArtifacts(
 	ctx context.Context,
 	desired *config.Document,
@@ -58,11 +64,7 @@ func (service *Service) reconstructKubesprayReleaseArtifacts(
 	if desired == nil || len(releases) == 0 {
 		return nil, errors.New("Kubespray release ladder is empty")
 	}
-	type releaseArtifacts struct {
-		inventory config.KubesprayArtifactInventory
-		images    []config.Image
-	}
-	results := make([]releaseArtifacts, len(releases))
+	results := make([]kubesprayReleaseArtifacts, len(releases))
 	baseImages := append([]config.Image(nil), desired.Delivery.Images...)
 	workLimit := config.EffectiveWorkLimit(
 		parallelism, desired.Updates.Parallelism, config.DefaultWorkLimit,
@@ -116,7 +118,7 @@ func (service *Service) reconstructKubesprayReleaseArtifacts(
 			if err != nil {
 				return err
 			}
-			results[index] = releaseArtifacts{
+			results[index] = kubesprayReleaseArtifacts{
 				inventory: inventory,
 				images: append(
 					[]config.Image(nil),
@@ -169,9 +171,13 @@ func (service *Service) reconstructKubesprayArtifacts(
 			"exact Kubespray source is required for offline artifact discovery",
 		)
 	}
-	files, sources, err := service.runKubesprayOfflineWorkflow(
+	files, sources, officialImages, scriptSHA256, err := service.runKubesprayOfflineWorkflow(
 		ctx, desired, resolved, kubernetesVersion, parallelism,
 	)
+	if err != nil {
+		return config.KubesprayArtifactInventory{}, err
+	}
+	chartDigests, err := service.kubesprayChartImageDigests(ctx, sources)
 	if err != nil {
 		return config.KubesprayArtifactInventory{}, err
 	}
@@ -185,9 +191,28 @@ func (service *Service) reconstructKubesprayArtifacts(
 		index := index
 		group.Go(func() error {
 			source := sources[index]
-			digest, err := resolveImageDigest(groupContext, source)
-			if err != nil {
-				return fmt.Errorf("resolve Kubespray image %s: %w", source, err)
+			digest := chartDigests[source]
+			if digest == "" {
+				resolvedDigest, resolveErr := resolveImageDigest(groupContext, source)
+				if resolveErr != nil {
+					return fmt.Errorf(
+						"resolve Kubespray image %s: %w",
+						source,
+						resolveErr,
+					)
+				}
+				digest = resolvedDigest
+			} else if _, err := resolvePinnedImageDigests(
+				groupContext,
+				source,
+				digest,
+			); err != nil {
+				return fmt.Errorf(
+					"resolve chart-pinned Kubespray image %s@%s: %w",
+					source,
+					digest,
+					err,
+				)
 			}
 			reference, err := name.ParseReference(source)
 			if err != nil {
@@ -204,9 +229,9 @@ func (service *Service) reconstructKubesprayArtifacts(
 				Target: strings.TrimSuffix(
 					desired.Delivery.Policy.RuntimeRegistryPrefix, "/",
 				) + "/kubespray/" + repository + ":" + tag,
-				Scopes:     []string{"kubespray"},
-				Runtime:    true,
-				License:    "upstream project license",
+				Scopes:  []string{"kubespray"},
+				Runtime: true,
+				License: "upstream project license",
 				Provenance: resolved.Source.URL + " @ " + resolved.Source.Commit +
 					" / contrib/offline/generate_list.sh",
 				Consumers:   []string{"kubespray"},
@@ -256,11 +281,15 @@ func (service *Service) reconstructKubesprayArtifacts(
 		existing[image.ID] = image
 	}
 	inventory := config.KubesprayArtifactInventory{
-		SchemaVersion:     kubesprayArtifactSchema,
-		KubernetesVersion: kubernetesVersion,
-		KubesprayCommit:   resolved.Source.Commit,
-		Files:             files,
-		Images:            imageIDs,
+		SchemaVersion:        config.KubesprayArtifactSchema,
+		KubernetesVersion:    kubernetesVersion,
+		KubesprayCommit:      resolved.Source.Commit,
+		OfficialScript:       config.KubesprayOfficialScript,
+		OfficialScriptSHA256: scriptSHA256,
+		InventoryScope:       config.KubesprayFullOfflineInventory,
+		OfficialImages:       officialImages,
+		Files:                files,
+		Images:               imageIDs,
 	}
 	inventory.InventorySHA256, err = config.KubesprayInventorySHA256(inventory)
 	if err != nil {
@@ -275,14 +304,135 @@ func (service *Service) reconstructKubesprayArtifacts(
 	return inventory, nil
 }
 
+func (service *Service) kubesprayChartImageDigests(
+	ctx context.Context,
+	sources []string,
+) (map[string]string, error) {
+	sourceByRepository := make(map[string]string, len(sources))
+	version := ""
+	for _, source := range sources {
+		reference, err := name.ParseReference(source)
+		if err != nil {
+			return nil, fmt.Errorf("parse Kubespray image %s: %w", source, err)
+		}
+		repository := reference.Context().Name()
+		if existing, duplicate := sourceByRepository[repository]; duplicate &&
+			existing != source {
+			return nil, fmt.Errorf(
+				"Kubespray image repository %s has multiple tags",
+				repository,
+			)
+		}
+		sourceByRepository[repository] = source
+		if repository != "quay.io/cilium/cilium" {
+			continue
+		}
+		candidate := strings.TrimPrefix(reference.Identifier(), "v")
+		if version != "" && version != candidate {
+			return nil, errors.New("Kubespray Cilium image versions are ambiguous")
+		}
+		version = candidate
+	}
+	if version == "" {
+		return nil, nil
+	}
+	releases, err := service.charts.HTTPSReleases(
+		ctx,
+		"https://helm.cilium.io/index.yaml",
+		"cilium",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Cilium chart %s: %w", version, err)
+	}
+	var selected chartRelease
+	for _, release := range releases {
+		if equivalentTag(release.Version, version) {
+			selected = release
+			break
+		}
+	}
+	if selected.Version == "" {
+		return nil, fmt.Errorf(
+			"Cilium chart %s is absent from its official repository",
+			version,
+		)
+	}
+	selected, err = service.charts.Fetch(ctx, selected)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Cilium chart %s: %w", version, err)
+	}
+	chart, err := loader.Load(selected.ArchivePath)
+	if err != nil {
+		return nil, fmt.Errorf("load Cilium chart %s: %w", version, err)
+	}
+	type binding struct {
+		path      string
+		digestKey string
+		suffix    string
+	}
+	bindings := [...]binding{
+		{path: "image", digestKey: "digest"},
+		{path: "envoy.image", digestKey: "digest"},
+		{
+			path:      "operator.image",
+			digestKey: "genericDigest",
+			suffix:    "-generic",
+		},
+	}
+	digests := make(map[string]string, len(bindings))
+	for _, binding := range bindings {
+		image, err := valuesAt(chart.Values, binding.path)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"read Cilium chart image %s: %w",
+				binding.path,
+				err,
+			)
+		}
+		repository, _ := image["repository"].(string)
+		digest, _ := image[binding.digestKey].(string)
+		if repository == "" ||
+			!strings.HasPrefix(digest, "sha256:") {
+			return nil, fmt.Errorf(
+				"Cilium chart image %s is incomplete",
+				binding.path,
+			)
+		}
+		source, discovered := sourceByRepository[repository+binding.suffix]
+		if !discovered {
+			return nil, fmt.Errorf(
+				"Cilium chart runtime repository %s is absent from Kubespray discovery",
+				repository+binding.suffix,
+			)
+		}
+		digests[source] = digest
+	}
+	return digests, nil
+}
+
 func (service *Service) runKubesprayOfflineWorkflow(
 	ctx context.Context,
 	desired *config.Document,
 	resolved resolvedGit,
 	kubernetesVersion string,
 	parallelism int,
-) (files []config.KubesprayFile, images []string, resultErr error) {
+) (
+	files []config.KubesprayFile,
+	images []string,
+	officialImages []string,
+	scriptSHA256 string,
+	resultErr error,
+) {
 	offlineRoot := filepath.Join(resolved.Checkout, "contrib", "offline")
+	scriptPath := filepath.Join(offlineRoot, "generate_list.sh")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return nil, nil, nil, "", fmt.Errorf(
+			"read Kubespray official offline script: %w",
+			err,
+		)
+	}
+	scriptSHA256 = config.SHA256(script)
 	tempRoot := filepath.Join(offlineRoot, "temp")
 	downloadRoot := filepath.Join(offlineRoot, "offline-files")
 	downloadArchive := filepath.Join(offlineRoot, "offline-files.tar.gz")
@@ -295,7 +445,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		downloadArchive,
 		transientPlaybook,
 	); err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"clean interrupted Kubespray offline workflow: %w",
 			err,
 		)
@@ -314,11 +464,11 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		service.root, invocationParent, 0o700,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	invocationPath, err := os.MkdirTemp(invocationParentPath, "generate-list-")
 	if err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"create Kubespray offline invocation directory: %w", err,
 		)
 	}
@@ -327,7 +477,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		filepath.Base(invocationPath),
 	))
 	if err != nil {
-		return nil, nil, errors.Join(
+		return nil, nil, nil, "", errors.Join(
 			err,
 			fssecure.RemoveTree(service.root, filepath.Join(
 				invocationParent,
@@ -350,7 +500,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		resultErr = errors.Join(resultErr, cleanupInvocation())
 	}()
 	vars := kubesprayOfflineVars{
-		KubernetesVersion: "v" + strings.TrimPrefix(kubernetesVersion, "v"),
+		KubernetesVersion: strings.TrimPrefix(kubernetesVersion, "v"),
 		GCRImageRepo:      "gcr.io",
 		KubeImageRepo:     "registry.k8s.io",
 		KubeadmImageRepo:  "registry.k8s.io",
@@ -360,14 +510,14 @@ func (service *Service) runKubesprayOfflineWorkflow(
 	}
 	varsData, err := json.Marshal(vars)
 	if err != nil {
-		return nil, nil, fmt.Errorf("encode Kubespray offline variables: %w", err)
+		return nil, nil, nil, "", fmt.Errorf("encode Kubespray offline variables: %w", err)
 	}
 	varsData = append(varsData, '\n')
 	varsRelative := filepath.Join(invocationRelative, "upstream-vars.json")
 	if err := fssecure.WriteRegular(
 		service.root, varsRelative, varsData, 0o600,
 	); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	groupVars := []string{
 		filepath.Join(desired.Orchestration.Inventory, "group_vars", "all", "all.yml"),
@@ -381,7 +531,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 			service.root, groupVars[index], false,
 		)
 		if err != nil {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, nil, "", fmt.Errorf(
 				"resolve Kubespray inventory variables %s: %w",
 				groupVars[index], err,
 			)
@@ -389,7 +539,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 	}
 	varsPath, err := fssecure.Resolve(service.root, varsRelative, false)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	progress.Start(
 		ctx, progress.Platform, "kubespray-artifacts", "Kubespray artifacts",
@@ -400,38 +550,61 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		arguments = append(arguments, "--extra-vars", "@"+path)
 	}
 	arguments = append(arguments, "--extra-vars", "@"+varsPath)
+	ansibleBin, err := fssecure.Resolve(
+		service.root,
+		filepath.Join(
+			".atum", "cache", "tools", "kubespray",
+			resolved.Source.Commit, "venv", "bin",
+		),
+		false,
+	)
+	if err != nil {
+		return nil, nil, nil, "", fmt.Errorf(
+			"resolve exact Kubespray toolchain for offline discovery: %w",
+			err,
+		)
+	}
 	if err := service.runner.Run(ctx, process.Command{
-		Name: filepath.Join(offlineRoot, "generate_list.sh"),
+		Name: scriptPath,
 		Args: arguments,
 		Dir:  resolved.Checkout,
+		Env: []string{
+			"PATH=" + ansibleBin + string(os.PathListSeparator) +
+				os.Getenv("PATH"),
+			"ANSIBLE_INVENTORY_UNPARSED_WARNING=False",
+			"ANSIBLE_LOCALHOST_WARNING=False",
+		},
 		Activity: progress.Target{
 			Phase: progress.Platform, ID: "kubespray-offline",
 			Label: "Kubespray offline discovery",
 		},
 	}); err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"run Kubespray official offline discovery: %w", err,
 		)
 	}
 	if err := cleanupInvocation(); err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"remove Kubespray offline invocation input: %w", err,
 		)
 	}
-	fileSources, err := readKubesprayList(
+	fileSources, _, err := readKubesprayList(
 		filepath.Join(tempRoot, "files.list"), false,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	variables, err := readKubesprayFileVariables(
-		filepath.Join(tempRoot, "files.list.template"),
+		filepath.Join(
+			resolved.Checkout,
+			"roles", "kubespray_defaults", "defaults", "main", "download.yml",
+		),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	if len(variables) != len(fileSources) {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"Kubespray official file template produced %d variables and %d sources",
 			len(variables), len(fileSources),
 		)
@@ -443,21 +616,21 @@ func (service *Service) runKubesprayOfflineWorkflow(
 	for index, source := range fileSources {
 		localPath, err := kubesprayOfflinePath(source)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, "", err
 		}
 		variable := variables[index]
 		if _, duplicate := seenVariables[variable]; duplicate {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, nil, "", fmt.Errorf(
 				"Kubespray offline variable %s is duplicated", variable,
 			)
 		}
 		if _, duplicate := seenSources[source]; duplicate {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, nil, "", fmt.Errorf(
 				"Kubespray offline source %s is duplicated", source,
 			)
 		}
 		if _, duplicate := seenLocalPaths[localPath]; duplicate {
-			return nil, nil, fmt.Errorf(
+			return nil, nil, nil, "", fmt.Errorf(
 				"Kubespray offline path %s is ambiguous", localPath,
 			)
 		}
@@ -468,17 +641,34 @@ func (service *Service) runKubesprayOfflineWorkflow(
 			variable: variable, source: source, localPath: localPath,
 		}
 	}
-	images, err = readKubesprayList(
+	images, officialImages, err = readKubesprayList(
 		filepath.Join(tempRoot, "images.list"), true,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
+	}
+	images, err = includeKubesprayChartRuntimeImages(images)
+	if err != nil {
+		return nil, nil, nil, "", err
 	}
 	sort.Strings(images)
 	images = compactSorted(images)
+	archiveRelative, err := filepath.Rel(service.root, downloadArchive)
+	if err != nil {
+		return nil, nil, nil, "", fmt.Errorf(
+			"resolve Kubespray transient archive path: %w", err,
+		)
+	}
+	if err := fssecure.WriteRegular(
+		service.root, archiveRelative, []byte{}, 0o600,
+	); err != nil {
+		return nil, nil, nil, "", fmt.Errorf(
+			"prepare Kubespray transient archive: %w", err,
+		)
+	}
 	if err := service.runner.Run(ctx, process.Command{
 		Name: filepath.Join(offlineRoot, "manage-offline-files.sh"),
-		Dir:  resolved.Checkout,
+		Dir:  offlineRoot,
 		Env: []string{
 			"FILES_LIST=" + filepath.Join(tempRoot, "files.list"),
 			"NO_HTTP_SERVER=1",
@@ -488,7 +678,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 			Label: "Kubespray offline acquisition",
 		},
 	}); err != nil {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, "", fmt.Errorf(
 			"run Kubespray official offline acquisition: %w", err,
 		)
 	}
@@ -499,7 +689,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Variable < files[j].Variable
@@ -512,37 +702,67 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		),
 		0, len(images),
 	)
-	return files, images, nil
+	return files, images, officialImages, scriptSHA256, nil
 }
 
-func readKubesprayList(path string, imageList bool) ([]string, error) {
+// includeKubesprayChartRuntimeImages closes the boundary between Kubespray's
+// offline inventory and images derived by charts at render time. Cilium takes
+// the configured operator repository as a base and appends the selected cloud
+// suffix; the local profile selects the generic operator. Keep the base image
+// required by Kubespray's download role and add the actual chart consumer.
+func includeKubesprayChartRuntimeImages(images []string) ([]string, error) {
+	expanded := make([]string, 0, len(images)+1)
+	for _, image := range images {
+		expanded = append(expanded, image)
+		reference, err := name.ParseReference(image)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"parse Kubespray chart-derived image %s: %w",
+				image,
+				err,
+			)
+		}
+		if reference.Context().Name() != "quay.io/cilium/operator" {
+			continue
+		}
+		expanded = append(
+			expanded,
+			"quay.io/cilium/operator-generic:"+reference.Identifier(),
+		)
+	}
+	return expanded, nil
+}
+
+func readKubesprayList(path string, imageList bool) ([]string, []string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open Kubespray offline list %s: %w", path, err)
+		return nil, nil, fmt.Errorf("open Kubespray offline list %s: %w", path, err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(io.LimitReader(file, kubesprayListLimit+1))
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
 	entries := make([]string, 0, 64)
+	official := make([]string, 0, 64)
 	for scanner.Scan() {
 		entry := strings.TrimSpace(scanner.Text())
 		if entry == "" {
 			continue
 		}
 		if strings.ContainsAny(entry, " \t\r\x00") {
-			return nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"Kubespray offline list contains invalid entry %q", entry,
 			)
 		}
+		official = append(official, entry)
 		if imageList {
 			if strings.Contains(entry, "@") {
-				return nil, fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"Kubespray image %s does not retain its upstream tag", entry,
 				)
 			}
 			reference, err := name.ParseReference(entry)
 			if _, tagged := reference.(name.Tag); err != nil || !tagged {
-				return nil, fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"Kubespray offline list contains invalid image %q", entry,
 				)
 			}
@@ -551,21 +771,21 @@ func readKubesprayList(path string, imageList bool) ([]string, error) {
 		entries = append(entries, entry)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read Kubespray offline list %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read Kubespray offline list %s: %w", path, err)
 	}
 	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if info.Size() > kubesprayListLimit {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"Kubespray offline list exceeds %d bytes", kubesprayListLimit,
 		)
 	}
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("Kubespray offline list %s is empty", path)
+		return nil, nil, fmt.Errorf("Kubespray offline list %s is empty", path)
 	}
-	return entries, nil
+	return entries, official, nil
 }
 
 func readKubesprayFileVariables(path string) ([]string, error) {
@@ -574,45 +794,62 @@ func readKubesprayFileVariables(path string) ([]string, error) {
 		return nil, err
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(io.LimitReader(file, kubesprayListLimit+1))
-	scanner.Buffer(make([]byte, 64<<10), 1<<20)
-	lines := make([]string, 0, 64)
-	for scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
 	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() > kubesprayListLimit || len(lines) == 0 {
+	if info.Size() <= 0 || info.Size() > kubesprayListLimit {
 		return nil, fmt.Errorf(
-			"Kubespray offline file template is empty or exceeds %d bytes",
+			"Kubespray download defaults are empty or exceed %d bytes",
 			kubesprayListLimit,
 		)
 	}
-	variables := make([]string, len(lines))
-	for index, line := range lines {
-		value := strings.TrimSpace(line)
-		if !strings.HasPrefix(value, "{{") || !strings.HasSuffix(value, "}}") {
-			return nil, fmt.Errorf(
-				"Kubespray offline template line %q is not one URL variable",
-				line,
-			)
-		}
-		value = strings.TrimSpace(
-			strings.TrimSuffix(strings.TrimPrefix(value, "{{"), "}}"),
+	data, err := io.ReadAll(io.LimitReader(file, kubesprayListLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > kubesprayListLimit {
+		return nil, fmt.Errorf(
+			"Kubespray download defaults exceed %d bytes",
+			kubesprayListLimit,
 		)
-		if !validKubesprayURLVariable(value) {
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("decode Kubespray download defaults: %w", err)
+	}
+	if len(document.Content) != 1 ||
+		document.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New(
+			"Kubespray download defaults are not one YAML mapping",
+		)
+	}
+	mapping := document.Content[0]
+	variables := make([]string, 0, len(mapping.Content)/2)
+	seen := make(map[string]struct{}, cap(variables))
+	for index := 0; index < len(mapping.Content); index += 2 {
+		key := mapping.Content[index]
+		if key.Kind != yaml.ScalarNode ||
+			!strings.HasSuffix(key.Value, "_download_url") {
+			continue
+		}
+		if !validKubesprayURLVariable(key.Value) {
 			return nil, fmt.Errorf(
-				"Kubespray offline URL variable %q is invalid", value,
+				"Kubespray offline URL variable %q is invalid", key.Value,
 			)
 		}
-		variables[index] = value
+		if _, duplicate := seen[key.Value]; duplicate {
+			return nil, fmt.Errorf(
+				"Kubespray offline URL variable %q is duplicated", key.Value,
+			)
+		}
+		seen[key.Value] = struct{}{}
+		variables = append(variables, key.Value)
+	}
+	if len(variables) == 0 {
+		return nil, errors.New(
+			"Kubespray download defaults define no offline URL variables",
+		)
 	}
 	return variables, nil
 }

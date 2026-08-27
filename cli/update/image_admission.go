@@ -31,7 +31,6 @@ const maxOfficialEntrypointBytes int64 = 1 << 20
 const maxOfficialFilesystemEntries = 2_000_000
 const maxMountedScriptDepth = 16
 const boundedMountedGlob = "__ATUM_MOUNTED_GLOB__"
-const imageAdmissionContract = "atum.dev/image-admission/v3"
 
 type finalImageUse struct {
 	artifact            string
@@ -230,6 +229,7 @@ func admitFinalRenderedImages(
 	artifacts []chartArtifact,
 	inspections []chartInspection,
 	previous map[string]config.Image,
+	compatibilityReceipts map[string]config.Image,
 	renderContractsUnchanged bool,
 	progress func(completed, total int),
 ) error {
@@ -385,13 +385,12 @@ func admitFinalRenderedImages(
 			}
 			var cached *config.ImageCompatibility
 			var err error
-			if reusableCompatibilityCandidate(image, previousImage) {
-				cached, err = reusableCompatibility(
-					source,
-					request.uses,
-					previousImage.Compatibility,
-				)
-			}
+			cached, err = reusableCompatibilityReceipt(
+				desired.Delivery.Policy,
+				image,
+				request.uses,
+				compatibilityReceipts,
+			)
 			if err != nil {
 				return fmt.Errorf(
 					"inspect official candidate for %s: %w",
@@ -434,7 +433,7 @@ func admitFinalRenderedImages(
 			continue
 		}
 		if result.cached != nil {
-			mismatches := strings.Split(result.cached.Incompatibility, "; ")
+			mismatches := compactSorted(strings.Split(result.cached.Incompatibility, "; "))
 			bakeTarget, extraMaterials, err := compatibilityBuildRecipe(
 				*image,
 				desired.Delivery.Policy.BuildBase,
@@ -465,24 +464,13 @@ func admitFinalRenderedImages(
 			continue
 		}
 		inspection := result.inspection
-		mismatches := compareOfficialCandidate(*image, inspection, inspection.uses)
+		mismatches := compactSorted(
+			compareOfficialCandidate(*image, inspection, inspection.uses),
+		)
 		if len(mismatches) == 0 {
-			if strings.Contains(image.Delivery.Default.Source, "@") {
-				return fmt.Errorf(
-					"compatible official candidate %s has no tag-addressable mirror source",
-					image.ID,
-				)
+			if err := applyCompatibleOfficialMirror(image, inspection.material); err != nil {
+				return fmt.Errorf("compatible official candidate %s: %w", image.ID, err)
 			}
-			_, digest, found := strings.Cut(inspection.material, "@")
-			if !found || !strings.HasPrefix(digest, "sha256:") {
-				return fmt.Errorf(
-					"compatible official candidate %s has invalid immutable material %q",
-					image.ID,
-					inspection.material,
-				)
-			}
-			image.Delivery.Default.Digest = digest
-			image.Compatibility = nil
 			continue
 		}
 		bakeTarget, extraMaterials, err := compatibilityBuildRecipe(
@@ -524,11 +512,25 @@ func admitFinalRenderedImages(
 			}
 			return observations[i].RenderedLocation < observations[j].RenderedLocation
 		})
+		removalCondition, err := compatibilityRemovalCondition(
+			image.Delivery.Default.Source,
+			mismatches,
+			observations,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"derive compatibility removal condition for %s: %w",
+				image.ID,
+				err,
+			)
+		}
 		image.Compatibility = &config.ImageCompatibility{
-			Contract:         imageAdmissionContract,
+			Contract:         config.ImageAdmissionContract,
 			Observations:     observations,
 			Incompatibility:  strings.Join(mismatches, "; "),
+			OfficialSource:   image.Delivery.Default.Source,
 			OfficialMaterial: inspection.material,
+			RemovalCondition: removalCondition,
 			OfficialConfig:   inspection.config,
 		}
 		image.Delivery.Default = config.DeliveryChoice{
@@ -541,6 +543,24 @@ func admitFinalRenderedImages(
 		return desired.Delivery.Images[i].ID < desired.Delivery.Images[j].ID
 	})
 	return errors.Join(admissionErrors...)
+}
+
+func applyCompatibleOfficialMirror(image *config.Image, material string) error {
+	source := image.Delivery.Default.Source
+	if strings.Contains(source, "@") {
+		return errors.New("official source is not tag-addressable")
+	}
+	_, digest, found := strings.Cut(material, "@")
+	if !found || !strings.HasPrefix(digest, "sha256:") {
+		return fmt.Errorf("official material %q is not immutable", material)
+	}
+	image.Delivery.Default = config.DeliveryChoice{
+		Type:   "mirror",
+		Source: source,
+		Digest: digest,
+	}
+	image.Compatibility = nil
+	return nil
 }
 
 func officialCandidateCompatibilityError(
@@ -590,6 +610,24 @@ func reusableCompatibilityCandidate(candidate, previous config.Image) bool {
 	previous.Delivery = config.ImageDelivery{}
 	previous.Compatibility = nil
 	return reflect.DeepEqual(candidate, previous)
+}
+
+func reusableCompatibilityReceipt(
+	policy config.DeliveryPolicy,
+	candidate config.Image,
+	uses []finalImageUse,
+	receipts map[string]config.Image,
+) (*config.ImageCompatibility, error) {
+	receipt, found := receipts[candidate.ID]
+	if !found || !reusableCompatibilityCandidate(candidate, receipt) {
+		return nil, nil
+	}
+	return reusableCompatibility(
+		policy,
+		candidate.Delivery.Default.Source,
+		uses,
+		receipt.Compatibility,
+	)
 }
 
 func applyCompatibilityIdentity(image *config.Image, bakeTarget string) {
@@ -665,41 +703,76 @@ func configuredImageIdentity(image config.Image) (configuredOfficialIdentity, er
 }
 
 func reusableCompatibility(
+	policy config.DeliveryPolicy,
 	source string,
 	uses []finalImageUse,
 	previous *config.ImageCompatibility,
 ) (*config.ImageCompatibility, error) {
 	if previous == nil ||
-		previous.Contract != imageAdmissionContract ||
+		previous.Contract != config.ImageAdmissionContract ||
 		previous.Incompatibility == "" ||
+		previous.OfficialSource != source ||
+		previous.RemovalCondition == "" ||
 		!compatibilityObservationsMatch(uses, previous.Observations) {
 		return nil, nil
 	}
-	if strings.HasPrefix(imageRepository(source), "registry1.dso.mil/") {
-		return nil, errors.New("Registry1 candidates are forbidden")
-	}
-	reference, err := name.ParseReference(source)
-	if err != nil {
-		return nil, fmt.Errorf("parse official image %s: %w", source, err)
-	}
-	material, err := name.ParseReference(previous.OfficialMaterial)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"parse prior official material %s: %w",
-			previous.OfficialMaterial,
-			err,
-		)
-	}
-	if _, immutable := material.(name.Digest); !immutable {
-		return nil, fmt.Errorf(
-			"prior official material %s is not immutable",
-			previous.OfficialMaterial,
-		)
-	}
-	if reference.Context().Name() != material.Context().Name() {
+	mismatches := compactSorted(strings.Split(previous.Incompatibility, "; "))
+	if strings.Join(mismatches, "; ") != previous.Incompatibility {
 		return nil, nil
 	}
+	condition, err := compatibilityRemovalCondition(
+		source,
+		mismatches,
+		previous.Observations,
+	)
+	if err != nil || condition != previous.RemovalCondition {
+		return nil, nil
+	}
+	if err := config.ValidateOfficialImageEvidence(
+		policy,
+		source,
+		previous.OfficialMaterial,
+	); err != nil {
+		return nil, err
+	}
 	return previous, nil
+}
+
+func compatibilityRemovalCondition(
+	officialSource string,
+	mismatches []string,
+	observations []config.ImageRuntimeEvidence,
+) (string, error) {
+	reference, err := name.ParseReference(officialSource)
+	if err != nil {
+		return "", fmt.Errorf("parse official source %s: %w", officialSource, err)
+	}
+	normalizedMismatches := compactSorted(mismatches)
+	if len(normalizedMismatches) == 0 {
+		return "", errors.New("incompatibility set is empty")
+	}
+	rendered := make([]string, len(observations))
+	for index, observation := range observations {
+		if observation.Artifact == "" ||
+			observation.RenderedLocation == "" ||
+			!validHexSHA256(observation.RuntimeContractSHA256) {
+			return "", errors.New("rendered compatibility observation is incomplete")
+		}
+		rendered[index] = observation.Artifact + "/" +
+			observation.RenderedLocation + "@" +
+			observation.RuntimeContractSHA256
+	}
+	rendered = compactSorted(rendered)
+	if len(rendered) == 0 {
+		return "", errors.New("rendered compatibility observations are empty")
+	}
+	return fmt.Sprintf(
+		"Remove when official repository %s publishes an immutable image for %s that satisfies [%s] for rendered contracts [%s].",
+		reference.Context().Name(),
+		officialSource,
+		strings.Join(normalizedMismatches, "; "),
+		strings.Join(rendered, "; "),
+	), nil
 }
 
 func compatibilityObservationsMatch(

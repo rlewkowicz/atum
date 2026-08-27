@@ -634,6 +634,194 @@ func TestCompatibilityObservationsRequireAOneToOneJoin(t *testing.T) {
 	}
 }
 
+func TestCompatibilityRemovalConditionBindsOfficialAndRenderedEvidence(t *testing.T) {
+	t.Parallel()
+	digest := strings.Repeat("a", 64)
+	observations := []config.ImageRuntimeEvidence{{
+		Artifact:              "package/vault",
+		RenderedLocation:      "statefulset/vault/init/prepare",
+		RuntimeContractSHA256: digest,
+	}}
+	condition, err := compatibilityRemovalCondition(
+		"docker.io/hashicorp/vault:1.21.4",
+		[]string{
+			"package/vault/statefulset/vault requires official executable curl",
+			"package/vault/statefulset/vault requires official path /bin/sh",
+		},
+		observations,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, evidence := range []string{
+		"docker.io/hashicorp/vault",
+		"docker.io/hashicorp/vault:1.21.4",
+		"official executable curl",
+		"official path /bin/sh",
+		"package/vault/statefulset/vault/init/prepare@" + digest,
+	} {
+		if !strings.Contains(condition, evidence) {
+			t.Errorf("removal condition lacks %q: %s", evidence, condition)
+		}
+	}
+}
+
+func TestCompatibleOfficialImageRemovesCompatibilityBuild(t *testing.T) {
+	t.Parallel()
+	source := "docker.io/hashicorp/vault:1.21.5"
+	image := config.Image{
+		ID: "vault",
+		Compatibility: &config.ImageCompatibility{
+			RemovalCondition: "stale compatibility evidence",
+		},
+		Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+			Type:       "build",
+			Source:     source,
+			BakeTarget: "vault-curl-compat",
+			Materials:  []string{"stale material"},
+		}},
+	}
+	digest := "sha256:" + strings.Repeat("d", 64)
+	if err := applyCompatibleOfficialMirror(
+		&image,
+		"index.docker.io/hashicorp/vault@"+digest,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if image.Compatibility != nil {
+		t.Fatalf("compatible mirror retained build evidence: %#v", image.Compatibility)
+	}
+	choice := image.Delivery.Default
+	if choice.Type != "mirror" ||
+		choice.Source != source ||
+		choice.Digest != digest ||
+		choice.BakeTarget != "" ||
+		len(choice.Materials) != 0 {
+		t.Fatalf("compatible delivery still contains build state: %#v", choice)
+	}
+}
+
+func TestReusableCompatibilityRequiresCurrentSourceAndRemovalCondition(t *testing.T) {
+	t.Parallel()
+	digest := strings.Repeat("b", 64)
+	source := "docker.io/hashicorp/vault:1.21.4"
+	uses := []finalImageUse{{
+		artifact: "package/vault",
+		invocation: containerInvocation{
+			Location:              "statefulset/vault/init/prepare",
+			RuntimeContractSHA256: digest,
+		},
+	}}
+	observations := []config.ImageRuntimeEvidence{{
+		Artifact:              uses[0].artifact,
+		RenderedLocation:      uses[0].invocation.Location,
+		RuntimeContractSHA256: digest,
+	}}
+	mismatches := []string{
+		"package/vault/statefulset/vault requires official executable curl",
+	}
+	condition, err := compatibilityRemovalCondition(
+		source,
+		mismatches,
+		observations,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := &config.ImageCompatibility{
+		Contract:         config.ImageAdmissionContract,
+		Observations:     observations,
+		Incompatibility:  strings.Join(mismatches, "; "),
+		OfficialSource:   source,
+		OfficialMaterial: "index.docker.io/hashicorp/vault@sha256:" + strings.Repeat("c", 64),
+		RemovalCondition: condition,
+	}
+	candidate := config.Image{
+		ID:         "vault",
+		License:    "MPL-2.0",
+		Provenance: "https://github.com/hashicorp/vault",
+		Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+			Type:   "mirror",
+			Source: source,
+		}},
+	}
+	receipt := candidate
+	applyCompatibilityIdentity(&receipt, "vault-curl-compat")
+	receipt.Delivery.Default = config.DeliveryChoice{
+		Type:       "build",
+		BakeTarget: "vault-curl-compat",
+		Materials:  []string{evidence.OfficialMaterial},
+	}
+	receipt.Compatibility = evidence
+	receipts := map[string]config.Image{candidate.ID: receipt}
+	reused, err := reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		candidate,
+		uses,
+		receipts,
+	)
+	if err != nil || reused == nil {
+		t.Fatalf("current compatibility evidence was not reused: evidence=%#v err=%v", reused, err)
+	}
+	withoutCondition := *evidence
+	withoutCondition.RemovalCondition = ""
+	receipt.Compatibility = &withoutCondition
+	reused, err = reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		candidate,
+		uses,
+		map[string]config.Image{candidate.ID: receipt},
+	)
+	if err != nil || reused != nil {
+		t.Fatalf("evidence without a removal condition was reused: evidence=%#v err=%v", reused, err)
+	}
+	changedSource := candidate
+	changedSource.Delivery.Default.Source =
+		"docker.io/hashicorp/vault:1.21.5"
+	reused, err = reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		changedSource,
+		uses,
+		receipts,
+	)
+	if err != nil || reused != nil {
+		t.Fatalf("evidence from a different official source was reused: evidence=%#v err=%v", reused, err)
+	}
+	changedLocation := append([]finalImageUse(nil), uses...)
+	changedLocation[0].invocation.Location = "statefulset/vault/init/replaced"
+	reused, err = reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		candidate,
+		changedLocation,
+		receipts,
+	)
+	if err != nil || reused != nil {
+		t.Fatalf("evidence from a different rendered location was reused: evidence=%#v err=%v", reused, err)
+	}
+	changedArtifact := append([]finalImageUse(nil), uses...)
+	changedArtifact[0].artifact = "package/vault-replacement"
+	reused, err = reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		candidate,
+		changedArtifact,
+		receipts,
+	)
+	if err != nil || reused != nil {
+		t.Fatalf("evidence from a different rendered artifact was reused: evidence=%#v err=%v", reused, err)
+	}
+	changedContract := append([]finalImageUse(nil), uses...)
+	changedContract[0].invocation.RuntimeContractSHA256 = strings.Repeat("e", 64)
+	reused, err = reusableCompatibilityReceipt(
+		config.DeliveryPolicy{},
+		candidate,
+		changedContract,
+		receipts,
+	)
+	if err != nil || reused != nil {
+		t.Fatalf("evidence from a different runtime contract was reused: evidence=%#v err=%v", reused, err)
+	}
+}
+
 func TestOfficialPathIndexRemovesOnlyTheAffectedSubtree(t *testing.T) {
 	t.Parallel()
 	index := newOfficialPathIndex(5)

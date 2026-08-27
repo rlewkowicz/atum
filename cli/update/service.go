@@ -75,13 +75,15 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if _, err := recoverTransactions(service.root); err != nil {
 		return Result{}, err
 	}
-	project, err := config.LoadWithOptions(service.root, config.LoadOptions{
+	updateInput, err := config.LoadUpdateInput(service.root, config.LoadOptions{
 		AllowStale: true, AllowMissingGeneratedIdentity: true,
 		AllowMissingFluxSecrets: true,
 	})
 	if err != nil {
 		return Result{}, err
 	}
+	project := updateInput.Project
+	compatibilityReceipts := updateInput.CompatibilityReceipts
 	desired, lock, err := cloneState(project.Desired, project.Lock)
 	if err != nil {
 		return Result{}, err
@@ -95,13 +97,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if options.Parallelism != 0 {
 		desired.Updates.Parallelism = options.Parallelism
 	}
+	resetRenderedImageInventory(&desired)
 	previousImages := make(map[string]config.Image, len(desired.Delivery.Images))
 	for index := range desired.Delivery.Images {
 		image := desired.Delivery.Images[index]
 		previousImages[image.ID] = image
 	}
 	initialImageTargets := imageTargetsByID(desired.Delivery.Images)
-	resetRenderedImageInventory(&desired)
 	currentClusterTarget, err := desired.Orchestration.TargetRelease()
 	if err != nil {
 		return Result{}, err
@@ -349,7 +351,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		selection.clusterReleases,
 		selection.kubespray,
 		parallelism,
-		previousImages,
 	)
 	if err != nil {
 		return Result{}, err
@@ -660,6 +661,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		finalArtifacts,
 		finalInspections,
 		previousImages,
+		compatibilityReceipts,
 		renderContractsUnchanged,
 		func(completed, total int) {
 			if completed <= lastAdmissionProgress {

@@ -22,6 +22,7 @@ import (
 	"atum/cli/treehash"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +46,11 @@ type Project struct {
 	LockData       []byte
 	Desired        Document
 	Lock           Lock
+}
+
+type UpdateInput struct {
+	Project               *Project
+	CompatibilityReceipts map[string]Image
 }
 
 type LoadOptions struct {
@@ -366,15 +372,21 @@ type Delivery struct {
 // delivery projects the image entries into the common image graph and
 // Kubespray consumes registry settings derived from those same targets.
 type KubesprayArtifactInventory struct {
-	SchemaVersion     string          `json:"schemaVersion"`
-	KubernetesVersion string          `json:"kubernetesVersion"`
-	KubesprayCommit   string          `json:"kubesprayCommit"`
-	InventorySHA256   string          `json:"inventorySha256"`
-	Files             []KubesprayFile `json:"files"`
-	Images            []string        `json:"images"`
+	SchemaVersion        string          `json:"schemaVersion"`
+	KubernetesVersion    string          `json:"kubernetesVersion"`
+	KubesprayCommit      string          `json:"kubesprayCommit"`
+	OfficialScript       string          `json:"officialScript"`
+	OfficialScriptSHA256 string          `json:"officialScriptSha256"`
+	InventoryScope       string          `json:"inventoryScope"`
+	InventorySHA256      string          `json:"inventorySha256"`
+	OfficialImages       []string        `json:"officialImages"`
+	Files                []KubesprayFile `json:"files"`
+	Images               []string        `json:"images"`
 }
 
-const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v5"
+const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v6"
+const KubesprayOfficialScript = "contrib/offline/generate_list.sh"
+const KubesprayFullOfflineInventory = "full-upstream-offline"
 
 // KubesprayFile is one content-pinned output of Kubespray's official offline
 // discovery and acquisition workflow. Variable is the exact Kubespray URL
@@ -460,9 +472,13 @@ type ImageCompatibility struct {
 	Contract         string                 `json:"contract"`
 	Observations     []ImageRuntimeEvidence `json:"observations"`
 	Incompatibility  string                 `json:"incompatibility"`
+	OfficialSource   string                 `json:"officialSource"`
 	OfficialMaterial string                 `json:"officialMaterial"`
+	RemovalCondition string                 `json:"removalCondition"`
 	OfficialConfig   ImageOfficialConfig    `json:"officialConfig"`
 }
+
+const ImageAdmissionContract = "atum.dev/image-admission/v3"
 
 type ImageOfficialConfig struct {
 	SHA256          string                    `json:"sha256"`
@@ -875,6 +891,25 @@ func Load(rootHint string) (*Project, error) {
 }
 
 func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
+	input, err := load(rootHint, options, false)
+	if err != nil {
+		return nil, err
+	}
+	return input.Project, nil
+}
+
+// LoadUpdateInput is the updater's one-way stale-state acquisition boundary.
+// Updater-owned derived images are discarded before semantic validation; they
+// are never recognized, converted, or retained as supported desired input.
+func LoadUpdateInput(rootHint string, options LoadOptions) (*UpdateInput, error) {
+	return load(rootHint, options, true)
+}
+
+func load(
+	rootHint string,
+	options LoadOptions,
+	discardDerivedImages bool,
+) (*UpdateInput, error) {
 	root, err := Discover(rootHint)
 	if err != nil {
 		return nil, err
@@ -912,10 +947,20 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve desired delivery identity: %w", err)
 	}
-
 	var lock Lock
 	if err := DecodeJSON(lockData, &lock); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", LockFilename, err)
+	}
+	receipts := map[string]Image(nil)
+	if discardDerivedImages {
+		receipts, err = compatibilityReceipts(
+			desired.Delivery.Policy,
+			desired.Delivery.Images,
+		)
+		if err != nil {
+			return nil, err
+		}
+		discardUpdateImageProjections(&desired, &lock)
 	}
 
 	project := &Project{
@@ -937,7 +982,121 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 	); err != nil {
 		return nil, err
 	}
-	return project, nil
+	return &UpdateInput{
+		Project:               project,
+		CompatibilityReceipts: receipts,
+	}, nil
+}
+
+func updateInputImages(images []Image) []Image {
+	retained := make([]Image, 0, len(images))
+	for _, image := range images {
+		switch image.Discovery {
+		case "configuration", "first-party", "controller-generated":
+			retained = append(retained, image)
+		}
+	}
+	return retained
+}
+
+func discardUpdateImageProjections(desired *Document, lock *Lock) {
+	desired.Delivery.Images = updateInputImages(desired.Delivery.Images)
+	desired.Delivery.Kubespray = nil
+	lock.Delivery.Images = nil
+	lock.Resolved.Kubespray = nil
+}
+
+func compatibilityReceipts(
+	policy DeliveryPolicy,
+	images []Image,
+) (map[string]Image, error) {
+	receipts := make(map[string]Image)
+	identityCounts := make(map[string]int, len(images))
+	for _, image := range images {
+		identityCounts[image.ID]++
+	}
+	for _, image := range images {
+		if identityCounts[image.ID] != 1 ||
+			!validCompatibilityReceipt(policy, image) {
+			continue
+		}
+		data, err := json.Marshal(image)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"copy compatibility receipt %s: %w",
+				image.ID,
+				err,
+			)
+		}
+		var receipt Image
+		if err := DecodeJSON(data, &receipt); err != nil {
+			return nil, fmt.Errorf(
+				"copy compatibility receipt %s: %w",
+				image.ID,
+				err,
+			)
+		}
+		receipts[image.ID] = receipt
+	}
+	return receipts, nil
+}
+
+func validCompatibilityReceipt(policy DeliveryPolicy, image Image) bool {
+	evidence := image.Compatibility
+	if image.Discovery != "rendered" ||
+		image.Delivery.Default.Type != "build" ||
+		image.Delivery.Default.BakeTarget == "" ||
+		evidence == nil ||
+		evidence.Contract != ImageAdmissionContract ||
+		len(evidence.Observations) == 0 ||
+		strings.TrimSpace(evidence.Incompatibility) == "" ||
+		strings.TrimSpace(evidence.RemovalCondition) == "" ||
+		!validDigest(evidence.OfficialConfig.SHA256) ||
+		!slices.Contains(
+			image.Delivery.Default.Materials,
+			evidence.OfficialMaterial,
+		) ||
+		ValidateOfficialImageEvidence(
+			policy,
+			evidence.OfficialSource,
+			evidence.OfficialMaterial,
+		) != nil {
+		return false
+	}
+	for _, observation := range evidence.Observations {
+		if observation.Artifact == "" ||
+			observation.RenderedLocation == "" ||
+			!validHexSHA256(observation.RuntimeContractSHA256) {
+			return false
+		}
+		for _, required := range observation.RequiredPaths {
+			if !strings.HasPrefix(required, "/") {
+				return false
+			}
+		}
+		for _, required := range observation.RequiredEnvironment {
+			if required == "" || strings.ContainsAny(required, "=\x00") {
+				return false
+			}
+		}
+	}
+	for _, filesystem := range evidence.OfficialConfig.Filesystem {
+		if !strings.HasPrefix(filesystem.Path, "/") ||
+			filesystem.Present && filesystem.Mode == "" ||
+			!filesystem.Present &&
+				(filesystem.Mode != "" ||
+					filesystem.UID != 0 ||
+					filesystem.GID != 0) {
+			return false
+		}
+	}
+	for _, entrypoint := range evidence.OfficialConfig.EntrypointFiles {
+		if !strings.HasPrefix(entrypoint.Path, "/") ||
+			!validHexSHA256(entrypoint.SHA256) {
+			return false
+		}
+	}
+	return true
 }
 
 func ValidateCandidate(root string, desired Document, lock Lock, candidate CandidateFiles) (*Project, []byte, []byte, error) {
@@ -1469,9 +1628,7 @@ func (p *Project) validate(
 		}
 		imageIDs[image.ID] = image
 		imageTargets[image.Target] = image.ID
-		if image.Discovery != "rendered" && image.Discovery != "configuration" &&
-			image.Discovery != "first-party" &&
-			image.Discovery != "controller-generated" && image.Discovery != "kubespray" {
+		if !validImageDiscovery(image.Discovery) {
 			add("delivery image %s has invalid discovery evidence", image.ID)
 		}
 		if !allowStale && strings.TrimSpace(image.Provenance) == "" {
@@ -1541,13 +1698,25 @@ func (p *Project) validate(
 				break
 			}
 			if evidence == nil || len(evidence.Observations) == 0 ||
+				evidence.Contract != ImageAdmissionContract ||
 				evidence.Incompatibility == "" ||
+				evidence.OfficialSource == "" ||
 				!strings.Contains(evidence.OfficialMaterial, "@sha256:") ||
+				evidence.RemovalCondition == "" ||
 				!validDigest(evidence.OfficialConfig.SHA256) {
 				if !allowStale {
 					add("delivery build %s requires complete current compatibility evidence", image.ID)
 				}
 			} else {
+				if !allowStale {
+					if err := ValidateOfficialImageEvidence(
+						p.Desired.Delivery.Policy,
+						evidence.OfficialSource,
+						evidence.OfficialMaterial,
+					); err != nil {
+						add("delivery build %s has invalid official evidence: %v", image.ID, err)
+					}
+				}
 				if !slices.Contains(
 					image.Delivery.Default.Materials,
 					evidence.OfficialMaterial,
@@ -1702,6 +1871,64 @@ func (p *Project) validate(
 	}
 	sort.Strings(problems)
 	return errors.New("invalid Atum project:\n  - " + strings.Join(problems, "\n  - "))
+}
+
+// ValidateOfficialImageEvidence is the canonical durable source/material
+// authority for compatibility builds.
+func ValidateOfficialImageEvidence(
+	policy DeliveryPolicy,
+	source string,
+	material string,
+) error {
+	sourceReference, err := name.ParseReference(source)
+	if err != nil {
+		return fmt.Errorf("parse official source %q: %w", source, err)
+	}
+	if _, tagged := sourceReference.(name.Tag); !tagged {
+		return fmt.Errorf("official source %q is not tag-addressable", source)
+	}
+	if policy.MutableTagsForbidden && mutableImageReference(source) {
+		return fmt.Errorf("official source %q uses a mutable tag", source)
+	}
+	materialReference, err := name.ParseReference(material)
+	if err != nil {
+		return fmt.Errorf("parse official material %q: %w", material, err)
+	}
+	if _, immutable := materialReference.(name.Digest); !immutable {
+		return fmt.Errorf("official material %q is not immutable", material)
+	}
+	sourceRepository := sourceReference.Context().Name()
+	materialRepository := materialReference.Context().Name()
+	if strings.HasPrefix(sourceRepository, "registry1.dso.mil/") ||
+		strings.HasPrefix(materialRepository, "registry1.dso.mil/") {
+		return errors.New("Registry1 official evidence is forbidden")
+	}
+	for _, prefix := range policy.ForbiddenArtifactPrefixes {
+		if strings.HasPrefix(source, prefix) ||
+			strings.HasPrefix(material, prefix) ||
+			strings.HasPrefix(sourceRepository, prefix) ||
+			strings.HasPrefix(materialRepository, prefix) {
+			return fmt.Errorf("official evidence uses forbidden artifact prefix %s", prefix)
+		}
+	}
+	if sourceRepository != materialRepository {
+		return fmt.Errorf(
+			"official source repository %s does not match material repository %s",
+			sourceRepository,
+			materialRepository,
+		)
+	}
+	return nil
+}
+
+func validImageDiscovery(discovery string) bool {
+	switch discovery {
+	case "rendered", "configuration", "first-party",
+		"controller-generated", "kubespray":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateAnsibleUser(problems *[]string, user string) {
@@ -2785,11 +3012,15 @@ func validateKubesprayArtifactInventory(
 	release ClusterRelease,
 	allowStale bool,
 ) {
-	if !allowStale && inventory.SchemaVersion != KubesprayArtifactSchema ||
-		inventory.KubernetesVersion != release.Kubernetes ||
+	if inventory.KubernetesVersion != release.Kubernetes ||
 		inventory.KubesprayCommit != release.Kubespray.Commit ||
-		!validHexSHA256(inventory.InventorySHA256) ||
-		len(inventory.Files) == 0 || len(inventory.Images) == 0 {
+		!allowStale && (inventory.SchemaVersion != KubesprayArtifactSchema ||
+			inventory.OfficialScript != KubesprayOfficialScript ||
+			!validHexSHA256(inventory.OfficialScriptSHA256) ||
+			inventory.InventoryScope != KubesprayFullOfflineInventory ||
+			!validHexSHA256(inventory.InventorySHA256) ||
+			len(inventory.OfficialImages) == 0 ||
+			len(inventory.Files) == 0 || len(inventory.Images) == 0) {
 		*problems = append(*problems, "Kubespray artifact inventory identity is invalid")
 		return
 	}
@@ -2800,6 +3031,17 @@ func validateKubesprayArtifactInventory(
 				*problems = append(
 					*problems,
 					fmt.Sprintf("Kubespray %s inventory is not a sorted unique non-empty list", label),
+				)
+				return
+			}
+		}
+	}
+	if !allowStale {
+		for _, image := range inventory.OfficialImages {
+			if strings.TrimSpace(image) != image || image == "" {
+				*problems = append(
+					*problems,
+					"Kubespray official image output contains an invalid entry",
 				)
 				return
 			}
@@ -2844,9 +3086,11 @@ func validateKubesprayArtifactInventory(
 		fileSources[file.Source] = struct{}{}
 		filePaths[file.LocalPath] = struct{}{}
 	}
-	digest, err := KubesprayInventorySHA256(inventory)
-	if err != nil || digest != inventory.InventorySHA256 {
-		*problems = append(*problems, "Kubespray artifact inventory digest is invalid")
+	if !allowStale {
+		digest, err := KubesprayInventorySHA256(inventory)
+		if err != nil || digest != inventory.InventorySHA256 {
+			*problems = append(*problems, "Kubespray artifact inventory digest is invalid")
+		}
 	}
 }
 
@@ -2905,6 +3149,119 @@ func validateKubesprayImageProjection(
 			return
 		}
 	}
+	if allowStale {
+		return
+	}
+	for _, inventory := range inventories {
+		if err := validateKubesprayOfficialImageProjection(
+			inventory,
+			projected,
+		); err != nil {
+			*problems = append(*problems, err.Error())
+			return
+		}
+	}
+}
+
+func validateKubesprayOfficialImageProjection(
+	inventory KubesprayArtifactInventory,
+	projected map[string]Image,
+) error {
+	projectedSources := make(map[string]string, len(inventory.Images))
+	for _, id := range inventory.Images {
+		image, found := projected[id]
+		if !found {
+			return fmt.Errorf(
+				"Kubespray %s inventory image %s has no Harbor projection",
+				inventory.KubernetesVersion,
+				id,
+			)
+		}
+		reference, err := name.ParseReference(image.Delivery.Default.Source)
+		if err != nil {
+			return fmt.Errorf(
+				"Kubespray %s projected source %q is invalid: %w",
+				inventory.KubernetesVersion,
+				image.Delivery.Default.Source,
+				err,
+			)
+		}
+		source := reference.Name()
+		if previous, duplicate := projectedSources[source]; duplicate {
+			return fmt.Errorf(
+				"Kubespray %s projected source %s is duplicated by %s and %s",
+				inventory.KubernetesVersion,
+				source,
+				previous,
+				id,
+			)
+		}
+		projectedSources[source] = id
+	}
+
+	expectedSources := make(map[string]struct{}, len(inventory.OfficialImages)+1)
+	for _, official := range inventory.OfficialImages {
+		reference, err := name.ParseReference(official)
+		if err != nil {
+			return fmt.Errorf(
+				"Kubespray %s official image %q is invalid: %w",
+				inventory.KubernetesVersion,
+				official,
+				err,
+			)
+		}
+		tag, tagged := reference.(name.Tag)
+		if !tagged {
+			return fmt.Errorf(
+				"Kubespray %s official image %q is not tag-addressable",
+				inventory.KubernetesVersion,
+				official,
+			)
+		}
+		source := tag.Name()
+		expectedSources[source] = struct{}{}
+		if tag.Context().Name() == "quay.io/cilium/operator" {
+			generic, err := name.NewTag(
+				"quay.io/cilium/operator-generic:" + tag.TagStr(),
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"derive Kubespray Cilium generic image: %w",
+					err,
+				)
+			}
+			expectedSources[generic.Name()] = struct{}{}
+		}
+	}
+	missing := make([]string, 0)
+	for source := range expectedSources {
+		if _, found := projectedSources[source]; !found {
+			missing = append(missing, source)
+		}
+	}
+	if len(missing) != 0 {
+		sort.Strings(missing)
+		return fmt.Errorf(
+			"Kubespray %s expected image %s has no matching Harbor projection",
+			inventory.KubernetesVersion,
+			missing[0],
+		)
+	}
+	unexpected := make([]string, 0)
+	for source := range projectedSources {
+		if _, expected := expectedSources[source]; !expected {
+			unexpected = append(unexpected, source)
+		}
+	}
+	if len(unexpected) != 0 {
+		sort.Strings(unexpected)
+		return fmt.Errorf(
+			"Kubespray %s Harbor projection contains non-script image %s",
+			inventory.KubernetesVersion,
+			unexpected[0],
+		)
+	}
+	return nil
 }
 
 func validKubesprayLocalPath(value string) bool {
