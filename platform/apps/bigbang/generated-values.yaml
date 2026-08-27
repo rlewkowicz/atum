@@ -75,6 +75,10 @@ addons:
                         image:
                             repository: 10.77.0.9:32443/atum/cfssl-self-sign
                             tag: v19.2.4
+                upgradeCheck:
+                    image:
+                        repository: 10.77.0.9:32443/atum/ubi9
+                        tag: "9.8"
     harbor:
         helmRepo:
             chartName: harbor
@@ -287,10 +291,25 @@ kyverno:
                     defaultRegistry: 10.77.0.9:32443
                     repository: atum/kyverno-cleanup-controller
                     tag: v1.18.2
+            crds:
+                migration:
+                    image:
+                        defaultRegistry: 10.77.0.9:32443
+                        repository: atum/kyverno-cli
+                        tag: v1.18.2
+            global:
+                extraEnvVars:
+                    - name: KUBE_FEATURE_WatchListClient
+                      value: "false"
             reportsController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
                     repository: atum/kyverno-reports-controller
+                    tag: v1.18.2
+            webhooksCleanup:
+                image:
+                    registry: 10.77.0.9:32443
+                    repository: atum/kyverno-readiness-checker
                     tag: v1.18.2
 kyvernoPolicies:
     helmRepo:

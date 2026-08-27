@@ -135,6 +135,55 @@ func TestMountedShellConfigurationDoesNotInventImagePaths(t *testing.T) {
 	}
 }
 
+func TestMountedScriptExistenceGuardDoesNotRequireOptionalPath(t *testing.T) {
+	t.Parallel()
+
+	const optionalPath = "/etc/secrets/postgresql/..data"
+	invocation := containerInvocation{
+		Command: []any{"/bin/sh", "/scripts/runcheck"},
+		MountedFiles: []mountedConfigFile{mountedConfigFileForTest(
+			"/scripts/runcheck",
+			`#!/bin/sh
+secrets_dir="/etc/secrets/postgresql"
+if [ -d "${secrets_dir}" ]; then
+  if [ ! "$(ls -A ${secrets_dir}/..data/)" = "" ]; then
+    echo "mounted secret is populated"
+  fi
+fi
+`,
+		)},
+		Runtime: map[string]any{
+			"volumeMounts": []any{
+				map[string]any{"name": "scripts", "mountPath": "/scripts"},
+			},
+		},
+	}
+	obligations, err := requiredInvocationObligations(invocation, nil, nil, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := obligationPaths(obligations)
+	if containsString(paths, optionalPath) {
+		t.Fatalf("existence-guarded runtime path became an image obligation: %#v", paths)
+	}
+	foundLS := false
+	for _, obligation := range obligations {
+		foundLS = foundLS || obligation.Path == "ls" && obligation.SearchPATH
+	}
+	if !foundLS {
+		t.Fatalf("guarded command executable is absent: %#v", obligations)
+	}
+
+	invocation.MountedFiles[0] = mountedConfigFileForTest(
+		"/scripts/runcheck",
+		"#!/bin/sh\nls -A "+optionalPath+"\n",
+	)
+	paths = mustRequiredInvocationPaths(t, invocation)
+	if !containsString(paths, optionalPath) {
+		t.Fatalf("unguarded path was not retained as an image obligation: %#v", paths)
+	}
+}
+
 func TestCompatibilityComparisonUsesConcreteFinalPaths(t *testing.T) {
 	t.Parallel()
 	image := config.Image{
@@ -289,6 +338,35 @@ spec:
 	}
 	if len(inspection.Images) != 0 || len(inspection.Invocations) != 0 {
 		t.Fatalf("inactive Helm test admitted runtime state: %#v", inspection)
+	}
+}
+
+func TestProductionHelmLifecycleHookAdmitsImage(t *testing.T) {
+	t.Parallel()
+	inspection, err := inspectManifestData("pre-delete.yaml", []byte(`
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cleanup
+  annotations:
+    helm.sh/hook: pre-delete
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: cleanup
+          image: example.com/readiness-checker:v1.2.3
+          args:
+            - scale-deploy
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Images) != 1 ||
+		inspection.Images[0] != "example.com/readiness-checker:v1.2.3" ||
+		len(inspection.Invocations) != 1 {
+		t.Fatalf("production lifecycle hook was not admitted: %#v", inspection)
 	}
 }
 

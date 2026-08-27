@@ -82,6 +82,7 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		repositoryTag("package/gitlab", "registry1.dso.mil/gitlab/gitlab-org/build/cng/gitaly", "addons.gitlab.values.upstream.gitlab.gitaly.image"),
 		repositoryTag("package/gitlab", "registry1.dso.mil/gitlab/gitlab-org/build/cng/gitlab-shell", "addons.gitlab.values.upstream.gitlab.gitlab-shell.image"),
 		repositoryTag("package/gitlab", "registry1.dso.mil/gitlab/gitlab-org/build/cng/gitaly", "addons.gitlab.values.upstream.gitlab.praefect.image"),
+		repositoryTag("package/gitlab", "registry1.dso.mil/ironbank/redhat/ubi/ubi9", "addons.gitlab.values.upstream.upgradeCheck.image"),
 
 		splitImage("package/grafana", "registry1.dso.mil/ironbank/big-bang/grafana/grafana-plugins", "grafana.values.upstream.image"),
 		splitImage("package/grafana", "registry1.dso.mil/ironbank/kiwigrid/k8s-sidecar", "grafana.values.upstream.sidecar.image"),
@@ -109,6 +110,8 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/background-controller", "kyverno.values.upstream.backgroundController.image"),
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/cleanup-controller", "kyverno.values.upstream.cleanupController.image"),
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/reports-controller", "kyverno.values.upstream.reportsController.image"),
+		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli", "kyverno.values.upstream.crds.migration.image"),
+		splitImage("package/kyverno", kyvernoWebhookCleanupRepository, "kyverno.values.upstream.webhooksCleanup.image"),
 
 		splitImage("package/kyverno-reporter", "registry1.dso.mil/ironbank/opensource/kyverno/policy-reporter", "kyvernoReporter.values.upstream.image"),
 		splitImage("package/kyverno-reporter", "registry1.dso.mil/ironbank/nirmata/policy-reporter/policy-reporter-ui", "kyvernoReporter.values.upstream.ui.image"),
@@ -163,7 +166,72 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	if err := projectChartGlobalImageRegistries(generated, images); err != nil {
 		return err
 	}
-	return nil
+	return projectKyvernoWatchListCompatibility(generated, desired, images)
+}
+
+const (
+	kyvernoWatchListPackageVersion     = "3.8.2-bb.2"
+	kyvernoWatchListApplicationVersion = "1.18.2"
+	kyvernoWatchListKubernetesMinor    = "1.35."
+)
+
+// projectKyvernoWatchListCompatibility disables only client-go's streaming
+// list optimization for the exact release boundary that hung every Kyverno
+// controller before its ConfigMap informer warmed. Ordinary LIST+WATCH remains
+// enabled. The exact guards stop the updater at the next package, application,
+// or Kubernetes-minor boundary so this fallback cannot silently become a
+// permanent platform default.
+func projectKyvernoWatchListCompatibility(
+	generated map[string]any,
+	desired config.Document,
+	images selectedImageIndex,
+) error {
+	kyverno, err := selectedArtifactImage(
+		images,
+		kyvernoArtifact,
+		"registry1.dso.mil/ironbank/opensource/kyverno",
+	)
+	if err != nil {
+		return err
+	}
+	target, err := desired.Orchestration.TargetRelease()
+	if err != nil {
+		return err
+	}
+	packageVersion := ""
+	for _, selected := range desired.Platform.Packages {
+		if selected.ID != "kyverno" {
+			continue
+		}
+		if packageVersion != "" {
+			return errors.New("selected platform contains duplicate Kyverno packages")
+		}
+		packageVersion = selected.Source.Version
+	}
+	if packageVersion == "" {
+		return errors.New("selected platform has no Kyverno package")
+	}
+	if packageVersion != kyvernoWatchListPackageVersion ||
+		kyverno.Version != kyvernoWatchListApplicationVersion ||
+		!strings.HasPrefix(target.Kubernetes, kyvernoWatchListKubernetesMinor) {
+		return fmt.Errorf(
+			"Kyverno WatchListClient fallback requires review outside package %s, application %s, Kubernetes %sx (selected %s, %s, %s)",
+			kyvernoWatchListPackageVersion,
+			kyvernoWatchListApplicationVersion,
+			kyvernoWatchListKubernetesMinor,
+			packageVersion,
+			kyverno.Version,
+			target.Kubernetes,
+		)
+	}
+	return setNestedValue(
+		generated,
+		"kyverno.values.upstream.global.extraEnvVars",
+		[]any{map[string]any{
+			"name":  "KUBE_FEATURE_WatchListClient",
+			"value": "false",
+		}},
+	)
 }
 
 func repositoryTag(artifact, repository, path string) imageValueProjection {

@@ -5200,6 +5200,32 @@
         }
       },
       {
+        "id": "kyverno-cli",
+        "family": "policy",
+        "version": "1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "provenance": "reg.kyverno.io/kyverno/kyverno-cli",
+        "consumers": [
+          "package/kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kyverno/kyvernocli:v1.18.2"
+        ],
+        "discovery": "rendered",
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "reg.kyverno.io/kyverno/kyverno-cli:v1.18.2",
+            "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194"
+          }
+        }
+      },
+      {
         "id": "kyverno-preflight",
         "family": "policy",
         "version": "1.18.2",
@@ -5222,6 +5248,32 @@
             "type": "mirror",
             "source": "reg.kyverno.io/kyverno/kyvernopre:v1.18.2",
             "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b"
+          }
+        }
+      },
+      {
+        "id": "kyverno-readiness-checker",
+        "family": "policy",
+        "version": "1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "provenance": "ghcr.io/kyverno/readiness-checker",
+        "consumers": [
+          "package/kyverno"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl:v1.35.7"
+        ],
+        "discovery": "rendered",
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "ghcr.io/kyverno/readiness-checker:v1.18.2",
+            "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70"
           }
         }
       },
@@ -6002,6 +6054,32 @@
             "type": "mirror",
             "source": "quay.io/thanos/thanos:v0.42.4",
             "digest": "sha256:ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a0f1394cc43e09422"
+          }
+        }
+      },
+      {
+        "id": "ubi9",
+        "family": "foundation",
+        "version": "9.8",
+        "target": "10.77.0.9:32443/atum/ubi9:9.8",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "GPL-2.0-or-later",
+        "provenance": "registry.access.redhat.com/ubi9/ubi",
+        "consumers": [
+          "package/gitlab"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/redhat/ubi/ubi9:9.8"
+        ],
+        "discovery": "rendered",
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "registry.access.redhat.com/ubi9/ubi:9.8",
+            "digest": "sha256:03b3d228574922e50bc654aea24a213f68467937c5cc001b5786815152d6f4e2"
           }
         }
       },

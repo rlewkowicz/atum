@@ -1998,13 +1998,26 @@ func appendMountedScriptObligations(
 			}
 			continue
 		}
+		commandMounts := mounts
+		if len(call.guardedPaths) != 0 {
+			commandMounts = make(
+				[]string,
+				0,
+				len(mounts)+len(call.guardedPaths),
+			)
+			commandMounts = append(commandMounts, mounts...)
+			commandMounts = compactSorted(append(
+				commandMounts,
+				call.guardedPaths...,
+			))
+		}
 		if err := appendCommandObligations(
 			[]string{call.executable},
 			call.arguments,
 			origin+" mounted script",
 			invocation,
 			mounted,
-			mounts,
+			commandMounts,
 			obligations,
 			depth+1,
 		); err != nil {
@@ -2576,10 +2589,17 @@ var shellBuiltins = map[string]struct{}{
 }
 
 type shellCommand struct {
-	executable  string
-	arguments   []string
-	source      bool
-	boundedGlob bool
+	executable   string
+	arguments    []string
+	guardedPaths []string
+	source       bool
+	boundedGlob  bool
+}
+
+type shellPathGuard struct {
+	start uint
+	end   uint
+	path  string
 }
 
 func shellExecutables(script string) ([]string, error) {
@@ -2663,6 +2683,7 @@ func shellCommandsWithVariables(
 		}
 		return true
 	})
+	pathGuards := shellPathGuards(program, variables)
 	var result []shellCommand
 	var scanErr error
 	syntax.Walk(program, func(node syntax.Node) bool {
@@ -2679,6 +2700,7 @@ func shellCommandsWithVariables(
 			return false
 		}
 		if found {
+			command.guardedPaths = shellGuardedPaths(call, pathGuards)
 			result = append(result, command)
 		}
 		return true
@@ -2687,6 +2709,92 @@ func shellCommandsWithVariables(
 		return nil, scanErr
 	}
 	return result, nil
+}
+
+func shellPathGuards(
+	program *syntax.File,
+	variables map[string]string,
+) []shellPathGuard {
+	var guards []shellPathGuard
+	syntax.Walk(program, func(node syntax.Node) bool {
+		clause, ok := node.(*syntax.IfClause)
+		if !ok || len(clause.Cond) != 1 {
+			return true
+		}
+		guardedPath, found := positiveShellPathGuard(clause.Cond[0], variables)
+		if !found {
+			return true
+		}
+		for _, statement := range clause.Then {
+			guards = append(guards, shellPathGuard{
+				start: statement.Pos().Offset(),
+				end:   statement.End().Offset(),
+				path:  guardedPath,
+			})
+		}
+		return true
+	})
+	return guards
+}
+
+func positiveShellPathGuard(
+	statement *syntax.Stmt,
+	variables map[string]string,
+) (string, bool) {
+	if statement == nil || statement.Negated || statement.Background ||
+		statement.Coprocess || len(statement.Redirs) != 0 {
+		return "", false
+	}
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return "", false
+	}
+	words := make([]string, len(call.Args))
+	for index, word := range call.Args {
+		value, static := staticShellWordWithVariables(word, variables)
+		if !static {
+			return "", false
+		}
+		words[index] = value
+	}
+	switch words[0] {
+	case "[":
+		if len(words) != 4 || words[3] != "]" {
+			return "", false
+		}
+		words = words[1:3]
+	case "test":
+		if len(words) != 3 {
+			return "", false
+		}
+		words = words[1:]
+	default:
+		return "", false
+	}
+	switch words[0] {
+	case "-b", "-c", "-d", "-e", "-f", "-g", "-h", "-k",
+		"-L", "-p", "-r", "-s", "-S", "-u", "-w", "-x":
+	default:
+		return "", false
+	}
+	if !path.IsAbs(words[1]) {
+		return "", false
+	}
+	return path.Clean(words[1]), true
+}
+
+func shellGuardedPaths(
+	call *syntax.CallExpr,
+	guards []shellPathGuard,
+) []string {
+	start, end := call.Pos().Offset(), call.End().Offset()
+	var paths []string
+	for _, guard := range guards {
+		if start >= guard.start && end <= guard.end {
+			paths = append(paths, guard.path)
+		}
+	}
+	return compactSorted(paths)
 }
 
 func shellCallCommand(

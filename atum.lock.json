@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "5a3971c278de586ef1428b158bd64f1416420b58aee198efc0bd7bd2ebb66854",
+  "desiredSha256": "bcd1180a0fdfe803a419fdd9ce0886b92eed1acf60b5946aa6ee7cf621617b43",
   "resolved": {
     "clusterReleases": [
       {
@@ -2017,7 +2017,7 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "88d32359c8f4ad1094cc46c76042504d84a327d2a461080f0cf2041c15c23711",
+    "inventorySha256": "0d2ffbece01a438a7d298795af2a55aee6dc08f4584d9b8e7fcb9b791d563ddc",
     "graphSha256": "393218e5c3a4e9a8f422b553089da9450219c8cb94a45c7abbabaf1ee76a0b9e",
     "images": [
       {
@@ -3647,6 +3647,18 @@
         }
       },
       {
+        "id": "kyverno-cli",
+        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+        "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194",
+        "inputSha256": "c2b1d8638d1be3bd3534bf14e75f709d3b4c1ea4ba846a40e63e207a9e4b584c",
+        "delivery": {
+          "type": "mirror",
+          "source": "reg.kyverno.io/kyverno/kyverno-cli:v1.18.2",
+          "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194",
+          "sourceProfile": "platform"
+        }
+      },
+      {
         "id": "kyverno-preflight",
         "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
         "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b",
@@ -3655,6 +3667,18 @@
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/kyvernopre:v1.18.2",
           "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "kyverno-readiness-checker",
+        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+        "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70",
+        "inputSha256": "41d7b76d5dc6d5e91350ded160620a712de70ac487a00a11f696b57809741cfb",
+        "delivery": {
+          "type": "mirror",
+          "source": "ghcr.io/kyverno/readiness-checker:v1.18.2",
+          "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70",
           "sourceProfile": "platform"
         }
       },
@@ -3947,6 +3971,18 @@
           "type": "mirror",
           "source": "quay.io/thanos/thanos:v0.42.4",
           "digest": "sha256:ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a0f1394cc43e09422",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "ubi9",
+        "target": "10.77.0.9:32443/atum/ubi9:9.8",
+        "digest": "sha256:03b3d228574922e50bc654aea24a213f68467937c5cc001b5786815152d6f4e2",
+        "inputSha256": "7e1914bb865a3ed9954c8bf3a73619ba9d730e5d3e8edbbd4b5595d661faba09",
+        "delivery": {
+          "type": "mirror",
+          "source": "registry.access.redhat.com/ubi9/ubi:9.8",
+          "digest": "sha256:03b3d228574922e50bc654aea24a213f68467937c5cc001b5786815152d6f4e2",
           "sourceProfile": "platform"
         }
       },

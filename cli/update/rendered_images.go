@@ -85,9 +85,8 @@ func reconstructRenderedImages(
 		if inventory.mergeKnownTargetObservation(renderedObservation) {
 			continue
 		}
-		spec, err := officialImageFor(
-			renderedObservation.reference,
-			renderedObservation.artifact,
+		spec, err := officialImageForObservation(
+			renderedObservation,
 			kubernetesVersion,
 			kubectlVersions,
 			desired.Delivery.Policy.BuildBase,
@@ -195,6 +194,101 @@ func currentImageObservations(
 		return observations[i].reference < observations[j].reference
 	})
 	return observations
+}
+
+const (
+	kyvernoArtifact                   = "package/kyverno"
+	kyvernoWebhookCleanupRepository   = "registry1.dso.mil/ironbank/opensource/kubernetes/kubectl"
+	kyvernoReadinessCheckerRepository = "registry1.dso.mil/ironbank/opensource/kyverno/kyverno/readiness-checker"
+)
+
+// officialImageForObservation handles semantic substitutions whose image
+// identity cannot be derived from the rendered repository alone. Kyverno
+// 3.8.2-bb.2 replaces the upstream readiness-checker image with kubectl while
+// retaining readiness-checker's delete-webhooks and scale-deploy arguments.
+// The package's own helm.sh/images declaration remains the exact selected
+// readiness-checker version authority.
+func officialImageForObservation(
+	observation renderedImageObservation,
+	kubernetesVersion string,
+	kubectlVersions map[string]string,
+	buildBase string,
+) (officialImageSpec, error) {
+	reference := observation.reference
+	if observation.artifact == kyvernoArtifact &&
+		imageRepository(reference) == kyvernoWebhookCleanupRepository {
+		var err error
+		reference, err = kyvernoReadinessCheckerReference(observation)
+		if err != nil {
+			return officialImageSpec{}, err
+		}
+	}
+	return officialImageFor(
+		reference,
+		observation.artifact,
+		kubernetesVersion,
+		kubectlVersions,
+		buildBase,
+	)
+}
+
+func kyvernoReadinessCheckerReference(
+	observation renderedImageObservation,
+) (string, error) {
+	expected := map[string]bool{
+		"delete-webhooks": false,
+		"scale-deploy":    false,
+	}
+	if len(observation.invocations) == 0 {
+		return "", errors.New(
+			"selected Kyverno webhook cleanup image has no rendered invocation",
+		)
+	}
+	for _, invocation := range observation.invocations {
+		command := stringSlice(invocation.Command)
+		arguments := stringSlice(invocation.Args)
+		if len(command) != 0 || len(arguments) != 1 {
+			return "", fmt.Errorf(
+				"selected Kyverno webhook cleanup invocation %s no longer has one readiness-checker argument",
+				invocation.Location,
+			)
+		}
+		if _, exists := expected[arguments[0]]; !exists {
+			return "", fmt.Errorf(
+				"selected Kyverno webhook cleanup invocation %s uses unsupported argument %q",
+				invocation.Location,
+				arguments[0],
+			)
+		}
+		expected[arguments[0]] = true
+	}
+	for _, command := range [...]string{"delete-webhooks", "scale-deploy"} {
+		if !expected[command] {
+			return "", fmt.Errorf(
+				"selected Kyverno package no longer renders the %s readiness-checker hook",
+				command,
+			)
+		}
+	}
+
+	var reference string
+	for _, declared := range observation.inspection.Declared {
+		if imageRepository(declared) != kyvernoReadinessCheckerRepository {
+			continue
+		}
+		if reference != "" && reference != declared {
+			return "", errors.New(
+				"selected Kyverno package declares multiple readiness-checker versions",
+			)
+		}
+		reference = declared
+	}
+	if reference == "" {
+		return "", errors.New(
+			"selected Kyverno package does not declare its readiness-checker image",
+		)
+	}
+	return reference, nil
 }
 
 func (inventory *renderedImageInventory) mergeCurrentRenderedImage(

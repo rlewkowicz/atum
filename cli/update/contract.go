@@ -659,7 +659,7 @@ func inspectRenderedResources(
 			if err := yaml.Unmarshal([]byte(documents[key]), &value); err != nil {
 				return nil, nil, "", security, formerWait, fmt.Errorf("decode rendered object %s: %w", filename, err)
 			}
-			if !installActiveHelmResource(value) {
+			if !managedHelmLifecycleResource(value) {
 				continue
 			}
 			if collector != nil {
@@ -842,11 +842,12 @@ func collectStructuredControllerImages(
 	}
 }
 
-// installActiveHelmResource keeps only objects that Helm can create during
-// the selected install render. Hook annotations are lifecycle declarations,
-// not image inventory. A resource with hooks is install-active only when at
-// least one install hook is present.
-func installActiveHelmResource(value any) bool {
+// managedHelmLifecycleResource keeps ordinary resources and every rendered
+// production lifecycle hook. Flux's Helm controller can execute delete,
+// upgrade, or rollback hooks after an install failure or later reconciliation,
+// so their images are part of the selected delivery contract. Helm test hooks
+// remain opt-in diagnostics and are not platform runtime inventory.
+func managedHelmLifecycleResource(value any) bool {
 	object, ok := value.(map[string]any)
 	if !ok {
 		return true
@@ -859,7 +860,10 @@ func installActiveHelmResource(value any) bool {
 	}
 	for _, hook := range strings.Split(hooks, ",") {
 		switch strings.TrimSpace(hook) {
-		case "pre-install", "post-install":
+		case "pre-install", "post-install",
+			"pre-delete", "post-delete",
+			"pre-upgrade", "post-upgrade",
+			"pre-rollback", "post-rollback":
 			return true
 		}
 	}
