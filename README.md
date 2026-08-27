@@ -129,6 +129,16 @@ atum destroy
 atum destroy --force
 ```
 
+For repeated local validation, retain the seed bastion and its Harbor cache
+while Terraform destroys the load balancer and Kubernetes nodes:
+
+```sh
+atum destroy --force --keep-bastion
+```
+
+The next normal `apply` recreates the cluster and verifies existing immutable
+images and charts in Harbor before publishing anything missing.
+
 ## Plane commands
 
 ```sh

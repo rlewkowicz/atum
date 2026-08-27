@@ -12,23 +12,24 @@ import (
 )
 
 const (
-	destroyConfirmationPrompt = "Are you sure? Type yes to destroy the active infrastructure target: "
-	destroyConfirmationLimit  = 16
+	destroyConfirmationPrompt            = "Are you sure? Type yes to destroy the active infrastructure target: "
+	destroyKeepBastionConfirmationPrompt = "Are you sure? Type yes to destroy the cluster nodes and load balancer while retaining the seed bastion: "
+	destroyConfirmationLimit             = 16
 )
 
 var errDestroyCancelled = errors.New("destroy cancelled")
 
 func (a *app) destroyCommand() *cobra.Command {
-	return a.destroyCommandWithMutation(func(ctx context.Context) error {
+	return a.destroyCommandWithMutation(func(ctx context.Context, terraformArgs []string) error {
 		if err := a.uninstallActiveLocalAccess(ctx); err != nil {
 			return fmt.Errorf("remove local workstation access: %w", err)
 		}
-		return a.runInfrastructureAction(ctx, "destroy", nil)
+		return a.runInfrastructureAction(ctx, "destroy", terraformArgs)
 	})
 }
 
-func (a *app) destroyCommandWithMutation(mutate func(context.Context) error) *cobra.Command {
-	var force bool
+func (a *app) destroyCommandWithMutation(mutate func(context.Context, []string) error) *cobra.Command {
+	var force, keepBastion bool
 	command := &cobra.Command{
 		Use:         "destroy",
 		Short:       "Remove local access and destroy the active infrastructure target",
@@ -36,7 +37,11 @@ func (a *app) destroyCommandWithMutation(mutate func(context.Context) error) *co
 		Annotations: map[string]string{"atum.dev/allow-stale": "true"},
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			if !force && !a.dryRun {
-				confirmed, err := confirmDestroy(a.in, a.out)
+				prompt := destroyConfirmationPrompt
+				if keepBastion {
+					prompt = destroyKeepBastionConfirmationPrompt
+				}
+				confirmed, err := confirmDestroy(a.in, a.out, prompt)
 				if err != nil {
 					return err
 				}
@@ -47,7 +52,7 @@ func (a *app) destroyCommandWithMutation(mutate func(context.Context) error) *co
 					return errDestroyCancelled
 				}
 			}
-			return mutate(cmd.Context())
+			return mutate(cmd.Context(), destroyTerraformArgs(keepBastion))
 		}),
 	}
 	command.Flags().BoolVarP(
@@ -57,7 +62,29 @@ func (a *app) destroyCommandWithMutation(mutate func(context.Context) error) *co
 		false,
 		"destroy without interactive confirmation",
 	)
+	command.Flags().BoolVar(
+		&keepBastion,
+		"keep-bastion",
+		false,
+		"retain the seed bastion, its cache, network, and base image",
+	)
 	return command
+}
+
+func destroyTerraformArgs(keepBastion bool) []string {
+	if !keepBastion {
+		return nil
+	}
+	// Terraform has no negative target selector. This positive cluster-only
+	// set retains the bastion, its data disk, seed plane, network, and base.
+	return []string{
+		"-target=libvirt_cloudinit_disk.load_balancer",
+		"-target=libvirt_cloudinit_disk.node",
+		"-target=libvirt_domain.load_balancer",
+		"-target=libvirt_domain.node",
+		"-target=libvirt_volume.load_balancer",
+		"-target=libvirt_volume.node",
+	}
 }
 
 func (a *app) uninstallCommand() *cobra.Command {
@@ -80,8 +107,8 @@ func (a *app) uninstallActiveLocalAccess(ctx context.Context) error {
 	return a.runAccessAction(ctx, "uninstall")
 }
 
-func confirmDestroy(input io.Reader, output io.Writer) (bool, error) {
-	if _, err := io.WriteString(output, destroyConfirmationPrompt); err != nil {
+func confirmDestroy(input io.Reader, output io.Writer, prompt string) (bool, error) {
+	if _, err := io.WriteString(output, prompt); err != nil {
 		return false, fmt.Errorf("write destroy confirmation prompt: %w", err)
 	}
 	reader := bufio.NewReaderSize(

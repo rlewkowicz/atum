@@ -34,7 +34,11 @@ func TestConfirmDestroyRequiresExactYes(t *testing.T) {
 			t.Parallel()
 
 			var output bytes.Buffer
-			confirmed, err := confirmDestroy(strings.NewReader(test.input), &output)
+			confirmed, err := confirmDestroy(
+				strings.NewReader(test.input),
+				&output,
+				destroyConfirmationPrompt,
+			)
 			if err != nil {
 				t.Fatalf("confirm destroy: %v", err)
 			}
@@ -69,7 +73,7 @@ func TestDestroyCancellationStopsBeforeMutation(t *testing.T) {
 				out: &output,
 			}
 			command := application.destroyCommandWithMutation(
-				func(context.Context) error {
+				func(context.Context, []string) error {
 					mutations++
 					return nil
 				},
@@ -106,7 +110,7 @@ func TestDestroyCancellationPreservesOutputError(t *testing.T) {
 		in:  strings.NewReader("no\n"),
 		out: output,
 	}
-	command := application.destroyCommandWithMutation(func(context.Context) error {
+	command := application.destroyCommandWithMutation(func(context.Context, []string) error {
 		mutations++
 		return nil
 	})
@@ -132,7 +136,7 @@ func TestDestroyForceBypassesOnlyConfirmation(t *testing.T) {
 		in:  errReader{err: errors.New("confirmation input must not be read")},
 		out: io.Discard,
 	}
-	command := application.destroyCommandWithMutation(func(context.Context) error {
+	command := application.destroyCommandWithMutation(func(context.Context, []string) error {
 		mutations++
 		return mutationErr
 	})
@@ -148,7 +152,68 @@ func TestDestroyForceBypassesOnlyConfirmation(t *testing.T) {
 	}
 }
 
-func TestLifecycleCommandsAreTopLevelAndForceIsShorthand(t *testing.T) {
+func TestDestroyKeepBastionForwardsExactTerraformTargets(t *testing.T) {
+	t.Parallel()
+
+	var terraformArgs []string
+	application := &app{
+		in:  errReader{err: errors.New("confirmation input must not be read")},
+		out: io.Discard,
+	}
+	command := application.destroyCommandWithMutation(
+		func(_ context.Context, args []string) error {
+			terraformArgs = args
+			return nil
+		},
+	)
+	command.SetArgs([]string{"--force", "--keep-bastion"})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	want := []string{
+		"-target=libvirt_cloudinit_disk.load_balancer",
+		"-target=libvirt_cloudinit_disk.node",
+		"-target=libvirt_domain.load_balancer",
+		"-target=libvirt_domain.node",
+		"-target=libvirt_volume.load_balancer",
+		"-target=libvirt_volume.node",
+	}
+	if strings.Join(terraformArgs, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("Terraform arguments = %#v, want %#v", terraformArgs, want)
+	}
+}
+
+func TestDestroyKeepBastionUsesScopedConfirmation(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	application := &app{
+		in:  strings.NewReader("no\n"),
+		out: &output,
+	}
+	command := application.destroyCommandWithMutation(
+		func(context.Context, []string) error {
+			t.Fatal("destroy mutation ran after cancellation")
+			return nil
+		},
+	)
+	command.SetArgs([]string{"--keep-bastion"})
+	command.SilenceErrors = true
+	command.SilenceUsage = true
+
+	if err := command.Execute(); !errors.Is(err, errDestroyCancelled) {
+		t.Fatalf("execute error = %v, want %v", err, errDestroyCancelled)
+	}
+	want := destroyKeepBastionConfirmationPrompt + "Destroy cancelled.\n"
+	if output.String() != want {
+		t.Fatalf("output = %q, want %q", output.String(), want)
+	}
+}
+
+func TestLifecycleCommandsAreTopLevelAndDestroyFlagsAreExposed(t *testing.T) {
 	t.Parallel()
 
 	root := New(Options{})
@@ -162,6 +227,9 @@ func TestLifecycleCommandsAreTopLevelAndForceIsShorthand(t *testing.T) {
 	force := destroy.Flags().Lookup("force")
 	if force == nil || force.Shorthand != "f" {
 		t.Fatalf("destroy force flag = %#v, want -f shorthand", force)
+	}
+	if keepBastion := destroy.Flags().Lookup("keep-bastion"); keepBastion == nil {
+		t.Fatal("destroy --keep-bastion flag is absent")
 	}
 	uninstall, _, err := root.Find([]string{"uninstall"})
 	if err != nil {
