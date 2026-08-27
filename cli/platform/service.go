@@ -54,12 +54,12 @@ type ResourceStatus struct {
 }
 
 type ReconciliationStatus struct {
-	GitRepositories       []ResourceStatus `json:"gitRepositories"`
-	Kustomizations        []ResourceStatus `json:"kustomizations"`
-	OCIRepositories       []ResourceStatus `json:"ociRepositories"`
-	HelmReleases          []ResourceStatus `json:"helmReleases"`
-	Certificates          []ResourceStatus `json:"certificates"`
-	PlatformConfigurations []ResourceStatus `json:"platformConfigurations"`
+	GitRepositories                []ResourceStatus `json:"gitRepositories"`
+	Kustomizations                 []ResourceStatus `json:"kustomizations"`
+	OCIRepositories                []ResourceStatus `json:"ociRepositories"`
+	HelmReleases                   []ResourceStatus `json:"helmReleases"`
+	Certificates                   []ResourceStatus `json:"certificates"`
+	PlatformIdentityConfigurations []ResourceStatus `json:"platformIdentityConfigurations"`
 }
 
 func (status ReconciliationStatus) Complete() bool {
@@ -68,7 +68,7 @@ func (status ReconciliationStatus) Complete() bool {
 		resourcesReady(status.OCIRepositories) &&
 		resourcesReady(status.HelmReleases) &&
 		resourcesReady(status.Certificates) &&
-		resourcesReady(status.PlatformConfigurations)
+		resourcesReady(status.PlatformIdentityConfigurations)
 }
 
 func (status ReconciliationStatus) resourceSets() [][]ResourceStatus {
@@ -78,16 +78,16 @@ func (status ReconciliationStatus) resourceSets() [][]ResourceStatus {
 		status.OCIRepositories,
 		status.HelmReleases,
 		status.Certificates,
-		status.PlatformConfigurations,
+		status.PlatformIdentityConfigurations,
 	}
 }
 
 type DeliveryComplianceStatus struct {
-	PublicationExact bool     `json:"publicationExact"`
-	ForgejoExact     bool     `json:"forgejoExact"`
-	HarborImagesExact bool    `json:"harborImagesExact"`
-	HarborChartsExact bool    `json:"harborChartsExact"`
-	Issues           []string `json:"issues,omitempty"`
+	PublicationExact  bool     `json:"publicationExact"`
+	ForgejoExact      bool     `json:"forgejoExact"`
+	HarborImagesExact bool     `json:"harborImagesExact"`
+	HarborChartsExact bool     `json:"harborChartsExact"`
+	Issues            []string `json:"issues,omitempty"`
 }
 
 func (status DeliveryComplianceStatus) Compliant() bool {
@@ -140,12 +140,12 @@ func (status LocalIntegrationStatus) Exact() bool {
 }
 
 type Status struct {
-	PublicationSHA256 string                `json:"publicationSha256"`
-	SourceCommit   string                   `json:"sourceCommit"`
-	ActiveProfile  string                   `json:"activeProfile"`
-	Reconciliation ReconciliationStatus     `json:"reconciliation"`
-	Delivery       DeliveryComplianceStatus `json:"delivery"`
-	Local          LocalIntegrationStatus   `json:"localIntegration"`
+	PublicationSHA256 string                   `json:"publicationSha256"`
+	SourceCommit      string                   `json:"sourceCommit"`
+	ActiveProfile     string                   `json:"activeProfile"`
+	Reconciliation    ReconciliationStatus     `json:"reconciliation"`
+	Delivery          DeliveryComplianceStatus `json:"delivery"`
+	Local             LocalIntegrationStatus   `json:"localIntegration"`
 }
 
 func (service Service) Validate() error {

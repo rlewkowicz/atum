@@ -31,6 +31,9 @@ The repository contains the Atum-owned configuration, overlays, compatibility
 entrypoints, and build graph. It does not require root `bigbang` or `kubespray`
 checkouts. Immutable upstream snapshots are hydrated into the ignored
 `.atum/cache` tree from the commits in [`atum.json`](atum.json).
+The [identity operator boundary](operator/README.md) documents the narrow
+Keycloak/Vault provider state that cannot be expressed through selected chart
+values.
 
 ### One command, an entire enterprise-grade platform
 

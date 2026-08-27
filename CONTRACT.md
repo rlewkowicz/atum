@@ -117,8 +117,9 @@ the transfer. The receiver owns execution and physical resources afterward.
 - Each package chart, operator, or controller owns its resources and
   conditions.
 - Flux owns the Atum operator's Kubernetes resources and the declared
-  `PlatformConfiguration` custom resource. The operator owns only the typed
-  Keycloak and Vault provider state and its provider-facing status conditions.
+  [`PlatformIdentityConfiguration`](operator/README.md) custom resource. The
+  operator owns only the typed Keycloak and Vault provider state and its
+  provider-facing status conditions.
 - Official SOPS owns encrypted-file format and cryptography.
 - Atum owns local host integration, bounded secret projection, immutable
   publication receipts, and cross-plane sequencing.
@@ -462,10 +463,11 @@ authorization transfers the user's real terminal to the canonical host
 Prefer official chart OIDC values, realm imports, and client declarations.
 When the selected Keycloak and Vault charts cannot express required
 service-internal configuration, one Flux-deployed Atum operator reconciles a
-narrowly typed `PlatformConfiguration`. The custom resource contains only
-declared Keycloak and Vault intent plus fixed Secret references; it cannot
-carry arbitrary URLs, scripts, manifests, plugins, actions, or generic
-execution maps.
+narrowly typed
+[`PlatformIdentityConfiguration`](operator/README.md). The custom resource
+contains only declared Keycloak and Vault intent plus fixed Secret references;
+it cannot carry arbitrary URLs, scripts, manifests, plugins, actions, or
+generic execution maps.
 
 A documented manual step is admitted to the operator only when all of these
 conditions hold:

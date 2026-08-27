@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	platformv1alpha1 "atum/operator/api/v1alpha1"
 )
 
 const (
-	vaultMountDescription = ownerMarkerKey + "=" + ownerMarkerValue
-	vaultPolicyMarker      = "# " + ownerMarkerKey + "=" + ownerMarkerValue + "\n"
+	vaultMountDescription    = ownerMarkerKey + "=" + ownerMarkerValue
+	vaultPolicyMarker        = "# " + ownerMarkerKey + "=" + ownerMarkerValue + "\n"
 	vaultPlatformAdminPolicy = `path "*" {
   capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
 }`
@@ -198,8 +199,8 @@ func (v *Vault) upsertExternalGroup(ctx context.Context, desired platformv1alpha
 		return "", Conflict("external group %q exists without Atum ownership", desired.Name)
 	}
 	body := map[string]any{
-		"name": desired.Name,
-		"type": "external",
+		"name":     desired.Name,
+		"type":     "external",
 		"policies": []string{desired.PolicyName},
 		"metadata": map[string]string{ownerMarkerKey: ownerMarkerValue},
 	}
@@ -233,9 +234,9 @@ func (v *Vault) upsertGroupAlias(ctx context.Context, mountAccessor, groupID str
 		return Conflict("external group alias %q exists without Atum ownership", desired.Claim)
 	}
 	body := map[string]any{
-		"name": desired.Claim,
-		"canonical_id": groupID,
-		"mount_accessor": mountAccessor,
+		"name":            desired.Claim,
+		"canonical_id":    groupID,
+		"mount_accessor":  mountAccessor,
 		"custom_metadata": map[string]string{ownerMarkerKey: ownerMarkerValue},
 	}
 	endpoint := "/v1/identity/group-alias"
@@ -286,9 +287,6 @@ func (v *Vault) prune(ctx context.Context, intent platformv1alpha1.VaultIntent, 
 		return err
 	}
 	if err := v.prunePolicies(ctx, map[string]struct{}{intent.Policy.Name: {}}); err != nil {
-		return err
-	}
-	if err := v.pruneRoles(ctx, intent.AuthPath, map[string]struct{}{intent.Role.Name: {}}); err != nil {
 		return err
 	}
 	mounts, err := v.authMounts(ctx)
@@ -383,22 +381,6 @@ func (v *Vault) prunePolicies(ctx context.Context, desired map[string]struct{}) 
 	return nil
 }
 
-func (v *Vault) pruneRoles(ctx context.Context, authPath string, desired map[string]struct{}) error {
-	names, err := v.listIDs(ctx, "/v1/auth/"+url.PathEscape(authPath)+"/role")
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		if _, keep := desired[name]; keep {
-			continue
-		}
-		if err := v.client.JSON(ctx, http.MethodDelete, "/v1/auth/"+url.PathEscape(authPath)+"/role/"+url.PathEscape(name), nil, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (v *Vault) cleanupMount(ctx context.Context, authPath string) error {
 	mounts, err := v.authMounts(ctx)
 	if err != nil {
@@ -411,8 +393,42 @@ func (v *Vault) cleanupMount(ctx context.Context, authPath string) error {
 	if mount.Description != vaultMountDescription {
 		return Conflict("refusing to clean unowned Vault auth mount %q", authPath)
 	}
-	if err := v.pruneRoles(ctx, authPath, nil); err != nil {
+	roles, err := v.listIDs(ctx, "/v1/auth/"+url.PathEscape(authPath)+"/role")
+	if err != nil {
 		return err
+	}
+	foreign := make([]string, 0, len(roles))
+	declaredRoleExists := false
+	for _, role := range roles {
+		if role == platformv1alpha1.VaultPlatformAdministrationRoleName {
+			declaredRoleExists = true
+			continue
+		}
+		foreign = append(foreign, role)
+	}
+	if len(foreign) != 0 {
+		slices.Sort(foreign)
+		return Conflict(
+			"Vault auth mount %q contains foreign roles [%s]; remove them before cleanup",
+			authPath,
+			strings.Join(foreign, ", "),
+		)
+	}
+	if declaredRoleExists {
+		if err := v.client.JSON(
+			ctx,
+			http.MethodDelete,
+			"/v1/auth/"+url.PathEscape(authPath)+"/role/"+
+				url.PathEscape(platformv1alpha1.VaultPlatformAdministrationRoleName),
+			nil,
+			nil,
+		); err != nil {
+			return fmt.Errorf(
+				"retire declared Vault OIDC role %s: %w",
+				platformv1alpha1.VaultPlatformAdministrationRoleName,
+				err,
+			)
+		}
 	}
 	return v.client.JSON(ctx, http.MethodDelete, "/v1/sys/auth/"+url.PathEscape(authPath), nil, nil)
 }

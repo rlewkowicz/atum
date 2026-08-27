@@ -54,14 +54,14 @@ func TestKeycloakPaginatedPruneDeletesOnlyPageTwoMarkedClient(t *testing.T) {
 	firstPage := make([]keycloakObject, keycloakPageSize)
 	for index := range firstPage {
 		firstPage[index] = keycloakObject{
-			ID: fmt.Sprintf("unowned-%03d", index),
+			ID:       fmt.Sprintf("unowned-%03d", index),
 			ClientID: fmt.Sprintf("peer-%03d", index),
 		}
 	}
 	secondPage := []keycloakObject{
 		{
-			ID: "marked-page-two",
-			ClientID: "removed",
+			ID:         "marked-page-two",
+			ClientID:   "removed",
 			Attributes: map[string]any{ownerMarkerKey: ownerMarkerValue},
 		},
 		{ID: "unowned-page-two", ClientID: "unowned-peer"},
@@ -105,7 +105,7 @@ func TestKeycloakFinalizerCleanupFindsPageTwoMarkedUser(t *testing.T) {
 	firstUsers := make([]keycloakObject, keycloakPageSize)
 	for index := range firstUsers {
 		firstUsers[index] = keycloakObject{
-			ID: fmt.Sprintf("unowned-user-%03d", index),
+			ID:       fmt.Sprintf("unowned-user-%03d", index),
 			Username: fmt.Sprintf("peer-%03d", index),
 		}
 	}
@@ -120,8 +120,8 @@ func TestKeycloakFinalizerCleanupFindsPageTwoMarkedUser(t *testing.T) {
 			} else {
 				_ = json.NewEncoder(response).Encode([]keycloakObject{
 					{
-						ID: "marked-user",
-						Username: "removed",
+						ID:         "marked-user",
+						Username:   "removed",
 						Attributes: map[string]any{ownerMarkerKey: ownerMarkerValue},
 					},
 					{ID: "unowned-user", Username: "unowned-peer"},
@@ -206,6 +206,51 @@ func TestKeycloakCollectionTraversalPreservesFixedFilters(t *testing.T) {
 	}
 }
 
+func TestKeycloakUpsertPreservesOwnedIdentity(t *testing.T) {
+	t.Parallel()
+
+	var writes []string
+	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(response).Encode([]keycloakObject{{
+				ID:       "client-uuid",
+				ClientID: "atum-headlamp",
+				Attributes: map[string]any{
+					ownerMarkerKey: ownerMarkerValue,
+				},
+			}})
+		case http.MethodPut:
+			writes = append(writes, request.URL.Path)
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected method %s", request.Method)
+			response.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	keycloak := &Keycloak{client: client, realm: "master"}
+	id, err := keycloak.upsert(
+		context.Background(),
+		realmCollection(realmClients),
+		"clientId=atum-headlamp",
+		"clientId",
+		"atum-headlamp",
+		map[string]any{
+			"clientId": "atum-headlamp",
+			"attributes": map[string]string{
+				ownerMarkerKey: ownerMarkerValue,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "client-uuid" ||
+		!reflect.DeepEqual(writes, []string{"/admin/realms/master/clients/client-uuid"}) {
+		t.Fatalf("upsert id/writes = %q/%v", id, writes)
+	}
+}
+
 func TestAudienceMapperCreateAndUpdatePayloads(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -214,19 +259,19 @@ func TestAudienceMapperCreateAndUpdatePayloads(t *testing.T) {
 		wantPath   string
 	}{
 		{
-			name: "create",
+			name:       "create",
 			wantMethod: http.MethodPost,
-			wantPath: "/admin/realms/master/clients/client-uuid/protocol-mappers/models",
+			wantPath:   "/admin/realms/master/clients/client-uuid/protocol-mappers/models",
 		},
 		{
 			name: "update",
 			existing: []keycloakObject{{
-				ID: "mapper-uuid",
-				Name: "audience-atum-client",
+				ID:     "mapper-uuid",
+				Name:   "audience-atum-client",
 				Config: map[string]any{ownerMarkerKey: ownerMarkerValue},
 			}},
 			wantMethod: http.MethodPut,
-			wantPath: "/admin/realms/master/clients/client-uuid/protocol-mappers/models/mapper-uuid",
+			wantPath:   "/admin/realms/master/clients/client-uuid/protocol-mappers/models/mapper-uuid",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -265,8 +310,8 @@ func TestAudienceMapperCreateAndUpdatePayloads(t *testing.T) {
 			}
 			for key, want := range map[string]string{
 				"access.token.claim": "true",
-				"id.token.claim": "true",
-				ownerMarkerKey: ownerMarkerValue,
+				"id.token.claim":     "true",
+				ownerMarkerKey:       ownerMarkerValue,
 			} {
 				if got := config[key]; got != want {
 					t.Errorf("mapper config %s = %#v, want %q", key, got, want)

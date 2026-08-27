@@ -379,7 +379,7 @@ func nativeReconciliationDiagnostics(
 		status.OCIRepositories,
 		status.HelmReleases,
 		status.Certificates,
-		status.PlatformConfigurations,
+		status.PlatformIdentityConfigurations,
 	} {
 		for _, resource := range resources {
 			appendIssue(resource)

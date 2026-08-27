@@ -1,4 +1,4 @@
-// Package v1alpha1 defines Atum's sole provider-configuration API.
+// Package v1alpha1 defines Atum's sole identity-provider configuration API.
 // +kubebuilder:object:generate=true
 // +groupName=platform.atum.dev
 package v1alpha1

@@ -343,9 +343,9 @@ func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platform
 		"name":     intent.GroupsScope.Name,
 		"protocol": "openid-connect",
 		"attributes": map[string]string{
-			"include.in.token.scope":       "true",
-			"display.on.consent.screen":    "false",
-			ownerMarkerKey:                 ownerMarkerValue,
+			"include.in.token.scope":    "true",
+			"display.on.consent.screen": "false",
+			ownerMarkerKey:              ownerMarkerValue,
 		},
 	})
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"atum/cli/identity"
 	"atum/cli/infra"
 	"atum/cli/kube"
+	platformv1alpha1 "atum/operator/api/v1alpha1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -71,11 +72,11 @@ func (service Service) Status(ctx context.Context) (Status, error) {
 	}
 	return Status{
 		PublicationSHA256: receipt.SourceSHA256,
-		SourceCommit:   receipt.SourceCommit,
-		ActiveProfile:  target.PlatformProfile,
-		Reconciliation: reconciliation,
-		Delivery:       compliance,
-		Local:          local,
+		SourceCommit:      receipt.SourceCommit,
+		ActiveProfile:     target.PlatformProfile,
+		Reconciliation:    reconciliation,
+		Delivery:          compliance,
+		Local:             local,
 	}, nil
 }
 
@@ -119,7 +120,7 @@ func observeFluxReconciliation(
 			result.Kustomizations = append(
 				result.Kustomizations,
 				ResourceStatus{
-					Name: "flux-system/" + name,
+					Name:    "flux-system/" + name,
 					Message: "Kustomization is absent",
 				},
 			)
@@ -168,19 +169,16 @@ func observeFluxReconciliation(
 	if err != nil {
 		return ReconciliationStatus{}, err
 	}
-	result.PlatformConfigurations, err = observeResourceStatuses(
+	result.PlatformIdentityConfigurations, err = observeExactResourceStatus(
 		ctx,
 		client,
-		kube.PlatformConfiguration,
+		kube.PlatformIdentityConfiguration,
+		platformv1alpha1.SingletonNamespace,
+		platformv1alpha1.SingletonName,
 	)
 	if err != nil {
 		return ReconciliationStatus{}, err
 	}
-	requireSingleton(
-		&result.PlatformConfigurations,
-		"atum-system/atum",
-		"required PlatformConfiguration singleton is absent",
-	)
 	return result, nil
 }
 
@@ -314,7 +312,7 @@ func observeGitRepositories(
 	objects, err := client.Resources(ctx, kube.GitRepository, "", "")
 	if apierrors.IsNotFound(err) {
 		return []ResourceStatus{{
-			Name: "flux-system/flux-system",
+			Name:    "flux-system/flux-system",
 			Message: "GitRepository API is absent",
 		}}, nil
 	}
@@ -362,7 +360,7 @@ func observeGitRepositories(
 	}
 	if !rootFound {
 		statuses = append(statuses, ResourceStatus{
-			Name: "flux-system/flux-system",
+			Name:    "flux-system/flux-system",
 			Message: "required Forgejo main GitRepository is absent",
 		})
 	}
@@ -386,7 +384,7 @@ func observeResourceStatuses(
 	objects, err := client.Resources(ctx, resource, "", "")
 	if apierrors.IsNotFound(err) {
 		return []ResourceStatus{{
-			Name: resourceKind(resource),
+			Name:    resourceKind(resource),
 			Message: resourceKind(resource) + " API is absent",
 		}}, nil
 	}
@@ -395,7 +393,7 @@ func observeResourceStatuses(
 	}
 	if len(objects) == 0 {
 		return []ResourceStatus{{
-			Name: resourceKind(resource),
+			Name:    resourceKind(resource),
 			Message: "no " + resourceKind(resource) + " resources are present",
 		}}, nil
 	}
@@ -407,9 +405,33 @@ func observeResourceStatuses(
 	return statuses, nil
 }
 
+type resourceGetter interface {
+	GetResource(context.Context, kube.Resource, string, string) (*kube.Object, bool, error)
+}
+
+func observeExactResourceStatus(
+	ctx context.Context,
+	client resourceGetter,
+	resource kube.Resource,
+	namespace string,
+	name string,
+) ([]ResourceStatus, error) {
+	object, found, err := client.GetResource(ctx, resource, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return []ResourceStatus{{
+			Name:    namespace + "/" + name,
+			Message: "required " + resourceKind(resource) + " is absent",
+		}}, nil
+	}
+	return []ResourceStatus{resourceStatus(object)}, nil
+}
+
 func resourceStatus(object *kube.Object) ResourceStatus {
 	status := ResourceStatus{
-		Name: object.Namespace + "/" + object.Name,
+		Name:  object.Namespace + "/" + object.Name,
 		Ready: object.Ready,
 	}
 	if !status.Ready {
@@ -455,8 +477,8 @@ func resourceKind(resource kube.Resource) string {
 		return "HelmRelease"
 	case kube.Certificate:
 		return "Certificate"
-	case kube.PlatformConfiguration:
-		return "PlatformConfiguration"
+	case kube.PlatformIdentityConfiguration:
+		return "PlatformIdentityConfiguration"
 	default:
 		return "resource"
 	}
@@ -491,26 +513,6 @@ func ensureResourceStatus(
 	*statuses = append(*statuses, ResourceStatus{Name: name, Message: message})
 	sortResourceStatuses(*statuses)
 	return findResourceStatus(*statuses, name)
-}
-
-func requireSingleton(
-	statuses *[]ResourceStatus,
-	name string,
-	absentMessage string,
-) {
-	expected := findResourceStatus(*statuses, name)
-	if expected == nil {
-		*statuses = append(
-			*statuses,
-			ResourceStatus{Name: name, Message: absentMessage},
-		)
-		sortResourceStatuses(*statuses)
-		return
-	}
-	if len(*statuses) != 1 {
-		expected.Ready = false
-		expected.Message = "PlatformConfiguration must be the sole atum-system/atum singleton"
-	}
 }
 
 func publicationCompliance(

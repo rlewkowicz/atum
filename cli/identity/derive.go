@@ -148,6 +148,7 @@ func (projection *BootstrapProjection) MarshalKubernetesSecret() ([]byte, error)
 		projection.digest,
 		projection.values,
 		identityProjectionLimit,
+		true,
 	)
 }
 
@@ -172,6 +173,7 @@ func (projection *BootstrapProjection) MarshalOperatorSecret() ([]byte, error) {
 		projection.digest,
 		values,
 		identityProjectionLimit,
+		false,
 	)
 }
 

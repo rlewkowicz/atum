@@ -90,10 +90,10 @@ func newClient(baseURL string, auth authentication, ca []byte) (*Client, error) 
 	transport.MaxIdleConnsPerHost = 4
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		auth: auth,
+		auth:    auth,
 		http: &http.Client{
 			Transport: transport,
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -107,25 +107,42 @@ func (c *Client) JSON(ctx context.Context, method, path string, input, output an
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
-		if err != nil { return fmt.Errorf("encode provider request: %w", err) }
+		if err != nil {
+			return fmt.Errorf("encode provider request: %w", err)
+		}
 		body = bytes.NewReader(encoded)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
-	if err != nil { return fmt.Errorf("create provider request: %w", err) }
+	if err != nil {
+		return fmt.Errorf("create provider request: %w", err)
+	}
 	request.Header.Set("Accept", "application/json")
-	if input != nil { request.Header.Set("Content-Type", "application/json") }
+	if input != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
 	c.authenticate(request)
 	response, err := c.http.Do(request)
-	if err != nil { return fmt.Errorf("%s: %w", operation(method, path), err) }
+	if err != nil {
+		return fmt.Errorf("%s: %w", operation(method, path), err)
+	}
 	defer response.Body.Close()
 	ok := response.StatusCode >= 200 && response.StatusCode < 300
 	if len(accepted) != 0 {
 		ok = false
-		for _, status := range accepted { if response.StatusCode == status { ok = true; break } }
+		for _, status := range accepted {
+			if response.StatusCode == status {
+				ok = true
+				break
+			}
+		}
 	}
 	data, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if readErr != nil { return fmt.Errorf("read %s response: %w", operation(method, path), readErr) }
-	if len(data) > maxResponseBytes { return fmt.Errorf("%s response exceeds %d bytes", operation(method, path), maxResponseBytes) }
+	if readErr != nil {
+		return fmt.Errorf("read %s response: %w", operation(method, path), readErr)
+	}
+	if len(data) > maxResponseBytes {
+		return fmt.Errorf("%s response exceeds %d bytes", operation(method, path), maxResponseBytes)
+	}
 	if !ok {
 		return fmt.Errorf("%s returned HTTP %d", operation(method, path), response.StatusCode)
 	}
@@ -148,13 +165,19 @@ func (c *Client) authenticate(request *http.Request) {
 
 func (c *Client) Form(ctx context.Context, path string, values url.Values, output any) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(values.Encode()))
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := c.http.Do(request)
-	if err != nil { return fmt.Errorf("%s: %w", operation(http.MethodPost, path), err) }
+	if err != nil {
+		return fmt.Errorf("%s: %w", operation(http.MethodPost, path), err)
+	}
 	defer response.Body.Close()
 	data, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if readErr != nil { return fmt.Errorf("read %s response: %w", operation(http.MethodPost, path), readErr) }
+	if readErr != nil {
+		return fmt.Errorf("read %s response: %w", operation(http.MethodPost, path), readErr)
+	}
 	if len(data) > maxResponseBytes {
 		return fmt.Errorf("%s response exceeds %d bytes", operation(http.MethodPost, path), maxResponseBytes)
 	}

@@ -108,12 +108,12 @@ func exactCompletionStatus() platform.Status {
 	}
 	return platform.Status{
 		Reconciliation: platform.ReconciliationStatus{
-			GitRepositories: []platform.ResourceStatus{{Name: "source", Ready: true}},
-			Kustomizations: kustomizations,
-			OCIRepositories: []platform.ResourceStatus{{Name: "oci", Ready: true}},
-			HelmReleases: []platform.ResourceStatus{{Name: "release", Ready: true}},
-			Certificates: []platform.ResourceStatus{{Name: "certificate", Ready: true}},
-			PlatformConfigurations: []platform.ResourceStatus{{Name: "configuration", Ready: true}},
+			GitRepositories:                []platform.ResourceStatus{{Name: "source", Ready: true}},
+			Kustomizations:                 kustomizations,
+			OCIRepositories:                []platform.ResourceStatus{{Name: "oci", Ready: true}},
+			HelmReleases:                   []platform.ResourceStatus{{Name: "release", Ready: true}},
+			Certificates:                   []platform.ResourceStatus{{Name: "certificate", Ready: true}},
+			PlatformIdentityConfigurations: []platform.ResourceStatus{{Name: "configuration", Ready: true}},
 		},
 		Delivery: platform.DeliveryComplianceStatus{
 			PublicationExact: true, ForgejoExact: true,

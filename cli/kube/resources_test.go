@@ -1,6 +1,26 @@
 package kube
 
-import "testing"
+import (
+	"testing"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+func TestPlatformIdentityConfigurationResource(t *testing.T) {
+	t.Parallel()
+
+	got, err := resourceGVR(PlatformIdentityConfiguration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := schema.GroupVersionResource{
+		Group: "platform.atum.dev", Version: "v1alpha1",
+		Resource: "platformidentityconfigurations",
+	}
+	if got != want {
+		t.Fatalf("resource = %#v, want %#v", got, want)
+	}
+}
 
 func TestNodeControlPlaneRoleUsesCanonicalLabels(t *testing.T) {
 	t.Parallel()

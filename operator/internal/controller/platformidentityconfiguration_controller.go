@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -25,7 +23,7 @@ import (
 )
 
 const (
-	finalizerName           = "platform.atum.dev/provider-cleanup"
+	finalizerName          = "platform.atum.dev/provider-cleanup"
 	credentialSecretName   = "atum-provider-credentials"
 	caSecretName           = "atum-provider-ca"
 	vaultTokenNamespace    = "vault"
@@ -38,32 +36,28 @@ const (
 	maxConditionMessage    = 512
 )
 
-var (
-	dnsNamePattern = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
-	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-)
-
-type PlatformConfigurationReconciler struct {
+type PlatformIdentityConfigurationReconciler struct {
 	client.Client
 	SecretReader client.Reader
 }
 
-// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformconfigurations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformconfigurations/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformconfigurations/finalizers,verbs=update
+// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations,verbs=get;list;watch,namespace=atum-system
+// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations/status,resourceNames=atum,verbs=get;update;patch,namespace=atum-system
+// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations/finalizers,resourceNames=atum,verbs=update,namespace=atum-system
+// +kubebuilder:rbac:groups="",resources=secrets,resourceNames=atum-provider-credentials;atum-provider-ca,verbs=get,namespace=atum-system
 
-func (r *PlatformConfigurationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *PlatformIdentityConfigurationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	if request.Namespace != platformv1alpha1.SingletonNamespace || request.Name != platformv1alpha1.SingletonName {
 		return ctrl.Result{}, nil
 	}
-	var object platformv1alpha1.PlatformConfiguration
+	var object platformv1alpha1.PlatformIdentityConfiguration
 	if err := r.Get(ctx, request.NamespacedName, &object); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !object.DeletionTimestamp.IsZero() {
 		return r.finalize(ctx, &object)
 	}
-	if err := validate(&object.Spec); err != nil {
+	if err := validateRuntime(&object.Spec); err != nil {
 		return r.record(ctx, &object,
 			providerState{reason: "InvalidIntent", message: err.Error(), terminal: true},
 			providerState{reason: "InvalidIntent", message: err.Error(), terminal: true},
@@ -128,7 +122,7 @@ func failureState(reason string, err error) providerState {
 	return providerState{reason: reason, message: err.Error()}
 }
 
-func (r *PlatformConfigurationReconciler) secret(ctx context.Context, namespace, name string) (map[string][]byte, error) {
+func (r *PlatformIdentityConfigurationReconciler) secret(ctx context.Context, namespace, name string) (map[string][]byte, error) {
 	key := types.NamespacedName{Namespace: namespace, Name: name}
 	switch key {
 	case types.NamespacedName{Namespace: platformv1alpha1.SingletonNamespace, Name: credentialSecretName},
@@ -144,7 +138,7 @@ func (r *PlatformConfigurationReconciler) secret(ctx context.Context, namespace,
 	return object.Data, nil
 }
 
-func (r *PlatformConfigurationReconciler) secretKey(ctx context.Context, namespace, name, key string) ([]byte, error) {
+func (r *PlatformIdentityConfigurationReconciler) secretKey(ctx context.Context, namespace, name, key string) ([]byte, error) {
 	data, err := r.secret(ctx, namespace, name)
 	if err != nil {
 		return nil, err
@@ -155,7 +149,7 @@ func (r *PlatformConfigurationReconciler) secretKey(ctx context.Context, namespa
 	return data[key], nil
 }
 
-func (r *PlatformConfigurationReconciler) keycloakCredentials(ctx context.Context) (map[string][]byte, error) {
+func (r *PlatformIdentityConfigurationReconciler) keycloakCredentials(ctx context.Context) (map[string][]byte, error) {
 	data, err := r.secret(ctx, platformv1alpha1.SingletonNamespace, credentialSecretName)
 	if err != nil {
 		return nil, err
@@ -172,7 +166,7 @@ func (r *PlatformConfigurationReconciler) keycloakCredentials(ctx context.Contex
 	return data, nil
 }
 
-func (r *PlatformConfigurationReconciler) keycloak(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, credentials map[string][]byte, ca []byte) (*provider.Keycloak, error) {
+func (r *PlatformIdentityConfigurationReconciler) keycloak(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, credentials map[string][]byte, ca []byte) (*provider.Keycloak, error) {
 	baseURL := "https://keycloak." + object.Spec.Domain + "/auth"
 	keycloak, adminErr := provider.NewKeycloak(ctx, baseURL, ca, object.Spec.Keycloak.Realm,
 		string(credentials["ATUM_IDENTITY_ADMIN_USERNAME"]),
@@ -189,7 +183,7 @@ func (r *PlatformConfigurationReconciler) keycloak(ctx context.Context, object *
 	return keycloak, nil
 }
 
-func (r *PlatformConfigurationReconciler) reconcileKeycloak(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, credentials map[string][]byte, ca []byte) error {
+func (r *PlatformIdentityConfigurationReconciler) reconcileKeycloak(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, credentials map[string][]byte, ca []byte) error {
 	keycloak, err := r.keycloak(ctx, object, credentials, ca)
 	if err != nil {
 		return err
@@ -198,7 +192,7 @@ func (r *PlatformConfigurationReconciler) reconcileKeycloak(ctx context.Context,
 	return keycloak.Reconcile(ctx, object.Spec.Domain, object.Spec.Keycloak, credentials)
 }
 
-func (r *PlatformConfigurationReconciler) reconcileVault(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, credentials map[string][]byte, ca, token []byte) error {
+func (r *PlatformIdentityConfigurationReconciler) reconcileVault(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, credentials map[string][]byte, ca, token []byte) error {
 	vault, err := provider.NewVault("https://vault."+object.Spec.Domain, ca, string(token))
 	if err != nil {
 		return err
@@ -210,15 +204,15 @@ func (r *PlatformConfigurationReconciler) reconcileVault(ctx context.Context, ob
 	)
 }
 
-func (r *PlatformConfigurationReconciler) record(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, keycloak, vault providerState) (ctrl.Result, error) {
+func (r *PlatformIdentityConfigurationReconciler) record(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, keycloak, vault providerState) (ctrl.Result, error) {
 	return r.recordAttempt(ctx, object, keycloak, vault, false)
 }
 
-func (r *PlatformConfigurationReconciler) recordCleanup(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, keycloak, vault providerState) (ctrl.Result, error) {
+func (r *PlatformIdentityConfigurationReconciler) recordCleanup(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, keycloak, vault providerState) (ctrl.Result, error) {
 	return r.recordAttempt(ctx, object, keycloak, vault, true)
 }
 
-func (r *PlatformConfigurationReconciler) recordAttempt(ctx context.Context, object *platformv1alpha1.PlatformConfiguration, keycloak, vault providerState, retryTerminal bool) (ctrl.Result, error) {
+func (r *PlatformIdentityConfigurationReconciler) recordAttempt(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration, keycloak, vault providerState, retryTerminal bool) (ctrl.Result, error) {
 	base := object.DeepCopy()
 	if object.Status.ObservedGeneration != object.Generation {
 		object.Status.FailureCount = 0
@@ -228,9 +222,9 @@ func (r *PlatformConfigurationReconciler) recordAttempt(ctx context.Context, obj
 	setCondition(&object.Status.Conditions, object.Generation, platformv1alpha1.ConditionVault, vault)
 	ready := keycloak.ready && vault.ready
 	readyState := providerState{
-		ready: ready,
-		reason: "ProvidersReady",
-		message: "Keycloak and Vault provider state is current",
+		ready:    ready,
+		reason:   "ProvidersReady",
+		message:  "Keycloak and Vault provider state is current",
 		terminal: keycloak.terminal || vault.terminal,
 	}
 	if !ready {
@@ -244,7 +238,7 @@ func (r *PlatformConfigurationReconciler) recordAttempt(ctx context.Context, obj
 		object.Status.FailureCount++
 	}
 	if err := r.Status().Patch(ctx, object, client.MergeFrom(base)); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("record PlatformIdentityConfiguration status: %w", err)
 	}
 	if ready {
 		return ctrl.Result{RequeueAfter: successInterval}, nil
@@ -265,10 +259,10 @@ func setCondition(conditions *[]metav1.Condition, generation int64, conditionTyp
 		status = metav1.ConditionTrue
 	}
 	meta.SetStatusCondition(conditions, metav1.Condition{
-		Type: conditionType,
-		Status: status,
-		Reason: state.reason,
-		Message: boundedMessage(state.message),
+		Type:               conditionType,
+		Status:             status,
+		Reason:             state.reason,
+		Message:            boundedMessage(state.message),
 		ObservedGeneration: generation,
 	})
 }
@@ -286,7 +280,7 @@ func boundedMessage(message string) string {
 	return message[:maxConditionMessage]
 }
 
-func (r *PlatformConfigurationReconciler) finalize(ctx context.Context, object *platformv1alpha1.PlatformConfiguration) (ctrl.Result, error) {
+func (r *PlatformIdentityConfigurationReconciler) finalize(ctx context.Context, object *platformv1alpha1.PlatformIdentityConfiguration) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(object, finalizerName) {
 		return ctrl.Result{}, nil
 	}
@@ -322,8 +316,9 @@ func (r *PlatformConfigurationReconciler) finalize(ctx context.Context, object *
 	}
 	base := object.DeepCopy()
 	controllerutil.RemoveFinalizer(object, finalizerName)
-	if err := r.Patch(ctx, object, client.MergeFrom(base)); err != nil {
-		return ctrl.Result{}, err
+	if err := r.Patch(ctx, object, client.MergeFrom(base)); err != nil &&
+		!apierrors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("remove PlatformIdentityConfiguration finalizer: %w", err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -332,71 +327,38 @@ func credentialSourceGone(err error) bool {
 	return err != nil && (apierrors.IsNotFound(err) || strings.Contains(err.Error(), " is empty"))
 }
 
-func validate(spec *platformv1alpha1.PlatformConfigurationSpec) error {
-	if !dnsNamePattern.MatchString(spec.Domain) {
-		return errors.New("domain must be a DNS name")
-	}
-	if spec.Keycloak.Realm != "master" {
-		return errors.New("only the master Keycloak realm is supported")
-	}
-	admin := spec.Keycloak.Administrator
-	if admin.Username == "" || admin.Group == "" || admin.RealmRole == "" {
-		return errors.New("administrator declaration is incomplete")
-	}
-	if admin.RealmRole != "admin" {
-		return errors.New("administrator realm role must be admin")
-	}
-	if spec.Keycloak.GroupsScope.Name != "atum-groups" || spec.Keycloak.GroupsScope.ClaimName != "groups" {
-		return errors.New("groups scope must be atum-groups with groups claim")
-	}
-	if !slices.Equal(spec.Keycloak.Scopes, []string{"openid", "profile", "email", "groups"}) {
-		return errors.New("Keycloak scopes must be openid, profile, email, groups")
-	}
-	clientIDs := make(map[string]platformv1alpha1.ClientKind, len(spec.Keycloak.Clients))
+func validateRuntime(spec *platformv1alpha1.PlatformIdentityConfigurationSpec) error {
 	for _, item := range spec.Keycloak.Clients {
-		if !namePattern.MatchString(item.ID) || len(item.RedirectURIs) == 0 {
-			return fmt.Errorf("client %q is incomplete", item.ID)
+		if err := validatePlatformURIs(spec.Domain, "client "+item.ID, item.RedirectURIs); err != nil {
+			return err
 		}
-		if _, duplicate := clientIDs[item.ID]; duplicate {
-			return fmt.Errorf("client %q is duplicated", item.ID)
-		}
-		clientIDs[item.ID] = item.Kind
-		if item.Kind != platformv1alpha1.ClientPublicPKCE && item.Kind != platformv1alpha1.ClientConfidential {
-			return fmt.Errorf("client %s has unsupported kind %q", item.ID, item.Kind)
-		}
-		for _, value := range append(slices.Clone(item.RedirectURIs), item.WebOrigins...) {
-			parsed, err := url.Parse(value)
-			host := parsed.Hostname()
-			if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
-				parsed.Port() != "" || parsed.RawQuery != "" || parsed.Fragment != "" ||
-				len(host) <= len(spec.Domain)+1 || !strings.HasSuffix(host, "."+spec.Domain) {
-				return fmt.Errorf("client %s URI %q is outside the platform domain", item.ID, value)
-			}
+		if err := validatePlatformURIs(spec.Domain, "client "+item.ID, item.WebOrigins); err != nil {
+			return err
 		}
 	}
-	vault := spec.Vault
-	if vault.AuthPath != "oidc" || vault.Policy.Name == "" ||
-		vault.Policy.Purpose != platformv1alpha1.VaultPlatformAdministration ||
-		vault.Role.Name == "" || vault.Role.ClientID == "" ||
-		vault.Role.GroupsClaim != "groups" || len(vault.Role.RedirectURIs) == 0 ||
-		vault.ExternalGroup.Name == "" || vault.ExternalGroup.Claim == "" ||
-		vault.ExternalGroup.PolicyName != vault.Policy.Name {
-		return errors.New("Vault declaration is incomplete or outside the supported OIDC contract")
-	}
-	clientKind, exists := clientIDs[vault.Role.ClientID]
-	if !exists || clientKind != platformv1alpha1.ClientConfidential {
-		return errors.New("Vault role clientID must name one declared confidential client")
-	}
-	if !slices.Equal(vault.Role.Scopes, spec.Keycloak.Scopes) {
-		return errors.New("Vault role scopes must equal the canonical Keycloak scopes")
+	if err := validatePlatformURIs(spec.Domain, "Vault role "+spec.Vault.Role.Name, spec.Vault.Role.RedirectURIs); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (r *PlatformConfigurationReconciler) SetupWithManager(manager ctrl.Manager) error {
+func validatePlatformURIs(domain, owner string, values []string) error {
+	for _, value := range values {
+		parsed, err := url.Parse(value)
+		host := parsed.Hostname()
+		if err != nil || parsed.Scheme != "https" || parsed.User != nil ||
+			parsed.Port() != "" || parsed.RawQuery != "" || parsed.Fragment != "" ||
+			len(host) <= len(domain)+1 || !strings.HasSuffix(host, "."+domain) {
+			return fmt.Errorf("%s URI %q is outside the platform domain", owner, value)
+		}
+	}
+	return nil
+}
+
+func (r *PlatformIdentityConfigurationReconciler) SetupWithManager(manager ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&platformv1alpha1.PlatformConfiguration{}).
+		For(&platformv1alpha1.PlatformIdentityConfiguration{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Named("platformconfiguration").
+		Named("platformidentityconfiguration").
 		Complete(r)
 }

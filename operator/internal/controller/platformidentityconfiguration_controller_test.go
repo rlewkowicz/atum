@@ -18,21 +18,55 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestValidatePlatformConfiguration(t *testing.T) {
+func TestValidateRuntimePlatformIdentityConfiguration(t *testing.T) {
 	spec := validSpec()
-	if err := validate(&spec); err != nil {
+	if err := validateRuntime(&spec); err != nil {
 		t.Fatalf("valid spec: %v", err)
 	}
-	spec.Keycloak.Clients = append(spec.Keycloak.Clients, spec.Keycloak.Clients[0])
-	if err := validate(&spec); err == nil || !strings.Contains(err.Error(), "duplicated") {
-		t.Fatalf("duplicate client error = %v", err)
+	spec.Keycloak.Clients[0].RedirectURIs[0] = "https://outside.example/callback"
+	if err := validateRuntime(&spec); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("outside callback error = %v", err)
+	}
+}
+
+func TestReconcileIgnoresIdentityOutsideFixedNamespace(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	if err := platformv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	object := &platformv1alpha1.PlatformIdentityConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      platformv1alpha1.SingletonName,
+			Namespace: "foreign",
+		},
+		Spec: validSpec(),
+	}
+	kubernetes := fake.NewClientBuilder().WithScheme(scheme).WithObjects(object).Build()
+	reconciler := &PlatformIdentityConfigurationReconciler{
+		Client: kubernetes, SecretReader: kubernetes,
+	}
+	if _, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: object.Name, Namespace: object.Namespace},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var current platformv1alpha1.PlatformIdentityConfiguration
+	if err := kubernetes.Get(context.Background(), types.NamespacedName{
+		Name: object.Name, Namespace: object.Namespace,
+	}, &current); err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Finalizers) != 0 || len(current.Status.Conditions) != 0 {
+		t.Fatalf("foreign identity was mutated: %#v", current)
 	}
 }
 
 func TestConditionsUseCurrentGenerationAndBoundDiagnostics(t *testing.T) {
 	var conditions []metav1.Condition
 	setCondition(&conditions, 19, platformv1alpha1.ConditionKeycloak, providerState{
-		reason: "ProviderError",
+		reason:  "ProviderError",
 		message: strings.Repeat("sensitive\n", 100),
 	})
 	if len(conditions) != 1 || conditions[0].ObservedGeneration != 19 {
@@ -53,12 +87,12 @@ func TestTerminalCleanupCollisionRequeuesForExternalRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := metav1.NewTime(time.Now())
-	object := &platformv1alpha1.PlatformConfiguration{
+	object := &platformv1alpha1.PlatformIdentityConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: platformv1alpha1.SingletonName,
-			Namespace: platformv1alpha1.SingletonNamespace,
-			Generation: 11,
-			Finalizers: []string{finalizerName},
+			Name:              platformv1alpha1.SingletonName,
+			Namespace:         platformv1alpha1.SingletonNamespace,
+			Generation:        11,
+			Finalizers:        []string{finalizerName},
 			DeletionTimestamp: &now,
 		},
 	}
@@ -67,7 +101,7 @@ func TestTerminalCleanupCollisionRequeuesForExternalRepair(t *testing.T) {
 		WithStatusSubresource(object).
 		WithObjects(object).
 		Build()
-	reconciler := &PlatformConfigurationReconciler{
+	reconciler := &PlatformIdentityConfigurationReconciler{
 		Client: kubernetes, SecretReader: kubernetes,
 	}
 	result, err := reconciler.recordCleanup(
@@ -82,9 +116,9 @@ func TestTerminalCleanupCollisionRequeuesForExternalRepair(t *testing.T) {
 	if result.RequeueAfter < initialFailureInterval || result.RequeueAfter > maxFailureInterval {
 		t.Fatalf("cleanup requeue = %s", result.RequeueAfter)
 	}
-	var current platformv1alpha1.PlatformConfiguration
+	var current platformv1alpha1.PlatformIdentityConfiguration
 	if err := kubernetes.Get(context.Background(), types.NamespacedName{
-		Name: platformv1alpha1.SingletonName,
+		Name:      platformv1alpha1.SingletonName,
 		Namespace: platformv1alpha1.SingletonNamespace,
 	}, &current); err != nil {
 		t.Fatalf("read deleting singleton: %v", err)
@@ -105,12 +139,12 @@ func TestSecretReadsUseOnlyTheDirectReader(t *testing.T) {
 	cached := fake.NewClientBuilder().WithScheme(scheme).Build()
 	direct := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: caSecretName,
+			Name:      caSecretName,
 			Namespace: platformv1alpha1.SingletonNamespace,
 		},
 		Data: map[string][]byte{providerCAKey: []byte("provider-ca")},
 	}).Build()
-	reconciler := &PlatformConfigurationReconciler{
+	reconciler := &PlatformIdentityConfigurationReconciler{
 		Client: cached, SecretReader: direct,
 	}
 	value, err := reconciler.secretKey(
@@ -127,7 +161,7 @@ func TestSecretReadsUseOnlyTheDirectReader(t *testing.T) {
 	}
 	var absent corev1.Secret
 	if err := cached.Get(context.Background(), types.NamespacedName{
-		Name: caSecretName,
+		Name:      caSecretName,
 		Namespace: platformv1alpha1.SingletonNamespace,
 	}, &absent); !apierrors.IsNotFound(err) {
 		t.Fatalf("cached client unexpectedly supplied Secret: %v", err)
@@ -141,34 +175,37 @@ func TestSecretReadsUseOnlyTheDirectReader(t *testing.T) {
 
 func TestDeletingInvalidConfigurationDoesNotWaitForPrunedSecrets(t *testing.T) {
 	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
 	if err := platformv1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	now := metav1.NewTime(time.Now())
-	object := &platformv1alpha1.PlatformConfiguration{
+	object := &platformv1alpha1.PlatformIdentityConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: platformv1alpha1.SingletonName,
-			Namespace: platformv1alpha1.SingletonNamespace,
-			Finalizers: []string{finalizerName},
+			Name:              platformv1alpha1.SingletonName,
+			Namespace:         platformv1alpha1.SingletonNamespace,
+			Finalizers:        []string{finalizerName},
 			DeletionTimestamp: &now,
 		},
 	}
 	kubernetes := fake.NewClientBuilder().WithScheme(scheme).WithObjects(object).Build()
-	reconciler := &PlatformConfigurationReconciler{
+	reconciler := &PlatformIdentityConfigurationReconciler{
 		Client: kubernetes, SecretReader: kubernetes,
 	}
 	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{
-			Name: platformv1alpha1.SingletonName,
+			Name:      platformv1alpha1.SingletonName,
 			Namespace: platformv1alpha1.SingletonNamespace,
 		},
 	})
 	if err != nil {
 		t.Fatalf("reconcile deletion: %v", err)
 	}
-	var current platformv1alpha1.PlatformConfiguration
+	var current platformv1alpha1.PlatformIdentityConfiguration
 	err = kubernetes.Get(context.Background(), types.NamespacedName{
-		Name: platformv1alpha1.SingletonName,
+		Name:      platformv1alpha1.SingletonName,
 		Namespace: platformv1alpha1.SingletonNamespace,
 	}, &current)
 	if err == nil && len(current.Finalizers) != 0 {
@@ -176,21 +213,21 @@ func TestDeletingInvalidConfigurationDoesNotWaitForPrunedSecrets(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsProviderExtensionPoints(t *testing.T) {
+func TestValidateRuntimeRejectsProviderExtensionPoints(t *testing.T) {
 	spec := validSpec()
 	spec.Keycloak.Clients[0].RedirectURIs[0] = "https://outside.example/callback"
-	if err := validate(&spec); err == nil || !strings.Contains(err.Error(), "outside") {
+	if err := validateRuntime(&spec); err == nil || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("outside callback error = %v", err)
 	}
 	spec = validSpec()
-	spec.Vault.Policy.Purpose = "Arbitrary"
-	if err := validate(&spec); err == nil || !strings.Contains(err.Error(), "supported OIDC contract") {
-		t.Fatalf("arbitrary policy purpose error = %v", err)
+	spec.Vault.Role.RedirectURIs[0] = "https://outside.example/callback"
+	if err := validateRuntime(&spec); err == nil || !strings.Contains(err.Error(), "Vault role") {
+		t.Fatalf("outside Vault callback error = %v", err)
 	}
 }
 
-func validSpec() platformv1alpha1.PlatformConfigurationSpec {
-	return platformv1alpha1.PlatformConfigurationSpec{
+func validSpec() platformv1alpha1.PlatformIdentityConfigurationSpec {
+	return platformv1alpha1.PlatformIdentityConfigurationSpec{
 		Domain: "atum.test",
 		Keycloak: platformv1alpha1.KeycloakIntent{
 			Realm: "master",
@@ -198,7 +235,7 @@ func validSpec() platformv1alpha1.PlatformConfigurationSpec {
 				Username: "atum", Group: "atum-admins", RealmRole: "admin",
 			},
 			GroupsScope: platformv1alpha1.GroupsScope{Name: "atum-groups", ClaimName: "groups"},
-			Scopes: []string{"openid", "profile", "email", "groups"},
+			Scopes:      []string{"openid", "profile", "email", "groups"},
 			Clients: []platformv1alpha1.KeycloakClient{{
 				ID: "atum-vault", Kind: platformv1alpha1.ClientConfidential,
 				RedirectURIs: []string{"https://vault.atum.test/callback"},
@@ -212,8 +249,8 @@ func validSpec() platformv1alpha1.PlatformConfigurationSpec {
 			Role: platformv1alpha1.VaultRole{
 				Name: "atum-admin", ClientID: "atum-vault",
 				RedirectURIs: []string{"https://vault.atum.test/callback"},
-				Scopes: []string{"openid", "profile", "email", "groups"},
-				GroupsClaim: "groups",
+				Scopes:       []string{"openid", "profile", "email", "groups"},
+				GroupsClaim:  "groups",
 			},
 			ExternalGroup: platformv1alpha1.VaultExternalGroup{
 				Name: "atum-admins", Claim: "atum-admins", PolicyName: "atum-admin",

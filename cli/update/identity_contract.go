@@ -278,7 +278,7 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 					"KEYCLOAK_ADMIN":          "atum-bootstrap",
 					"KEYCLOAK_ADMIN_PASSWORD": "${ATUM_IDENTITY_BOOTSTRAP_PASSWORD}",
 				}}},
-			}},
+			}}},
 			"vault": map[string]any{"values": map[string]any{
 				"istio": map[string]any{"serviceEntries": map[string]any{
 					"custom": keycloakServiceEntries,
@@ -578,7 +578,13 @@ func newIdentityRenderContext(
 	if err != nil {
 		return identityRenderContext{}, err
 	}
-	return identityRenderContext{Values: string(valuesYAML), OperatorConfiguration: string(configuration)}, nil
+	return identityRenderContext{
+		Values: strings.TrimSuffix(string(valuesYAML), "\n"),
+		OperatorConfiguration: strings.TrimSuffix(
+			string(configuration),
+			"\n",
+		),
+	}, nil
 }
 
 func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
@@ -593,18 +599,18 @@ func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
 		projected[index] = platformv1alpha1.KeycloakClient{
 			ID: client.ID, Kind: kind,
 			RedirectURIs: append([]string(nil), client.Callbacks...),
-			WebOrigins: []string{"https://" + client.Host},
-			Audience: client.Audience,
+			WebOrigins:   []string{"https://" + client.Host},
+			Audience:     client.Audience,
 		}
 	}
 	vault, found := contract.ClientForApplication(identity.Vault)
 	if !found {
 		return nil, errors.New("identity contract has no Vault client")
 	}
-	configuration := platformv1alpha1.PlatformConfiguration{
-		TypeMeta: metav1.TypeMeta{APIVersion: platformv1alpha1.GroupVersion.String(), Kind: "PlatformConfiguration"},
+	configuration := platformv1alpha1.PlatformIdentityConfiguration{
+		TypeMeta:   metav1.TypeMeta{APIVersion: platformv1alpha1.GroupVersion.String(), Kind: "PlatformIdentityConfiguration"},
 		ObjectMeta: metav1.ObjectMeta{Name: platformv1alpha1.SingletonName, Namespace: platformv1alpha1.SingletonNamespace},
-		Spec: platformv1alpha1.PlatformConfigurationSpec{
+		Spec: platformv1alpha1.PlatformIdentityConfigurationSpec{
 			Domain: contract.Domain(),
 			Keycloak: platformv1alpha1.KeycloakIntent{
 				Realm: contract.Realm(),
@@ -612,19 +618,19 @@ func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
 					Username: admin.Username, Group: admin.Group, RealmRole: admin.ServerRole,
 				},
 				GroupsScope: platformv1alpha1.GroupsScope{Name: "atum-groups", ClaimName: contract.GroupClaim()},
-				Scopes: contract.Scopes(),
-				Clients: projected,
+				Scopes:      contract.Scopes(),
+				Clients:     projected,
 			},
 			Vault: platformv1alpha1.VaultIntent{
 				AuthPath: "oidc",
 				Policy: platformv1alpha1.VaultPolicy{
-					Name: "atum-admin",
+					Name:    "atum-admin",
 					Purpose: platformv1alpha1.VaultPlatformAdministration,
 				},
 				Role: platformv1alpha1.VaultRole{
-					Name: "atum-admin", ClientID: vault.ID,
+					Name: platformv1alpha1.VaultPlatformAdministrationRoleName, ClientID: vault.ID,
 					RedirectURIs: append([]string(nil), vault.Callbacks...),
-					Scopes: contract.Scopes(), GroupsClaim: contract.GroupClaim(),
+					Scopes:       contract.Scopes(), GroupsClaim: contract.GroupClaim(),
 				},
 				ExternalGroup: platformv1alpha1.VaultExternalGroup{
 					Name: admin.Group, Claim: admin.Group, PolicyName: "atum-admin",
@@ -634,7 +640,7 @@ func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
 	}
 	data, err := sigsyaml.Marshal(configuration)
 	if err != nil {
-		return nil, fmt.Errorf("encode PlatformConfiguration: %w", err)
+		return nil, fmt.Errorf("encode PlatformIdentityConfiguration: %w", err)
 	}
 	return data, nil
 }

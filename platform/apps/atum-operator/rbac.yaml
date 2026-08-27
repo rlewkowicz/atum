@@ -1,26 +1,4 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: atum-operator
-  namespace: atum-system
-rules:
-  - apiGroups: [platform.atum.dev]
-    resources: [platformconfigurations]
-    verbs: [get, list, watch]
-  - apiGroups: [platform.atum.dev]
-    resources: [platformconfigurations/status]
-    resourceNames: [atum]
-    verbs: [get, patch, update]
-  - apiGroups: [platform.atum.dev]
-    resources: [platformconfigurations/finalizers]
-    resourceNames: [atum]
-    verbs: [update]
-  - apiGroups: [""]
-    resources: [secrets]
-    resourceNames: [atum-provider-credentials, atum-provider-ca]
-    verbs: [get]
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: atum-operator

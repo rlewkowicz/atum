@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - crd.yaml
   - service-account.yaml
+  - controller-role.yaml
   - rbac.yaml
   - certificate.yaml
   - deployment.yaml
