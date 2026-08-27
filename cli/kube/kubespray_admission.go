@@ -189,10 +189,16 @@ var kubesprayScopedAnonymousContract = [...]kubesprayContractFile{
 	},
 }
 
-// ScopedAnonymousHealthPaths returns the complete anonymous API path allowlist
-// required by kubeadm's static-pod probes and Kubespray's lifecycle checks.
-func ScopedAnonymousHealthPaths() [3]string {
-	return [3]string{"/healthz", "/livez", "/readyz"}
+// ScopedAnonymousPaths returns the complete anonymous API path allowlist
+// required by kubeadm bootstrap and static-pod probes and by Kubespray's
+// lifecycle checks.
+func ScopedAnonymousPaths() [4]string {
+	return [4]string{
+		"/healthz",
+		"/livez",
+		"/readyz",
+		"/api/v1/namespaces/kube-public/configmaps/cluster-info",
+	}
 }
 
 // ValidateKubesprayScopedAnonymousLifecycle verifies that an immutable

@@ -45,9 +45,12 @@ they are never an imperative Atum handoff.
 
 Kubespray owns Kubernetes API authentication. Its legacy kubeadm flag remains
 false as a fail-closed fallback. The active structured authentication
-configuration enables anonymous requests only for `/healthz`, `/livez`, and
-`/readyz`, which are required by kubeadm's static-pod probes and Kubespray's
-lifecycle checks; anonymous discovery and resource requests remain disabled.
+configuration enables anonymous requests only for `/healthz`, `/livez`,
+`/readyz`, and kubeadm's exact
+`/api/v1/namespaces/kube-public/configmaps/cluster-info` token-discovery path.
+Those paths are required by kubeadm bootstrap and static-pod probes and by
+Kubespray's lifecycle checks. General anonymous discovery and resource
+requests remain disabled, and RBAC keeps the cluster-info path read-only.
 Atum selects Kubespray's official resolver mode that leaves host resolver
 state unchanged, so its separate late resolver lifecycle is not invoked; pod
 `clusterDNS` remains configured by Kubespray's CoreDNS mode. Terraform, Flux,
@@ -432,10 +435,11 @@ initial-control-plane and before-and-after upgrade checks to `/healthz`,
 retain every active caller and listener, project CoreDNS to kubelets, and gate
 the optional local API load balancer. It also requires Kubernetes' stable
 structured authentication API. A candidate is rejected if an active
-uncredentialed lifecycle check escapes the three-path health allowlist; Atum
-does not patch Kubespray. The pinned Kubespray `v2.29.1`, `v2.30.0`, and
-`v2.31.0` sources are admissible only with Kubernetes 1.34 or newer and the
-canonical scoped-anonymous projection.
+uncredentialed lifecycle check escapes the three health paths; the one
+additional scoped-anonymous path is kubeadm's exact public cluster-info
+token-discovery endpoint. Atum does not patch Kubespray. The pinned Kubespray
+`v2.29.1`, `v2.30.0`, and `v2.31.0` sources are admissible only with Kubernetes
+1.34 or newer and the canonical scoped-anonymous projection.
 
 Flux and package/controller `Ready` or failure conditions own reconciliation
 completion. Atum does not install Flux twice or infer completion from

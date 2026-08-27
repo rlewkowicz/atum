@@ -476,6 +476,7 @@ func TestAtumKubesprayInventoryScopesAnonymousAPI(t *testing.T) {
 			"default({'enabled': false})",
 			"/healthz, /livez, and",
 			"/readyz",
+			"kube-public/cluster-info",
 		},
 		[]string{
 			"'conditions'",

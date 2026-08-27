@@ -55,10 +55,11 @@ func TestInitialKubernetesOIDCProjectsCanonicalAuthentication(t *testing.T) {
 
 	wantAnonymous := anonymousAuth{
 		Enabled: true,
-		Conditions: [3]anonymousAuthCondition{
+		Conditions: [4]anonymousAuthCondition{
 			{Path: "/healthz"},
 			{Path: "/livez"},
 			{Path: "/readyz"},
+			{Path: "/api/v1/namespaces/kube-public/configmaps/cluster-info"},
 		},
 	}
 	if projection.Anonymous != wantAnonymous {
@@ -70,7 +71,7 @@ func TestInitialKubernetesOIDCProjectsCanonicalAuthentication(t *testing.T) {
 	}
 	if !strings.Contains(
 		string(encoded),
-		`"anonymous":{"enabled":true,"conditions":[{"path":"/healthz"},{"path":"/livez"},{"path":"/readyz"}]}`,
+		`"anonymous":{"enabled":true,"conditions":[{"path":"/healthz"},{"path":"/livez"},{"path":"/readyz"},{"path":"/api/v1/namespaces/kube-public/configmaps/cluster-info"}]}`,
 	) {
 		t.Fatalf("anonymous authentication projection = %s", encoded)
 	}

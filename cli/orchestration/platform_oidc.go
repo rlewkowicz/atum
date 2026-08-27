@@ -32,7 +32,7 @@ type prefixedClaim struct {
 
 type anonymousAuth struct {
 	Enabled    bool                      `json:"enabled"`
-	Conditions [3]anonymousAuthCondition `json:"conditions"`
+	Conditions [4]anonymousAuthCondition `json:"conditions"`
 }
 
 type anonymousAuthCondition struct {
@@ -98,7 +98,7 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 	if err != nil {
 		return nil, err
 	}
-	healthPaths := kube.ScopedAnonymousHealthPaths()
+	anonymousPaths := kube.ScopedAnonymousPaths()
 	return &kubesprayOIDCProjection{
 		Enabled: true,
 		JWT: contractJWT(
@@ -108,10 +108,11 @@ func (service Service) initialKubernetesOIDC() (*kubesprayOIDCProjection, error)
 		),
 		Anonymous: anonymousAuth{
 			Enabled: true,
-			Conditions: [3]anonymousAuthCondition{
-				{Path: healthPaths[0]},
-				{Path: healthPaths[1]},
-				{Path: healthPaths[2]},
+			Conditions: [4]anonymousAuthCondition{
+				{Path: anonymousPaths[0]},
+				{Path: anonymousPaths[1]},
+				{Path: anonymousPaths[2]},
+				{Path: anonymousPaths[3]},
 			},
 		},
 	}, nil

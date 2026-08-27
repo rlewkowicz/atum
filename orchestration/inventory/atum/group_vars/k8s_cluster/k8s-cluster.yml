@@ -14,9 +14,10 @@ upstream_dns_servers:
 # Kubespray owns the mounted authentication file and kubeadm flags. Atum hands
 # it one complete projection from the active identity contract, including the
 # validated root CA and anonymous access limited to /healthz, /livez, and
-# /readyz, before initial cluster creation. No platform component replaces the
-# file later. Keep the legacy flag false as a fail-closed fallback whenever the
-# structured configuration is not active.
+# /readyz, plus kubeadm's exact kube-public/cluster-info ConfigMap path before
+# initial cluster creation. No platform component replaces the file later.
+# Keep the legacy flag false as a fail-closed fallback whenever the structured
+# configuration is not active.
 kube_api_anonymous_auth: false
 kube_apiserver_use_authentication_config_file: >-
   {{ (atum_kubernetes_oidc | default({})).enabled | default(false) }}
