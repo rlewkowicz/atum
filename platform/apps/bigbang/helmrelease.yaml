@@ -9,6 +9,13 @@ spec:
         name: bigbang
         namespace: bigbang
     driftDetection:
+        ignore:
+            - paths:
+                - /data/secrets.yml
+              target:
+                kind: Secret
+                name: gitlab-rails-secret-bb
+                namespace: gitlab
         mode: enabled
     install:
         crds: CreateReplace

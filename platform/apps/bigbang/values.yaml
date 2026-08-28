@@ -90,7 +90,7 @@ monitoring:
         prometheusSpec:
           podMetadata:
             annotations:
-              vault.hashicorp.com/tls-secret: atum-sso-ca
+              vault.hashicorp.com/tls-secret: tls-ca-sso
               vault.hashicorp.com/ca-cert: /vault/tls/ca.pem
 
 addons:

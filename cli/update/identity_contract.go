@@ -193,9 +193,6 @@ func identityValues(
 		"sso": map[string]any{
 			"name": "Atum",
 			"url":  contract.Issuer(),
-			"certificateAuthority": map[string]any{
-				"secretName": "atum-sso-ca",
-			},
 			"oidc": map[string]any{
 				"discoveryUrl":  contract.Issuer() + "/.well-known/openid-configuration",
 				"authorization": contract.Issuer() + "/protocol/openid-connect/auth",

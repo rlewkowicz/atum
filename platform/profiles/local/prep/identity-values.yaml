@@ -236,8 +236,6 @@ stringData:
                 labels:
                     protect: keycloak
     sso:
-        certificateAuthority:
-            secretName: atum-sso-ca
         name: Atum
         oidc:
             authorization: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/auth

@@ -94,7 +94,7 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 		"podMetadata",
 		"annotations",
 	)
-	if prometheusAnnotations["vault.hashicorp.com/tls-secret"] != "atum-sso-ca" ||
+	if prometheusAnnotations["vault.hashicorp.com/tls-secret"] != "tls-ca-sso" ||
 		prometheusAnnotations["vault.hashicorp.com/ca-cert"] != "/vault/tls/ca.pem" {
 		t.Fatal("Prometheus Vault Agent must verify the platform Vault certificate")
 	}
@@ -135,6 +135,20 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	}
 	if !watchesIdentityCA {
 		t.Fatal("Big Bang HelmRelease does not consume the watched identity CA Secret")
+	}
+	driftDetection := mapAt(bigBangRelease, "spec", "driftDetection")
+	driftIgnores := mapSlice(driftDetection["ignore"])
+	if driftDetection["mode"] != "enabled" || len(driftIgnores) != 1 {
+		t.Fatalf("Big Bang parent drift contract = %#v", driftDetection)
+	}
+	driftTarget := mapAt(driftIgnores[0], "target")
+	driftPaths, _ := driftIgnores[0]["paths"].([]any)
+	if len(driftPaths) != 1 ||
+		driftPaths[0] != "/data/secrets.yml" ||
+		driftTarget["kind"] != "Secret" ||
+		driftTarget["name"] != "gitlab-rails-secret-bb" ||
+		driftTarget["namespace"] != "gitlab" {
+		t.Fatalf("Big Bang parent drift exception is not exact: %#v", driftIgnores[0])
 	}
 	fluentPolicy := mapAt(
 		operational, "fluentbit", "values", "networkPolicies", "egress",

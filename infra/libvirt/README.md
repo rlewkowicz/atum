@@ -9,7 +9,7 @@ Expected host prerequisites:
 - The `dmacvicar/libvirt` Terraform provider.
 - An SSH public key at `~/.ssh/id_ed25519.pub`, or `ssh_public_key_path` set to another public key.
 - Python 3.11 or newer for `atum orchestration prepare`, which hydrates and prepares every exact Kubespray release in the committed ladder.
-- A host CPU with virtualization support exposed through `host-passthrough`; Kubernetes node guest kernels must support Cilium's eBPF datapath.
+- A host CPU with virtualization support exposed through `host-passthrough`.
 
 Managed commands probe these prerequisites before mutation and aggregate all
 missing or incompatible tools with official installation links. The local
@@ -72,11 +72,14 @@ workstation access.
 
 Kubespray installs its default Calico CNI with kube-proxy. NodeLocal DNS is
 disabled so Big Bang network policies allow DNS through the CoreDNS Service
-instead of a link-local host-network cache. The local overlay pins CoreDNS to
-one replica for the current singleton platform shape while keeping the replica
-knob explicit for HA overlays.
+instead of a link-local host-network cache. Kubespray's default CoreDNS replica
+floor remains intact.
 
-Node cloud-init applies the kernel modules, sysctls, file and locked-memory limits, systemd service limits, and virtio disk queue tuning during first boot before Kubespray runs.
+Node disks use uncached native QEMU I/O so etcd durability does not contend
+with a second host page cache while containerd expands the initial platform
+image set. Node cloud-init applies the kernel modules, sysctls, file and
+locked-memory limits, systemd service limits, and virtio disk queue tuning
+during first boot before Kubespray runs.
 It installs and enables containerd for the Kubernetes nodes; the matching Kubespray inventory selects containerd rather than Docker as the CRI.
 
 When Atum supplies a lock-bound seed payload, Terraform verifies its SHA-256 and reconciles Forgejo at `http://10.77.0.9:3000` and Harbor at `http://10.77.0.9:32443` as ordinary Docker Compose services on the bastion. Their images are loaded from the payload, so deployment does not pull mutable image tags. This private HTTP configuration is limited to the isolated local libvirt network. `terraform destroy` removes the bastion domain and its root/data volumes along with every other VM, cloud-init volume, and the Atum network.

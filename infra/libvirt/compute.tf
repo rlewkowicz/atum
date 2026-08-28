@@ -319,7 +319,9 @@ resource "libvirt_domain" "node" {
           bus = "virtio"
         }
         driver = {
-          type = "qcow2"
+          type  = "qcow2"
+          cache = "none"
+          io    = "native"
         }
       },
       {

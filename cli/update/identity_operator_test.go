@@ -79,6 +79,16 @@ func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
 	}
 }
 
+func TestIdentityValuesRetainBigBangSSOCASecretDefault(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	sso := values["sso"].(map[string]any)
+	if authority, overridden := sso["certificateAuthority"]; overridden {
+		t.Fatalf("identity values override Big Bang's SSO CA Secret contract: %#v", authority)
+	}
+}
+
 func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 	t.Parallel()
 
