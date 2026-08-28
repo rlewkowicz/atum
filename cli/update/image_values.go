@@ -166,7 +166,43 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	if err := projectChartGlobalImageRegistries(generated, images); err != nil {
 		return err
 	}
+	if err := projectRedisModuleCompatibility(generated, images); err != nil {
+		return err
+	}
 	return projectKyvernoWatchListCompatibility(generated, desired, images)
+}
+
+const redisModuleConfiguration = `loadmodule /usr/local/lib/redis/modules/redisearch.so
+loadmodule /usr/local/lib/redis/modules/redisbloom.so
+loadmodule /usr/local/lib/redis/modules/redistimeseries.so
+loadmodule /usr/local/lib/redis/modules/rejson.so`
+
+// projectRedisModuleCompatibility preserves the selected Redis package's four
+// capabilities while replacing its Iron Bank filesystem convention with the
+// official Redis image convention. Final image admission reads these mounted
+// directives and proves that every projected module exists in the exact
+// immutable image before the generated values can be published.
+func projectRedisModuleCompatibility(
+	generated map[string]any,
+	images selectedImageIndex,
+) error {
+	const ironBankRedis = "registry1.dso.mil/ironbank/opensource/redis/redis8-slim"
+	redis, err := selectedArtifactImage(images, "package/redis", ironBankRedis)
+	if err != nil {
+		return err
+	}
+	if imageRepository(redis.Delivery.Default.Source) != "docker.io/library/redis" {
+		return fmt.Errorf(
+			"selected Redis package maps %s to unsupported official source %q",
+			ironBankRedis,
+			redis.Delivery.Default.Source,
+		)
+	}
+	return setNestedValue(
+		generated,
+		"packages.redis.values.upstream.commonConfiguration",
+		redisModuleConfiguration,
+	)
 }
 
 const (

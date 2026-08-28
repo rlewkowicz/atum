@@ -2275,6 +2275,14 @@ func collectConfigurationImagePaths(value any, destination *[]string) {
 				))
 				continue
 			}
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && strings.EqualFold(fields[0], "loadmodule") {
+				candidate := strings.Trim(fields[1], `"'`)
+				if configurationImagePath(candidate) {
+					*destination = append(*destination, path.Clean(candidate))
+				}
+				continue
+			}
 			separator := strings.IndexAny(line, "=:")
 			if separator <= 0 {
 				continue

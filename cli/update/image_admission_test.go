@@ -69,10 +69,14 @@ socket_path: /run/application/socket
 data_dir: /var/lib/application
 pid_file: /run/application.pid
 static.path = /srv/application/assets
+loadmodule /usr/local/lib/redis/modules/redisearch.so
 `, &paths)
 	paths = compactSorted(paths)
 	if !containsString(paths, "/srv/application/assets") {
 		t.Fatalf("explicit static asset path is absent: %#v", paths)
+	}
+	if !containsString(paths, "/usr/local/lib/redis/modules/redisearch.so") {
+		t.Fatalf("explicit Redis module path is absent: %#v", paths)
 	}
 	for _, runtimePath := range []string{
 		"/home/application/client/bin",

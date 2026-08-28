@@ -29,10 +29,12 @@ tests or cache paths as deployment APIs.
 
 ## Target-independent values
 
-The sole author of every value in this table is
-`platform/apps/bigbang/values.yaml`; its scope is target-independent Flux
-desired state. Big Bang or the named selected child chart remains the resource
-and lifecycle owner.
+Manually selected behavior in this table is authored in
+`platform/apps/bigbang/values.yaml`. Exact release, image, and narrowly
+version-coupled compatibility projections are authored only by
+`atum pull updates` in `platform/apps/bigbang/generated-values.yaml`. Their
+combined scope is target-independent Flux desired state. Big Bang or the named
+selected child chart remains the resource and lifecycle owner.
 
 | Exact value or coupled set | Upstream evidence and reason | Security effect and owner | Removal condition |
 | --- | --- | --- | --- |
@@ -42,6 +44,7 @@ and lifecycle owner.
 | `bbctl.enabled=false` | The platform does not use the in-cluster Big Bang CLI package. | Avoids a second operational control surface; Flux remains the deployment owner. | Remove only when a reviewed use case selects the package without changing Flux ownership. |
 | `kyverno.values.upstream.global.extraEnvVars[KUBE_FEATURE_WatchListClient=false]` | In a clean Kubernetes `1.35.4` deployment, every selected Kyverno `3.8.2-bb.2`/`1.18.2` controller blocked while warming its ConfigMap informer with client-go's streaming-list optimization. The same service-account request completed against every API server, including the required initial-events-end bookmark; ordinary LIST+WATCH is the bounded compatibility path. | Disables only Kyverno's client-side watch-list optimization. It does not broaden API authentication or authorization, and Kyverno remains the policy reconciler. The updater rejects a different Kyverno package/application or Kubernetes minor instead of carrying this value onto an unaudited tuple. | Remove when a clean deployment of the selected Kyverno/Kubernetes tuple reaches Ready with `WatchListClient` enabled; update the encoded version boundary only with equivalent fresh-deploy evidence. |
 | `kyverno.values.upstream.webhooksCleanup.image` | Kyverno package `3.8.2-bb.2` replaces the upstream chart's `ghcr.io/kyverno/readiness-checker` default with Iron Bank `kubectl`, but the two pre-delete hooks still pass readiness-checker-only `delete-webhooks` and `scale-deploy` arguments. The package declares the matching readiness-checker `v1.18.2` image in `helm.sh/images`. | The updater verifies both exact rendered invocations, derives the version from that package declaration, mirrors the official Kyverno readiness-checker image through Harbor, and rejects command or declaration drift. No image fork or compatibility build exists. | Remove when the selected Big Bang Kyverno package preserves the upstream readiness-checker image or changes the hook command contract to match its selected official image. |
+| `packages.redis.values.upstream.commonConfiguration` module paths | Redis package `27.0.14-bb.0` loads Search, Bloom, Time Series, and JSON from the Iron Bank-only `/usr/lib/redis/modules` layout. Official Redis `8.8.0` ships the same four components under `/usr/local/lib/redis/modules`. The updater projects those exact official paths and final image admission verifies every mounted `loadmodule` directive against the immutable image filesystem. | Preserves the selected Redis capabilities while retaining the official image as a direct mirror. No Redis image fork or compatibility build exists. | Remove when the selected package uses the official Redis module layout or no longer emits legacy external-module paths. |
 | `addons.authservice.enabled=true` | Big Bang does not infer that Atum's SSO composition requires Authservice. | Big Bang owns the child release and gateway integration. | Remove when the selected SSO composition no longer uses Authservice. |
 | `addons.gitlab.enabled=true` | GitLab is a selected platform product, not a Big Bang default inferred from another value. | Big Bang owns the child release; CloudNativePG, Redis, and Garage retain their declared state ownership. | Remove when GitLab is removed from the platform selection. |
 | `addons.harbor.enabled=true` | Harbor is Atum's required image and chart delivery authority. | Big Bang owns the workload release; Harbor owns registry data. | Remove only with a replacement delivery architecture. |
