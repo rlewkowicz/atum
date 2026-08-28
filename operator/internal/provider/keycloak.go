@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	ownerMarkerKey   = "platform.atum.dev/owner"
+	ownerMarkerKey   = "atum_owner"
 	ownerMarkerValue = "atum-system/atum"
 	keycloakPageSize = 100
 )
@@ -177,6 +177,9 @@ func (k *Keycloak) list(ctx context.Context, collection keycloakCollection, quer
 	if filter.Has("first") || filter.Has("max") {
 		return nil, fmt.Errorf("Keycloak %s collection filter cannot set first or max", collectionPath)
 	}
+	if collection.kind == realmUsers {
+		filter.Set("briefRepresentation", "false")
+	}
 	if !paginated {
 		var items []keycloakObject
 		path := k.admin(collectionPath)
@@ -192,6 +195,142 @@ func (k *Keycloak) list(ctx context.Context, collection keycloakCollection, quer
 		return items, nil
 	}
 	return k.paginatedList(ctx, collectionPath, filter)
+}
+
+func ownershipProfileAttribute() map[string]any {
+	return map[string]any{
+		"name":        ownerMarkerKey,
+		"displayName": "Atum provider ownership",
+		"permissions": map[string][]string{
+			"view": {"admin"},
+			"edit": {"admin"},
+		},
+		"multivalued": false,
+		"annotations": map[string]string{ownerMarkerKey: ownerMarkerValue},
+	}
+}
+
+func profileAttributes(profile map[string]any) ([]map[string]any, error) {
+	raw, exists := profile["attributes"]
+	if !exists {
+		return nil, errors.New("Keycloak user profile has no attributes collection")
+	}
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("Keycloak user profile attributes collection is invalid")
+	}
+	attributes := make([]map[string]any, len(values))
+	for index := range values {
+		attribute, valid := values[index].(map[string]any)
+		if !valid {
+			return nil, fmt.Errorf("Keycloak user profile attribute %d is invalid", index)
+		}
+		if _, valid = attribute["name"].(string); !valid {
+			return nil, fmt.Errorf("Keycloak user profile attribute %d has no valid name", index)
+		}
+		attributes[index] = attribute
+	}
+	return attributes, nil
+}
+
+func profileOwnershipAttribute(attributes []map[string]any) (int, bool, error) {
+	index := -1
+	for candidate := range attributes {
+		if attributes[candidate]["name"] != ownerMarkerKey {
+			continue
+		}
+		if index != -1 {
+			return -1, false, Conflict("user profile attribute %q is duplicated", ownerMarkerKey)
+		}
+		index = candidate
+	}
+	if index == -1 {
+		return -1, false, nil
+	}
+	annotations, valid := attributes[index]["annotations"].(map[string]any)
+	if !valid || !marked(annotations) {
+		return -1, false, Conflict(
+			"user profile attribute %q exists without %s=%s",
+			ownerMarkerKey, ownerMarkerKey, ownerMarkerValue,
+		)
+	}
+	return index, true, nil
+}
+
+func profileOwnershipAttributeCurrent(attribute map[string]any) bool {
+	permissions, valid := attribute["permissions"].(map[string]any)
+	if !valid {
+		return false
+	}
+	adminOnly := func(value any) bool {
+		values, ok := value.([]any)
+		return ok && len(values) == 1 && values[0] == "admin"
+	}
+	return attribute["displayName"] == "Atum provider ownership" &&
+		attribute["multivalued"] == false &&
+		adminOnly(permissions["view"]) &&
+		adminOnly(permissions["edit"])
+}
+
+func (k *Keycloak) userProfile(ctx context.Context) (map[string]any, []map[string]any, error) {
+	profile := make(map[string]any)
+	if err := k.client.JSON(ctx, http.MethodGet, k.admin("/users/profile"), nil, &profile); err != nil {
+		return nil, nil, err
+	}
+	attributes, err := profileAttributes(profile)
+	if err != nil {
+		return nil, nil, err
+	}
+	return profile, attributes, nil
+}
+
+func (k *Keycloak) reconcileOwnershipProfileAttribute(ctx context.Context) error {
+	profile, attributes, err := k.userProfile(ctx)
+	if err != nil {
+		return err
+	}
+	index, exists, err := profileOwnershipAttribute(attributes)
+	if err != nil {
+		return err
+	}
+	if exists && profileOwnershipAttributeCurrent(attributes[index]) {
+		return nil
+	}
+	desired := ownershipProfileAttribute()
+	if exists {
+		attributes[index] = desired
+	} else {
+		attributes = append(attributes, desired)
+	}
+	profile["attributes"] = attributes
+	if err := k.client.JSON(ctx, http.MethodPut, k.admin("/users/profile"), profile, nil); err != nil {
+		return err
+	}
+	_, current, err := k.userProfile(ctx)
+	if err != nil {
+		return err
+	}
+	index, exists, err = profileOwnershipAttribute(current)
+	if err != nil {
+		return err
+	}
+	if !exists || !profileOwnershipAttributeCurrent(current[index]) {
+		return errors.New("Keycloak user ownership profile attribute was not observable")
+	}
+	return nil
+}
+
+func (k *Keycloak) cleanupOwnershipProfileAttribute(ctx context.Context) error {
+	profile, attributes, err := k.userProfile(ctx)
+	if err != nil {
+		return err
+	}
+	index, exists, err := profileOwnershipAttribute(attributes)
+	if err != nil || !exists {
+		return err
+	}
+	profile["attributes"] = append(attributes[:index], attributes[index+1:]...)
+	return k.client.JSON(ctx, http.MethodPut, k.admin("/users/profile"), profile, nil)
 }
 
 func (k *Keycloak) paginatedList(ctx context.Context, collectionPath string, filter url.Values) ([]keycloakObject, error) {
@@ -308,6 +447,9 @@ func (k *Keycloak) upsert(ctx context.Context, collection keycloakCollection, qu
 }
 
 func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platformv1alpha1.KeycloakIntent, secrets map[string][]byte) error {
+	if err := k.reconcileOwnershipProfileAttribute(ctx); err != nil {
+		return fmt.Errorf("user ownership profile: %w", err)
+	}
 	admin := intent.Administrator
 	userID, err := k.upsert(ctx, realmCollection(realmUsers), "exact=true&username="+url.QueryEscape(admin.Username), "username", admin.Username, map[string]any{
 		"username":      admin.Username,
@@ -612,6 +754,11 @@ func (k *Keycloak) Cleanup(ctx context.Context) error {
 		realmCollection(realmUsers),
 	} {
 		if err := k.pruneCollection(ctx, collection, "", nil); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) == 0 {
+		if err := k.cleanupOwnershipProfileAttribute(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}

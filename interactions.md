@@ -189,3 +189,65 @@ Terraform intentionally maps `keycloak.atum.test` to the passthrough VIP
 `10.77.0.20`. The updater now projects both exact `/32` endpoints: Keycloak on
 passthrough and Vault on public. This remains provider-specific egress for the
 narrow identity controller, not generic operator execution authority.
+
+## Fresh Calico deployment: remaining shared boundaries
+
+The next ordinary Flux pass proved that Policy Reporter UI was not failing on
+an application-specific SSO value. Its startup request timed out before it
+could reach the already healthy Keycloak endpoint:
+
+```text
+failed to create openIDConnect provider
+Get "https://keycloak.atum.test/auth/realms/master/.well-known/openid-configuration":
+context deadline exceeded
+```
+
+CoreDNS showed the shared cause. It could resolve Kubernetes service names,
+but concurrent forwarded names repeatedly timed out at the Terraform-owned
+libvirt resolver:
+
+```text
+[ERROR] plugin/errors: 2 keycloak.atum.test.atum.local. A:
+read udp 10.233.66.192:*->10.77.0.1:53: i/o timeout
+```
+
+Packet capture confirmed Calico was masquerading the CoreDNS Pod source to the
+node address. The selected Kubespray release enables NodeLocal DNS by default;
+its DaemonSet is host-networked and forwards external queries directly to
+`upstream_dns_servers`. The inventory now uses that official default instead
+of retaining the initial Cilium-era `enable_nodelocaldns=false` override.
+Terraform still owns dnsmasq, while Kubespray exclusively owns both DNS
+components.
+
+GitLab registry exposed one independent, documented Garage consumer edge:
+
+```text
+S3: retrying after error
+api error ServiceUnavailable: Service Unavailable
+```
+
+Garage itself was healthy and the `gitlab-registry` bucket and key existed.
+The selected Garage values explicitly say to add one
+`bb-common.networkPolicies.ingress.to.garage:3900.from.k8s` entry per S3
+consumer, but its rendered policy admitted only the ingress gateway. GitLab
+already had matching egress to the Garage namespace. The values now add the
+documented `gitlab/gitlab` consumer shorthand; no workload or Service is
+patched.
+
+The Atum operator reached Keycloak after the passthrough policy fix and then
+reported:
+
+```text
+administrator: /users "atum" exists without
+platform.atum.dev/owner=atum-system/atum
+```
+
+The created user's fields exactly matched the operator payload, but a direct
+read showed `attributes: null`. Keycloak's default declarative user profile
+ignores undeclared attributes, so the ownership marker in the create request
+was discarded before the next reconcile. Because this platform is greenfield,
+the canonical marker is now the valid profile attribute name `atum_owner`.
+The operator declares that one admin-only managed attribute first, requests
+full user representations, and continues to reject an existing unmarked user.
+This is narrow Keycloak provider state; it does not adopt arbitrary users or
+expand the operator into platform lifecycle management.

@@ -25,6 +25,8 @@ Kubernetes work.
 
 The controller owns these Keycloak classes:
 
+- one admin-only managed user-profile attribute used solely as the ownership
+  marker for its declared administrator user;
 - one administrator user, its group membership, and its declared realm role;
 - one groups client scope and its fixed groups mapper;
 - the declared public-PKCE or confidential OIDC clients;

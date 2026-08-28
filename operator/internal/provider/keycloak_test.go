@@ -13,6 +13,7 @@ import (
 func TestKeycloakCleanupRetainsUnownedBootstrapAdministrator(t *testing.T) {
 	var lock sync.Mutex
 	deleted := make(map[string]bool)
+	profileCleaned := false
 	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/admin/realms/master/clients":
@@ -28,6 +29,23 @@ func TestKeycloakCleanupRetainsUnownedBootstrapAdministrator(t *testing.T) {
 					ownerMarkerKey: []any{ownerMarkerValue},
 				}},
 			})
+		case request.Method == http.MethodGet && request.URL.Path == "/admin/realms/master/users/profile":
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"attributes": []any{ownershipProfileAttribute()},
+			})
+		case request.Method == http.MethodPut && request.URL.Path == "/admin/realms/master/users/profile":
+			var profile map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&profile); err != nil {
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			attributes, err := profileAttributes(profile)
+			if err != nil || len(attributes) != 0 {
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			profileCleaned = true
+			response.WriteHeader(http.StatusNoContent)
 		case request.Method == http.MethodDelete:
 			lock.Lock()
 			deleted[request.URL.Path] = true
@@ -47,6 +65,9 @@ func TestKeycloakCleanupRetainsUnownedBootstrapAdministrator(t *testing.T) {
 	}
 	if !deleted["/admin/realms/master/users/managed-id"] {
 		t.Fatal("marked administrator was not deleted")
+	}
+	if !profileCleaned {
+		t.Fatal("managed user profile attribute was not removed")
 	}
 }
 
@@ -111,6 +132,7 @@ func TestKeycloakFinalizerCleanupFindsPageTwoMarkedUser(t *testing.T) {
 	}
 	var userQueries []string
 	var deletes []string
+	profileCleaned := false
 	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/admin/realms/master/users":
@@ -142,6 +164,13 @@ func TestKeycloakFinalizerCleanupFindsPageTwoMarkedUser(t *testing.T) {
 				return
 			}
 			_, _ = response.Write([]byte(`[]`))
+		case request.Method == http.MethodGet && request.URL.Path == "/admin/realms/master/users/profile":
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"attributes": []any{ownershipProfileAttribute()},
+			})
+		case request.Method == http.MethodPut && request.URL.Path == "/admin/realms/master/users/profile":
+			profileCleaned = true
+			response.WriteHeader(http.StatusNoContent)
 		case request.Method == http.MethodDelete:
 			deletes = append(deletes, request.URL.Path)
 			response.WriteHeader(http.StatusNoContent)
@@ -153,11 +182,117 @@ func TestKeycloakFinalizerCleanupFindsPageTwoMarkedUser(t *testing.T) {
 	if err := keycloak.Cleanup(context.Background()); err != nil {
 		t.Fatalf("finalizer cleanup: %v", err)
 	}
-	if !reflect.DeepEqual(userQueries, []string{"first=0&max=100", "first=100&max=100"}) {
+	if !reflect.DeepEqual(userQueries, []string{
+		"briefRepresentation=false&first=0&max=100",
+		"briefRepresentation=false&first=100&max=100",
+	}) {
 		t.Fatalf("user page queries = %v", userQueries)
 	}
 	if !reflect.DeepEqual(deletes, []string{"/admin/realms/master/users/marked-user"}) {
 		t.Fatalf("deleted objects = %v", deletes)
+	}
+	if !profileCleaned {
+		t.Fatal("managed user profile attribute was not removed")
+	}
+}
+
+func TestKeycloakReconcilesAdminOnlyOwnershipProfileAttribute(t *testing.T) {
+	t.Parallel()
+
+	profile := map[string]any{
+		"attributes": []any{
+			map[string]any{
+				"name":        "username",
+				"multivalued": false,
+			},
+		},
+		"groups": []any{
+			map[string]any{"name": "user-metadata"},
+		},
+		"futureField": "preserved",
+	}
+	puts := 0
+	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			if request.URL.Path != "/admin/realms/master/users/profile" {
+				response.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(response).Encode(profile)
+		case http.MethodPut:
+			if request.URL.Path != "/admin/realms/master/users/profile" {
+				response.WriteHeader(http.StatusNotFound)
+				return
+			}
+			var updated map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&updated); err != nil {
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			profile = updated
+			puts++
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			response.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	keycloak := &Keycloak{client: client, realm: "master"}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := keycloak.reconcileOwnershipProfileAttribute(context.Background()); err != nil {
+			t.Fatalf("reconcile ownership profile attempt %d: %v", attempt+1, err)
+		}
+	}
+	if puts != 1 {
+		t.Fatalf("user profile PUTs = %d, want 1", puts)
+	}
+	if profile["futureField"] != "preserved" {
+		t.Fatalf("future profile field = %#v", profile["futureField"])
+	}
+	attributes, err := profileAttributes(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, exists, err := profileOwnershipAttribute(attributes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists || !profileOwnershipAttributeCurrent(attributes[index]) {
+		t.Fatalf("ownership attribute = %#v", attributes)
+	}
+}
+
+func TestKeycloakRejectsUnownedOwnershipProfileAttribute(t *testing.T) {
+	t.Parallel()
+
+	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]any{
+			"attributes": []any{
+				map[string]any{"name": ownerMarkerKey},
+			},
+		})
+	}))
+	keycloak := &Keycloak{client: client, realm: "master"}
+	err := keycloak.reconcileOwnershipProfileAttribute(context.Background())
+	if err == nil || !IsTerminal(err) {
+		t.Fatalf("ownership conflict = %v", err)
+	}
+}
+
+func TestKeycloakUserListsRequestOwnershipAttributes(t *testing.T) {
+	t.Parallel()
+
+	var query string
+	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		query = request.URL.RawQuery
+		_, _ = response.Write([]byte(`[]`))
+	}))
+	keycloak := &Keycloak{client: client, realm: "master"}
+	if _, err := keycloak.list(context.Background(), realmCollection(realmUsers), "exact=true&username=atum"); err != nil {
+		t.Fatal(err)
+	}
+	if query != "briefRepresentation=false&exact=true&first=0&max=100&username=atum" {
+		t.Fatalf("user query = %q", query)
 	}
 }
 

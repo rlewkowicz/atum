@@ -272,6 +272,14 @@ packages:
       injection: disabled
     values:
       fullnameOverride: garage
+      bb-common:
+        networkPolicies:
+          ingress:
+            to:
+              garage:3900:
+                from:
+                  k8s:
+                    gitlab/gitlab: true
       garageInit:
         enabled: true
         zone: gitlab

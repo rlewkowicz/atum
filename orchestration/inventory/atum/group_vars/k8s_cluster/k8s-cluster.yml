@@ -3,11 +3,13 @@ kubeconfig_localhost: true
 kubectl_localhost: true
 container_manager: containerd
 kube_network_plugin: calico
-enable_nodelocaldns: false
+enable_nodelocaldns: true
 dns_mode: coredns
 # Terraform owns the local dnsmasq endpoint and publishes its address. Kubespray
-# remains the sole owner of CoreDNS and forwards pod queries through that
-# endpoint so the Terraform-owned platform zone and public DNS both resolve.
+# remains the sole owner of NodeLocal DNS and CoreDNS. NodeLocal DNS uses
+# Kubespray's default host-network path to the endpoint so the
+# Terraform-owned platform zone and public DNS both resolve without pod-SNAT
+# contention.
 upstream_dns_servers:
   - "{{ atum_dns_server }}"
 
