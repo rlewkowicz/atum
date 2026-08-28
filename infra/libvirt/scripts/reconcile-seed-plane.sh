@@ -118,6 +118,8 @@ printf 'seed plane: preparing Harbor %s without optional services\n' "${harbor_v
   )
 )
 
+"${incoming}/start-seed-plane.sh" "${runtime_root}"
+
 forgejo_compose=(
   docker compose
   --project-name atum-forgejo
@@ -128,33 +130,6 @@ harbor_compose=(
   --project-name atum-harbor
   --file "${runtime_root}/harbor/docker-compose.yml"
 )
-
-"${forgejo_compose[@]}" up --detach --remove-orphans --pull never
-
-# Harbor's generated Compose file starts core as soon as PostgreSQL's container
-# starts. On a new database, core can exit before PostgreSQL accepts connections;
-# Nginx then retains core's former Docker address. Establish the generated
-# stack's database dependency first so every published Harbor route remains
-# attached to the service name Compose assigned it.
-"${harbor_compose[@]}" up --detach --remove-orphans --pull never postgresql
-
-deadline=$((SECONDS + 900))
-next_report=0
-while ! "${harbor_compose[@]}" exec --no-TTY postgresql \
-  pg_isready --quiet --username postgres --dbname postgres; do
-  if [ "${SECONDS}" -ge "${deadline}" ]; then
-    printf 'seed plane: PostgreSQL readiness timeout\n' >&2
-    "${harbor_compose[@]}" ps >&2 || true
-    exit 1
-  fi
-  if [ "${SECONDS}" -ge "${next_report}" ]; then
-    printf 'seed plane: postgresql=waiting elapsed=%ss\n' "${SECONDS}"
-    next_report=$((SECONDS + 15))
-  fi
-  sleep 3
-done
-
-"${harbor_compose[@]}" up --detach --remove-orphans --pull never
 
 harbor_healthy() {
   docker exec harbor-core /bin/sh -ceu '
@@ -181,6 +156,8 @@ raise SystemExit(0 if healthy else 1)
 '
 }
 
+deadline=$((SECONDS + 900))
+next_report=0
 while :; do
   forgejo_state=waiting
   harbor_state=waiting
@@ -221,6 +198,11 @@ if ! docker exec atum-forgejo /bin/sh -eu -c '
       --password "${GITEA_ADMIN_PASSWORD}" --must-change-password=false
   ' >/dev/null
 fi
+
+install -m 0700 "${incoming}/start-seed-plane.sh" /usr/local/sbin/atum-start-seed-plane
+install -m 0644 "${incoming}/atum-seed-plane.service" /etc/systemd/system/atum-seed-plane.service
+systemctl daemon-reload
+systemctl enable atum-seed-plane.service
 
 active_link="$(mktemp -d "${seed_root}/.current.XXXXXX")"
 rmdir -- "${active_link}"

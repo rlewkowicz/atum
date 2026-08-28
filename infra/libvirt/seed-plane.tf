@@ -21,6 +21,8 @@ locals {
     forgejo_url            = jsonencode(var.seed_forgejo_url)
   })
   seed_reconcile_script = file("${path.module}/scripts/reconcile-seed-plane.sh")
+  seed_start_script     = file("${path.module}/scripts/start-seed-plane.sh")
+  seed_systemd_unit     = file("${path.module}/systemd/atum-seed-plane.service")
 }
 
 resource "terraform_data" "seed_plane" {
@@ -32,6 +34,7 @@ resource "terraform_data" "seed_plane" {
     forgejo_config = sha256(local.seed_forgejo_compose)
     harbor_config  = sha256(local.seed_harbor_configuration)
     reconcile      = sha256(local.seed_reconcile_script)
+    startup        = sha256("${local.seed_start_script}\n${local.seed_systemd_unit}")
   }
 
   lifecycle {
@@ -98,10 +101,20 @@ resource "terraform_data" "seed_plane" {
     destination = "/data/atum-seed/incoming/reconcile-seed-plane.sh"
   }
 
+  provisioner "file" {
+    content     = local.seed_start_script
+    destination = "/data/atum-seed/incoming/start-seed-plane.sh"
+  }
+
+  provisioner "file" {
+    content     = local.seed_systemd_unit
+    destination = "/data/atum-seed/incoming/atum-seed-plane.service"
+  }
+
   provisioner "remote-exec" {
     inline = [
-      "chmod 0600 /data/atum-seed/incoming/harbor.yml /data/atum-seed/incoming/forgejo-compose.yaml",
-      "chmod 0700 /data/atum-seed/incoming/reconcile-seed-plane.sh",
+      "chmod 0600 /data/atum-seed/incoming/harbor.yml /data/atum-seed/incoming/forgejo-compose.yaml /data/atum-seed/incoming/atum-seed-plane.service",
+      "chmod 0700 /data/atum-seed/incoming/reconcile-seed-plane.sh /data/atum-seed/incoming/start-seed-plane.sh",
       "/data/atum-seed/incoming/reconcile-seed-plane.sh '${var.seed_archive_sha256}' '${var.seed_harbor_version}'",
     ]
   }

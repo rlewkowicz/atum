@@ -1,0 +1,18 @@
+[Unit]
+Description=Atum retained seed plane
+Wants=network-online.target
+Requires=docker.service
+After=local-fs.target network-online.target docker.service
+ConditionPathExists=/data/atum-seed/current/harbor/docker-compose.yml
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/atum-start-seed-plane
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=multi-user.target
