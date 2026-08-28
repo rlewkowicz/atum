@@ -9,6 +9,9 @@ spec:
     - sso-ca.bigbang
   duration: 8760h
   renewBefore: 720h
+  secretTemplate:
+    labels:
+      reconcile.fluxcd.io/watch: Enabled
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer

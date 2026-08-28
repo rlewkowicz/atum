@@ -35,7 +35,11 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 		t, "platform/clusters/atum/platform-certificates.yaml",
 	)[0]
 	bigBangValues := readPlatformDocuments(t, "platform/clusters/atum/bigbang.yaml")[0]
+	bigBangRelease := readPlatformDocuments(t, "platform/apps/bigbang/helmrelease.yaml")[0]
 	clusterRoot := readPlatformDocuments(t, "platform/clusters/atum/kustomization.yaml")[0]
+	identityCertificate := readPlatformDocuments(
+		t, "platform/profiles/local/prep/certificates/identity-certificate.yaml",
+	)[0]
 
 	if _, found := mapAt(operational, "packages", "opensearch", "values")["singleNode"]; found {
 		t.Fatal("target-independent OpenSearch values contain local sizing")
@@ -93,6 +97,44 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	if prometheusAnnotations["vault.hashicorp.com/tls-secret"] != "atum-sso-ca" ||
 		prometheusAnnotations["vault.hashicorp.com/ca-cert"] != "/vault/tls/ca.pem" {
 		t.Fatal("Prometheus Vault Agent must verify the platform Vault certificate")
+	}
+	vaultRoute := mapAt(
+		operational,
+		"addons",
+		"vault",
+		"values",
+		"routes",
+		"inbound",
+		"vault",
+		"passthrough",
+	)
+	if vaultRoute["enabled"] != false {
+		t.Fatal("Vault TLS route must terminate at the selected public gateway")
+	}
+	watchLabels := mapAt(
+		identityCertificate,
+		"spec",
+		"secretTemplate",
+		"labels",
+	)
+	if watchLabels["reconcile.fluxcd.io/watch"] != "Enabled" {
+		t.Fatal("identity CA Secret does not notify its Flux values consumer")
+	}
+	valuesFrom, _ := mapAt(bigBangRelease, "spec")["valuesFrom"].([]any)
+	watchesIdentityCA := false
+	for _, value := range valuesFrom {
+		reference, ok := value.(map[string]any)
+		if ok &&
+			reference["kind"] == "Secret" &&
+			reference["name"] == "atum-sso-ca" &&
+			reference["targetPath"] == "sso.certificateAuthority.cert" &&
+			reference["valuesKey"] == "ca.crt" {
+			watchesIdentityCA = true
+			break
+		}
+	}
+	if !watchesIdentityCA {
+		t.Fatal("Big Bang HelmRelease does not consume the watched identity CA Secret")
 	}
 	fluentPolicy := mapAt(
 		operational, "fluentbit", "values", "networkPolicies", "egress",

@@ -169,6 +169,11 @@ addons:
     values:
       autoInit:
         enabled: true
+      routes:
+        inbound:
+          vault:
+            passthrough:
+              enabled: false
 
 istioGateway:
   values:

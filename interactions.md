@@ -349,3 +349,68 @@ The operator declares that one admin-only managed attribute first, requests
 full user representations, and continues to reject an existing unmarked user.
 This is narrow Keycloak provider state; it does not adopt arbitrary users or
 expand the operator into platform lifecycle management.
+
+## Fresh Calico deployment: Vault route and CA event handoffs
+
+The next clean run selected Calico and never deployed Cilium. All three Calico
+node agents were Ready with zero restarts. The remaining Prometheus failure was
+not CNI or strict-policy denial: its injected Vault Agent reached the configured
+HTTPS endpoint and received an application-layer response.
+
+The selected Vault package completed its documented `autoInit` lifecycle:
+
+```text
+---=== Initializing Vault ===---
+---=== Created vault-token secret ===---
+Success! Data written to: auth/kubernetes/config
+Success! Uploaded policy: prometheus-metrics
+---=== Vault post-start setup complete ===---
+```
+
+An empty login request against the package-owned local endpoint returned `400`,
+which proves the Kubernetes auth mount exists. The same request through the
+externally selected route returned `404`, as did Prometheus:
+
+```text
+http://127.0.0.1:8200/v1/auth/kubernetes/login 400
+https://vault.atum.test/v1/auth/kubernetes/login 404
+
+Vault Agent:
+URL: PUT https://vault.atum.test/v1/auth/kubernetes/login
+Code: 404. Raw Message:
+```
+
+The live route exposed the mismatch:
+
+```text
+VirtualService gateway: istio-gateway/public-ingressgateway
+VirtualService route:   tls match on 8443
+public Gateway TLS:     SIMPLE
+```
+
+The Vault package defaults its route to passthrough, while Big Bang defaults an
+unspecified package gateway to public. The local profile now uses the package's
+supported `routes.inbound.vault.passthrough.enabled=false` value so the public
+gateway terminates external TLS and forwards through the existing strict Istio
+mTLS boundary. Vault's auto-init and Kubernetes-auth ownership remain unchanged.
+
+The same run exposed a separate event-order race. cert-manager created
+`bigbang/atum-sso-ca` at `18:48:28Z`, after the first Big Bang render had logged:
+
+```text
+could not resolve optional Secret bigbang/atum-sso-ca: not found
+```
+
+Big Bang did not create its native CA-only consumer Secrets until the later Helm
+interval; `monitoring/atum-sso-ca` appeared at `19:03:41Z`, leaving Prometheus
+Pending in the meantime:
+
+```text
+MountVolume.SetUp failed for volume "vault-tls-secrets":
+secret "atum-sso-ca" not found
+```
+
+The source Certificate now requests Flux's documented
+`reconcile.fluxcd.io/watch=Enabled` label on the resulting Secret. That label
+only notifies the existing Helm values consumer; it adds no imperative
+reconcile, copied Secret, Job, or operator responsibility.
