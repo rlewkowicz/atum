@@ -53,9 +53,11 @@ Kubespray's lifecycle checks. General anonymous discovery and resource
 requests remain disabled, and RBAC keeps the cluster-info path read-only.
 Atum selects Kubespray's official resolver mode that leaves host resolver
 state unchanged, so its separate late resolver lifecycle is not invoked; pod
-`clusterDNS` remains configured by Kubespray's default NodeLocal DNS cache
-backed by CoreDNS. Terraform, Flux, and the Atum operator do not own or
-transition this policy.
+`clusterDNS` remains configured by Kubespray and points directly at the
+CoreDNS Service. Kubespray's optional NodeLocal DNS cache is disabled because
+Big Bang's default-deny package policies authorize DNS to the selected
+CoreDNS Pods rather than a link-local host-network endpoint. Terraform, Flux,
+and the Atum operator do not own or transition this policy.
 
 `platform/` is the monorepo representation consumed by Flux from the exact
 `main` branch of this repository on the bastion seed Forgejo instance.

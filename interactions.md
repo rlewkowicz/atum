@@ -202,25 +202,17 @@ Get "https://keycloak.atum.test/auth/realms/master/.well-known/openid-configurat
 context deadline exceeded
 ```
 
-CoreDNS showed the shared cause. It could resolve Kubernetes service names,
-but concurrent forwarded names repeatedly timed out at the Terraform-owned
-libvirt resolver:
+An earlier run showed CoreDNS resolving Kubernetes service names while some
+forwarded names timed out at the Terraform-owned libvirt resolver:
 
 ```text
 [ERROR] plugin/errors: 2 keycloak.atum.test.atum.local. A:
 read udp 10.233.66.192:*->10.77.0.1:53: i/o timeout
 ```
 
-Packet capture confirmed Calico was masquerading the CoreDNS Pod source to the
-node address. The selected Kubespray release enables NodeLocal DNS by default;
-its DaemonSet is host-networked and forwards external queries directly to
-`upstream_dns_servers`. The inventory now uses that official default instead
-of retaining the initial Cilium-era `enable_nodelocaldns=false` override.
-Terraform still owns dnsmasq, while Kubespray exclusively owns both DNS
-components.
-
-The fresh Calico deployment then exposed the other half of that boundary.
-Kubespray correctly projected NodeLocal DNS into each workload:
+That isolated symptom led to enabling Kubespray's default NodeLocal DNS cache,
+but the next clean deployment disproved the proposed fix. Kubespray correctly
+projected NodeLocal DNS into each workload:
 
 ```text
 search vault.svc.cluster.local svc.cluster.local cluster.local atum.local
@@ -247,25 +239,42 @@ egress:
             k8s-app: kube-dns
 ```
 
-The live Calico DaemonSet showed
-`FELIX_DEFAULTENDPOINTTOHOSTACTION=RETURN`, while the live NodeLocal DNS
-DaemonSet was host-networked and listened on `169.254.25.10`. The selected
-Kubespray Calico guide documents `calico_endpoint_to_host_action: "ACCEPT"` for
-this exact pod-to-same-node-`hostNetwork` service topology. With `RETURN`, the
-host-local destination remained behind the host firewall after workload policy
-evaluation, so the injected proxy could not obtain a workload certificate:
+The selected Kubespray Calico guide documents
+`calico_endpoint_to_host_action: "ACCEPT"` for pod traffic to same-node
+host-network endpoints. A clean rebuild proved that setting was active but
+insufficient: Kubernetes workload egress policy rejected the link-local
+destination before Calico's endpoint-to-host fallback could admit it. Both
+Istio gateways therefore failed certificate bootstrap:
 
 ```text
 failed to sign CSR: create certificate: rpc error: code = Unavailable
 transport: Error while dialing: dial tcp:
-lookup istiod.istio-system.svc: i/o timeout
+lookup istiod.istio-system.svc on 169.254.25.10:53:
+read udp 10.233.66.201:*->169.254.25.10:53: i/o timeout
 ```
 
-The deterministic fix remains in Kubespray's ownership plane: set its
-documented Calico endpoint-to-host action to `ACCEPT`. This preserves Big
-Bang's native NetworkPolicies, Istio sidecar injection, hardened
-authorization, and `STRICT` mesh mTLS without copying a NodeLocal exception
-into every package or patching the live cluster.
+An A/B diagnostic added only `169.254.25.10/32` on TCP/UDP 53 to the public
+gateway's rendered DNS NetworkPolicy. That gateway immediately connected to
+Istiod, generated its workload certificate, and became Ready; the untouched
+passthrough gateway remained unready. This proves the policy/destination
+mismatch without attributing it to either gateway package or Calico.
+
+Big Bang documents `networkPolicies.additionalPolicies`, but only at each
+package boundary. Repeating a NodeLocal exception across every package, or
+installing a Calico-specific global policy, would replace one supported default
+with broad Atum-owned policy. The inventory instead disables optional
+NodeLocal DNS and retains Kubespray-owned CoreDNS, matching bb-common's native
+`k8s-app: kube-dns` rule. A constrained BusyBox probe issued 200 concurrent
+lookups for `keycloak.atum.test` directly through the CoreDNS Service and
+reported:
+
+```text
+failures=0
+```
+
+The Calico endpoint-to-host override is removed with NodeLocal DNS. Terraform
+still owns dnsmasq, Kubespray still owns cluster DNS and the CNI, and Big Bang
+retains its unmodified default-deny policies and strict mesh settings.
 
 GitLab registry exposed one independent, documented Garage consumer edge:
 
