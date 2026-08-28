@@ -34,6 +34,15 @@ const (
 	lockSchema      = "atum.dev/lock/v1"
 	desiredSchemaID = "https://atum.dev/schema/config/v1"
 	lockSchemaID    = "https://atum.dev/schema/lock/v1"
+
+	FluxSourceController       = "source-controller"
+	FluxKustomizeController    = "kustomize-controller"
+	FluxHelmController         = "helm-controller"
+	FluxNotificationController = "notification-controller"
+	FluxBootstrapComponents    = FluxSourceController + "," +
+		FluxKustomizeController + "," +
+		FluxHelmController + "," +
+		FluxNotificationController
 )
 
 type Project struct {
@@ -912,15 +921,21 @@ func contentAddressedMirrorTag(version, kind, identity string) (string, error) {
 	return tag, nil
 }
 
-// ContentAddressedMirrorTags returns immutable Harbor tags for all direct
-// mirrors. Images with the same Harbor hub and application version share one
-// tag derived from their complete repository/digest set because some official
-// charts expose one hub/tag pair for multiple image repositories.
-func ContentAddressedMirrorTags(images []Image) (map[string]string, error) {
+// MirrorTargetTags returns the Harbor tag owned by every direct mirror. Flux
+// bootstrap controllers retain their upstream version tags because
+// `flux bootstrap git` is the authoritative generator of those manifests.
+// Their locked digest and the Harbor project's tag immutability make that
+// native name exact. Every other mirror receives a content-derived tag.
+//
+// Images with the same Harbor hub and application version share one derived
+// tag from their complete repository/digest set because some official charts
+// expose one hub/tag pair for multiple image repositories.
+func MirrorTargetTags(images []Image) (map[string]string, error) {
 	type member struct {
 		id         string
 		repository string
 		digest     string
+		nativeTag  string
 	}
 	groups := make(map[string][]member)
 	seenIDs := make(map[string]struct{}, len(images))
@@ -951,11 +966,16 @@ func ContentAddressedMirrorTags(images []Image) (map[string]string, error) {
 				image.ID,
 			)
 		}
+		nativeTag, err := fluxBootstrapTargetTag(*image)
+		if err != nil {
+			return nil, err
+		}
 		group := repository[:separator] + "\x00" + upstreamTag
 		groups[group] = append(groups[group], member{
 			id:         image.ID,
 			repository: repository,
 			digest:     image.Delivery.Default.Digest,
+			nativeTag:  nativeTag,
 		})
 	}
 	result := make(map[string]string, len(seenIDs))
@@ -1000,10 +1020,44 @@ func ContentAddressedMirrorTags(images []Image) (map[string]string, error) {
 			}
 		}
 		for _, item := range members {
+			if item.nativeTag != "" {
+				result[item.id] = item.nativeTag
+				continue
+			}
 			result[item.id] = tag
 		}
 	}
 	return result, nil
+}
+
+func fluxBootstrapTargetTag(image Image) (string, error) {
+	switch image.ID {
+	case FluxSourceController,
+		FluxKustomizeController,
+		FluxHelmController,
+		FluxNotificationController:
+	default:
+		return "", nil
+	}
+	sourceRepository := imageReferenceRepository(image.Delivery.Default.Source)
+	targetRepository := imageReferenceRepository(image.Target)
+	sourceSeparator := strings.LastIndexByte(sourceRepository, '/')
+	targetSeparator := strings.LastIndexByte(targetRepository, '/')
+	tag := imageReferenceTag(image.Delivery.Default.Source)
+	if image.Family != "flux" ||
+		len(image.Consumers) != 1 ||
+		image.Consumers[0] != "flux" ||
+		sourceSeparator < 0 ||
+		targetSeparator < 0 ||
+		sourceRepository[sourceSeparator+1:] != image.ID ||
+		targetRepository[targetSeparator+1:] != image.ID ||
+		tag == "" {
+		return "", fmt.Errorf(
+			"Flux bootstrap mirror %s does not match its native controller contract",
+			image.ID,
+		)
+	}
+	return tag, nil
 }
 
 func canonicalJSON(value any) ([]byte, error) {
@@ -1243,7 +1297,7 @@ func exactMirrorReceipts(
 		}
 		candidates = append(candidates, image)
 	}
-	targetTags, err := ContentAddressedMirrorTags(candidates)
+	targetTags, err := MirrorTargetTags(candidates)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"resolve exact mirror receipt targets: %w",
@@ -1836,7 +1890,7 @@ func (p *Project) validate(
 	mirrorTargetTags := make(map[string]string)
 	if !allowStale {
 		var err error
-		mirrorTargetTags, err = ContentAddressedMirrorTags(
+		mirrorTargetTags, err = MirrorTargetTags(
 			p.Desired.Delivery.Images,
 		)
 		if err != nil {
@@ -3357,7 +3411,7 @@ func validateKubesprayImageProjection(
 	mirrorTargetTags := make(map[string]string)
 	if !allowStale {
 		var err error
-		mirrorTargetTags, err = ContentAddressedMirrorTags(images)
+		mirrorTargetTags, err = MirrorTargetTags(images)
 		if err != nil {
 			*problems = append(
 				*problems,

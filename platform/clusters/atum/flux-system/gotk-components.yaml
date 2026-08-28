@@ -2611,7 +2611,7 @@ spec:
             resourceFieldRef:
               containerName: manager
               resource: limits.memory
-        image: 10.77.0.9:32443/atum/source-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc
+        image: 10.77.0.9:32443/atum/source-controller:v1.9.4
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -3537,7 +3537,7 @@ spec:
             resourceFieldRef:
               containerName: manager
               resource: limits.memory
-        image: 10.77.0.9:32443/atum/kustomize-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc
+        image: 10.77.0.9:32443/atum/kustomize-controller:v1.9.4
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -5133,7 +5133,7 @@ spec:
             resourceFieldRef:
               containerName: manager
               resource: limits.memory
-        image: 10.77.0.9:32443/atum/helm-controller:v1.6.3-mirror-22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37
+        image: 10.77.0.9:32443/atum/helm-controller:v1.6.3
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -6038,7 +6038,7 @@ spec:
             resourceFieldRef:
               containerName: manager
               resource: limits.memory
-        image: 10.77.0.9:32443/atum/notification-controller:v1.9.3-mirror-782897674cbaa7e6ec716cae22400fd2385f6ec68101daef
+        image: 10.77.0.9:32443/atum/notification-controller:v1.9.3
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:

@@ -310,12 +310,12 @@ func renderedImageTargetReplacements(
 	return compactReplacements(replacements)
 }
 
-func projectContentAddressedMirrorTargets(
+func projectMirrorTargets(
 	desired *config.Document,
 ) ([]imageReplacement, error) {
-	tags, err := config.ContentAddressedMirrorTags(desired.Delivery.Images)
+	tags, err := config.MirrorTargetTags(desired.Delivery.Images)
 	if err != nil {
-		return nil, fmt.Errorf("resolve content-addressed mirror tags: %w", err)
+		return nil, fmt.Errorf("resolve mirror target tags: %w", err)
 	}
 	replacements := make([]imageReplacement, 0, len(desired.Delivery.Images))
 	for index := range desired.Delivery.Images {
@@ -326,7 +326,7 @@ func projectContentAddressedMirrorTargets(
 		tag, exists := tags[image.ID]
 		if !exists {
 			return nil, fmt.Errorf(
-				"content-addressed mirror tag %s is absent",
+				"mirror target tag %s is absent",
 				image.ID,
 			)
 		}
@@ -336,7 +336,7 @@ func projectContentAddressedMirrorTargets(
 			&replacements,
 		); err != nil {
 			return nil, fmt.Errorf(
-				"project content-addressed mirror target %s: %w",
+				"project mirror target %s: %w",
 				image.ID,
 				err,
 			)

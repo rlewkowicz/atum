@@ -105,7 +105,7 @@
           "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
           "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
           "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
-          "sha256": "e846ebd60eb784e755960fc1ca43c18b0fe82e4d02f8a6190aaa73550b486272"
+          "sha256": "c25997b4cfbcbc72f70b2c30dbb1609e2773a0cfc462ffebf54c2f07029ebb4b"
         }
       ]
     },
@@ -2847,7 +2847,7 @@
         "id": "helm-controller",
         "family": "flux",
         "version": "1.6.3",
-        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3-mirror-22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37",
+        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3",
         "scopes": [
           "bigbang"
         ],
@@ -5145,7 +5145,7 @@
         "id": "kustomize-controller",
         "family": "flux",
         "version": "1.9.4",
-        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
+        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4",
         "scopes": [
           "bigbang"
         ],
@@ -5431,7 +5431,7 @@
         "id": "notification-controller",
         "family": "flux",
         "version": "1.9.3",
-        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3-mirror-782897674cbaa7e6ec716cae22400fd2385f6ec68101daef",
+        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3",
         "scopes": [
           "bigbang"
         ],
@@ -6031,7 +6031,7 @@
         "id": "source-controller",
         "family": "flux",
         "version": "1.9.4",
-        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
+        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4",
         "scopes": [
           "bigbang"
         ],

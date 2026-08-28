@@ -72,7 +72,7 @@ func TestMirrorImageInputIncludesPublicationTarget(t *testing.T) {
 	}
 }
 
-func TestContentAddressedMirrorTagsPreserveSharedHubVersion(t *testing.T) {
+func TestMirrorTargetTagsPreserveSharedHubVersion(t *testing.T) {
 	images := []Image{
 		{
 			ID:      "pilot",
@@ -95,7 +95,7 @@ func TestContentAddressedMirrorTagsPreserveSharedHubVersion(t *testing.T) {
 			}},
 		},
 	}
-	first, err := ContentAddressedMirrorTags(images)
+	first, err := MirrorTargetTags(images)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestContentAddressedMirrorTagsPreserveSharedHubVersion(t *testing.T) {
 		images[index].Target = "registry.example/atum/" +
 			images[index].ID + ":" + first[images[index].ID]
 	}
-	second, err := ContentAddressedMirrorTags(images)
+	second, err := MirrorTargetTags(images)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,13 +117,48 @@ func TestContentAddressedMirrorTagsPreserveSharedHubVersion(t *testing.T) {
 	}
 	images[1].Delivery.Default.Digest =
 		"sha256:" + strings.Repeat("c", 64)
-	changed, err := ContentAddressedMirrorTags(images)
+	changed, err := MirrorTargetTags(images)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if changed["pilot"] == first["pilot"] ||
 		changed["pilot"] != changed["proxyv2"] {
 		t.Fatalf("changed shared tags = %#v, original %#v", changed, first)
+	}
+}
+
+func TestMirrorTargetTagsPreserveFluxBootstrapNames(t *testing.T) {
+	ids := []string{
+		FluxSourceController,
+		FluxKustomizeController,
+		FluxHelmController,
+		FluxNotificationController,
+	}
+	images := make([]Image, 0, len(ids))
+	for index, id := range ids {
+		tag := "v1." + string(rune('1'+index)) + ".0"
+		images = append(images, Image{
+			ID:        id,
+			Family:    "flux",
+			Version:   strings.TrimPrefix(tag, "v"),
+			Target:    "registry.example/atum/" + id + ":" + tag,
+			Consumers: []string{"flux"},
+			Delivery: ImageDelivery{Default: DeliveryChoice{
+				Type:   "mirror",
+				Source: "ghcr.io/fluxcd/" + id + ":" + tag,
+				Digest: "sha256:" + strings.Repeat(string(rune('a'+index)), 64),
+			}},
+		})
+	}
+	tags, err := MirrorTargetTags(images)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, image := range images {
+		want := imageReferenceTag(image.Delivery.Default.Source)
+		if tags[image.ID] != want {
+			t.Fatalf("%s target tag = %q, want %q", image.ID, tags[image.ID], want)
+		}
 	}
 }
 

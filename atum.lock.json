@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "c7a43005cd8f1cf373eee5f15eccf6d1f4b784e83e5755c72862a56a33c18455",
+  "desiredSha256": "5f4613cf8d2566258fa1aa5f18b5699e28e1f0b76263941918b4ec656280eb10",
   "resolved": {
     "clusterReleases": [
       {
@@ -1008,7 +1008,7 @@
           "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
           "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
           "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
-          "sha256": "e846ebd60eb784e755960fc1ca43c18b0fe82e4d02f8a6190aaa73550b486272"
+          "sha256": "c25997b4cfbcbc72f70b2c30dbb1609e2773a0cfc462ffebf54c2f07029ebb4b"
         }
       ]
     },
@@ -2039,7 +2039,7 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "9d8632eebe79e8a404b68fe7f39c8d181a5066dd166d87c57cd66196177bbe49",
+    "inventorySha256": "99df48cfe2d6f9c380909a0cd50db2a618be99b58b353f4210776d8774c11269",
     "graphSha256": "71f80e4a4042819379a70774de329a90c5395c341041990ce472cd659ffb7c99",
     "images": [
       {
@@ -2494,9 +2494,9 @@
       },
       {
         "id": "helm-controller",
-        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3-mirror-22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37",
+        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3",
         "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
-        "inputSha256": "3b3a9f0dbe8cefe49c6e3b4415f0f146de0fc35f73ed1a11f26aad5353a723df",
+        "inputSha256": "5e1a1ff8ac3e5e19eab746f9226c71c899f3a45f9abbe2c6f492940880feb446",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/helm-controller:v1.6.3",
@@ -3634,9 +3634,9 @@
       },
       {
         "id": "kustomize-controller",
-        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
+        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4",
         "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
-        "inputSha256": "730b69af7b19d6cc08f98b803584b8848d9d2c4b0ee179159311bb57cafb0cf7",
+        "inputSha256": "e595030944adaa2d6eaecf95ba963203bfffab27cbd69bbcd6951d8e5dd47b8a",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
@@ -3766,9 +3766,9 @@
       },
       {
         "id": "notification-controller",
-        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3-mirror-782897674cbaa7e6ec716cae22400fd2385f6ec68101daef",
+        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3",
         "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
-        "inputSha256": "fc4a1d380c60ede7fc829c0f0c9263fe314c85f2a0002a7759f0fe7817903e18",
+        "inputSha256": "ced5aab73305bb920beeb1d59b1b05b4a7a5b1a892dc498bb7dfa3850682c354",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/notification-controller:v1.9.3",
@@ -3974,9 +3974,9 @@
       },
       {
         "id": "source-controller",
-        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
+        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4",
         "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
-        "inputSha256": "f3154953f2ac04a590d98f62404cc461932398ea5ca2755370ac1aac289b32c6",
+        "inputSha256": "c80c9ca11d2f70c439b67d57e1afeb2d97f30b62a897867a5e96e2e7230c04f1",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/source-controller:v1.9.4",

@@ -366,9 +366,13 @@ internal runtime target. Direct mirrors use an upstream-tag-prefixed target tag
 derived from the resolved manifest digest or, where an official chart shares
 one tag across multiple repositories, their complete digest set. The prefix
 preserves charts that parse image tags as semantic versions or own a leading
-`v`. An upstream publisher retargeting a version tag therefore cannot collide
-with existing immutable Harbor content. No historical baseline, duplicate
-crosswalk, build profile copy, or transition record participates.
+`v`. The four Flux bootstrap controllers are the narrow exception: they retain
+the exact upstream version tags emitted by `flux bootstrap git`, backed by the
+locked digest and Harbor tag immutability, so bootstrap produces no alternate
+source commit. An upstream publisher retargeting any selected version therefore
+fails exact publication rather than replacing existing Harbor content. No
+historical baseline, duplicate crosswalk, build profile copy, or transition
+record participates.
 
 Iron Bank image references are non-fetchable compatibility evidence only.
 Atum never creates a Registry1 client, mirrors an Iron Bank artifact, uses one

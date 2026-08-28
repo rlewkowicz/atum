@@ -8,14 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"atum/cli/config"
 	"atum/cli/delivery"
 	"atum/cli/identity"
 	"atum/cli/process"
 	"atum/cli/progress"
 	atumsecrets "atum/cli/secrets"
 )
-
-const fluxComponents = "source-controller,kustomize-controller,helm-controller,notification-controller"
 
 // bootstrapFlux is deliberately linear. Flux bootstrap owns controller
 // installation and the root source; Atum owns only exact source publication,
@@ -113,7 +112,7 @@ func (service Service) bootstrapFlux(
 		"--branch=main",
 		"--path=" + clusterPath,
 		"--version=" + version,
-		"--components=" + fluxComponents,
+		"--components=" + config.FluxBootstrapComponents,
 		"--registry=" + registry,
 		"--allow-insecure-http",
 		"--token-auth",

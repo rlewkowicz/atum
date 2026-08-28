@@ -740,7 +740,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
 		return Result{}, err
 	}
-	mirrorReplacements, err := projectContentAddressedMirrorTargets(&desired)
+	mirrorReplacements, err := projectMirrorTargets(&desired)
 	if err != nil {
 		return Result{}, err
 	}

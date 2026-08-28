@@ -111,7 +111,7 @@ func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
 		projected[id] = image
 		projectedList = append(projectedList, image)
 	}
-	targetTags, err := ContentAddressedMirrorTags(projectedList)
+	targetTags, err := MirrorTargetTags(projectedList)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func TestProjectContentAddressedTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve input: %v", err)
 	}
-	replacements, err := projectContentAddressedMirrorTargets(&desired)
+	replacements, err := projectMirrorTargets(&desired)
 	if err != nil {
 		t.Fatalf("project content-addressed mirror targets: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestProjectContentAddressedTargets(t *testing.T) {
 		replacements[0].New != wantMirror {
 		t.Fatalf("mirror replacements = %#v", replacements)
 	}
-	replacements, err = projectContentAddressedMirrorTargets(&desired)
+	replacements, err = projectMirrorTargets(&desired)
 	if err != nil {
 		t.Fatalf("repeat content-addressed mirror projection: %v", err)
 	}
