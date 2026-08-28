@@ -39,12 +39,19 @@ still contains the previous value until Flux receives the corrected revision.
 | --- | --- | --- | --- |
 | Big Bang global NetworkPolicy values plus Cilium | Primary blocker; Atum regression | The narrowed global `kubeAPI` ingress definition excludes Cilium's cross-node router identities. | Remove the Atum ingress-definition override. Retain only `controlPlaneCidr=10.77.0.8/29`; let Big Bang own the documented RFC1918 webhook-ingress definition. |
 | Kyverno | Choke point, not a broken package | It is the validating admission webhook reached by nearly every API mutation. Its policy correctly enforces the bad input it received. | No Kyverno workload patch. Restore the upstream Big Bang ingress definition. |
-| Istiod | Narrow selected-package/Cilium edge | Istiod `1.30.3-bb.0` defaults webhook ports `443` and `15017` to `0.0.0.0/0`. Cilium treats that peer as external `world`, not the observed remote-node identity. | Keep one supported chart-value override that replaces the package's `0.0.0.0/0` peer with Big Bang's existing `kubeAPI` definition. |
+| Istiod | Cilium-specific edge, removed from the clean design | Istiod `1.30.3-bb.0` defaults webhook ports `443` and `15017` to `0.0.0.0/0`. Cilium treats that peer as external `world`, not the observed remote-node identity. | The fresh deployment selects Kubespray's Calico default and retains the Istiod package default; no Istiod NetworkPolicy override remains. |
 | Vault | Narrow Big Bang migration edge and current secondary blocker | Big Bang `3.31.1`'s Vault migration combines `controlPlaneCidr` and `vpcCidr`. The unused local `vpcCidr=0.0.0.0/0` makes Vault's named `kubeAPI` egress rule `0.0.0.0/0`, which does not admit the observed in-cluster node identity. | Override only Vault's supported `networkPolicies.egress.definitions.kubeAPI` value to `10.77.0.8/29`. Do not patch the workload or controller. |
 | Redis | Independent selected chart mismatch; already corrected | Package `27.0.14-bb.0` enables replica autoscaling while the selected topology is standalone, rendering an HPA for an intentionally absent replica StatefulSet. | Explicitly set replica count to zero and replica autoscaling off through supported values. |
 | metrics-server | Downstream indicator | It reaches the kubelets, but node 2 and 3 cannot finish webhook authorization while API admission is stalled. | No new patch. Retain only the documented `--kubelet-insecure-tls` value required by Kubespray's self-signed kubelet serving certificates. |
 | Flux controllers and CloudNativePG | Downstream victims | Their leader-election Lease writes pass through the blocked admission path and time out. | No controller patch and no forced reconcile. They should recover through ordinary reconciliation after policy is corrected. |
 | OpenSearch and Dashboards | Not a blocker | The official chart/application tuples `3.8.0`/`3.8.0` are running with official mirrored images. | No operator and no OpenSearch source build. |
+
+The repository had selected Cilium in its initial commit without a documented
+platform requirement. The clean rebuild instead selects Kubespray's Calico
+default. This removes the Cilium resource tuning, rollout behavior,
+node-aware CIDR mode, unused Envoy metrics exception, and Istiod peer override.
+The only new CNI-adjacent value is Kubespray's documented
+`kube_proxy_strict_arp=true` requirement for IPVS plus ARP-mode kube-vip.
 
 ## Live evidence
 
@@ -114,8 +121,8 @@ components before the Cilium drop trace identified the common blocked
 endpoint.
 
 The correction is deliberately smaller: restore Big Bang's global documented
-defaults, retain one Istiod peer-selection value and one Vault API-egress
-value for demonstrated selected-release/Cilium behavior, and make no changes
+defaults, select Kubespray's default Calico CNI, retain one Vault API-egress
+value for a demonstrated selected-release migration edge, and make no changes
 to downstream victims. A fresh deployment remains the proof that this is
 deterministic.
 
@@ -134,3 +141,8 @@ rendered exact packaged Helm contract ... completed=31 total=31
 verified official image runtime contracts completed=165 total=165
 upstream state is current
 ```
+
+The official full-offline inventory includes payloads for unselected CNIs.
+Seeing `kubespray-cilium-*` content mirrored into Harbor therefore does not
+mean Cilium is deployed; `kube_network_plugin: calico` is the runtime
+selection.

@@ -3,8 +3,7 @@ networkPolicies:
   # Big Bang's controlPlaneCidr is the API destination set reported by the
   # kubernetes Service, not the HAProxy VIP. This is the smallest CIDR
   # containing all three local endpoints: .11, .12, and .13. Keep Big Bang's
-  # documented RFC1918 kubeAPI ingress definition: Cilium presents remote
-  # control-plane webhook traffic from its 10.233.x.x node-router identities.
+  # separate documented RFC1918 kubeAPI webhook-ingress definition unchanged.
   controlPlaneCidr: 10.77.0.8/29
 kyvernoPolicies:
   values:
@@ -66,15 +65,6 @@ kyvernoPolicies:
                   - helper-pod-*
 istiod:
   values:
-    networkPolicies:
-      ingress:
-        to:
-          "istiod:[443,15017]":
-            from:
-              cidr:
-                "0.0.0.0/0": false
-              definition:
-                kubeAPI: true
     upstream:
       pilot:
         autoscaleEnabled: false
