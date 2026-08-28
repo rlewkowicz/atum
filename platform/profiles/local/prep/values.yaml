@@ -226,6 +226,17 @@ istioGateway:
   values:
     gateways:
       public:
+        networkPolicies:
+          ingress:
+            to:
+              "public-ingressgateway:[8080,8443]":
+                from:
+                  # Cilium preserves the source pod identity after translating
+                  # the public LoadBalancer VIP to this gateway. Big Bang's
+                  # RFC1918 ipBlocks therefore admit external clients but not
+                  # in-cluster clients of the same public HTTPS endpoints.
+                  k8s:
+                    "*": true
         upstream:
           service:
             type: LoadBalancer

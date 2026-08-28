@@ -182,6 +182,20 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	if monitoringCIDR["10.77.0.8/29"] != false {
 		t.Fatal("Monitoring does not disable the generated API destination source")
 	}
+	publicGatewaySources := mapAt(
+		local, "istioGateway", "values", "gateways", "public",
+		"networkPolicies", "ingress", "to",
+		"public-ingressgateway:[8080,8443]", "from", "k8s",
+	)
+	if publicGatewaySources["*"] != true {
+		t.Fatal("public gateway does not admit Cilium-identified in-cluster clients")
+	}
+	if len(mapAt(
+		local, "istioGateway", "values", "gateways", "passthrough",
+		"networkPolicies",
+	)) != 0 {
+		t.Fatal("in-cluster public endpoint access broadens the passthrough gateway")
+	}
 	for _, policy := range []string{
 		"add-default-securitycontext",
 		"require-non-root-user",
