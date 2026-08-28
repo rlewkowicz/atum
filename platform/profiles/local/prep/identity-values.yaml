@@ -152,9 +152,40 @@ stringData:
                         hosts:
                             - policy.atum.test
             upstream:
+                extraManifests:
+                    - |
+                      apiVersion: cert-manager.io/v1
+                      kind: Certificate
+                      metadata:
+                        name: atum-sso-ca
+                        namespace: kyverno-reporter
+                      spec:
+                        commonName: sso-ca.kyverno-reporter
+                        dnsNames:
+                          - sso-ca.kyverno-reporter
+                        duration: 8760h
+                        renewBefore: 720h
+                        issuerRef:
+                          group: cert-manager.io
+                          kind: ClusterIssuer
+                          name: atum-test-ca
+                        secretName: atum-sso-ca
                 ui:
+                    extraVolumes:
+                        volumeMounts:
+                            - mountPath: /var/run/atum-sso
+                              name: atum-sso-ca
+                              readOnly: true
+                        volumes:
+                            - name: atum-sso-ca
+                              secret:
+                                items:
+                                    - key: ca.crt
+                                      path: ca.crt
+                                secretName: atum-sso-ca
                     openIDConnect:
                         callbackUrl: https://policy.atum.test/callback
+                        certificate: /var/run/atum-sso/ca.crt
                         clientId: atum-policy-reporter
                         clientSecret: ${ATUM_POLICY_REPORTER_CLIENT_SECRET}
                         discoveryUrl: https://keycloak.atum.test/auth/realms/master/.well-known/openid-configuration

@@ -25,6 +25,26 @@ const identityTemplateRoot = "platform/templates/identity"
 
 const renderOnlyIdentityCredential = "atum-render-only-credential-0000000000000000"
 
+const policyReporterCACertificatePath = "/var/run/atum-sso/ca.crt"
+
+const policyReporterCACertificateManifest = `apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: atum-sso-ca
+  namespace: kyverno-reporter
+spec:
+  commonName: sso-ca.kyverno-reporter
+  dnsNames:
+    - sso-ca.kyverno-reporter
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: atum-test-ca
+  secretName: atum-sso-ca
+`
+
 var atumRenderPlaceholderPattern = regexp.MustCompile(`\$\{(ATUM_[A-Z0-9_]+)\}`)
 
 type identityRenderContext struct {
@@ -231,11 +251,33 @@ func identityValues(
 				"routes": map[string]any{"inbound": map[string]any{
 					"policy-reporter-ui": map[string]any{"hosts": []any{reporter.Host}},
 				}},
-				"upstream": map[string]any{"ui": map[string]any{"openIDConnect": map[string]any{
-					"enabled": true, "discoveryUrl": contract.Issuer() + "/.well-known/openid-configuration",
-					"callbackUrl": reporter.Callbacks[0], "clientId": reporter.ID,
-					"clientSecret": secret(reporter),
-				}}},
+				"upstream": map[string]any{
+					"extraManifests": []any{policyReporterCACertificateManifest},
+					"ui": map[string]any{
+						"extraVolumes": map[string]any{
+							"volumeMounts": []any{map[string]any{
+								"name":      "atum-sso-ca",
+								"mountPath": "/var/run/atum-sso",
+								"readOnly":  true,
+							}},
+							"volumes": []any{map[string]any{
+								"name": "atum-sso-ca",
+								"secret": map[string]any{
+									"secretName": "atum-sso-ca",
+									"items": []any{map[string]any{
+										"key": "ca.crt", "path": "ca.crt",
+									}},
+								},
+							}},
+						},
+						"openIDConnect": map[string]any{
+							"enabled": true, "discoveryUrl": contract.Issuer() + "/.well-known/openid-configuration",
+							"callbackUrl": reporter.Callbacks[0], "clientId": reporter.ID,
+							"clientSecret": secret(reporter),
+							"certificate":  policyReporterCACertificatePath,
+						},
+					},
+				},
 			},
 		},
 		"addons": map[string]any{

@@ -122,6 +122,52 @@ func TestIdentityValuesScopeSSOEgressToPassthroughHTTPSVIP(t *testing.T) {
 	}
 }
 
+func TestIdentityValuesMountPolicyReporterOIDCCA(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	reporter := values["kyvernoReporter"].(map[string]any)
+	reporterValues := reporter["values"].(map[string]any)
+	upstream := reporterValues["upstream"].(map[string]any)
+	ui := upstream["ui"].(map[string]any)
+	openIDConnect := ui["openIDConnect"].(map[string]any)
+	if openIDConnect["certificate"] != policyReporterCACertificatePath ||
+		openIDConnect["skipTLS"] == true {
+		t.Fatalf("Policy Reporter OIDC trust = %#v", openIDConnect)
+	}
+
+	extraVolumes := ui["extraVolumes"].(map[string]any)
+	volumeMounts := extraVolumes["volumeMounts"].([]any)
+	volumes := extraVolumes["volumes"].([]any)
+	if len(volumeMounts) != 1 || len(volumes) != 1 {
+		t.Fatalf("Policy Reporter CA volumes = %#v / %#v", volumeMounts, volumes)
+	}
+	mount := volumeMounts[0].(map[string]any)
+	if mount["name"] != "atum-sso-ca" ||
+		mount["mountPath"] != "/var/run/atum-sso" ||
+		mount["readOnly"] != true {
+		t.Fatalf("Policy Reporter CA mount = %#v", mount)
+	}
+	volume := volumes[0].(map[string]any)
+	secret := volume["secret"].(map[string]any)
+	items := secret["items"].([]any)
+	if volume["name"] != "atum-sso-ca" ||
+		secret["secretName"] != "atum-sso-ca" ||
+		len(items) != 1 {
+		t.Fatalf("Policy Reporter CA volume = %#v", volume)
+	}
+	item := items[0].(map[string]any)
+	if item["key"] != "ca.crt" || item["path"] != "ca.crt" {
+		t.Fatalf("Policy Reporter CA item = %#v", item)
+	}
+
+	manifests := upstream["extraManifests"].([]any)
+	if len(manifests) != 1 ||
+		manifests[0] != policyReporterCACertificateManifest {
+		t.Fatalf("Policy Reporter CA manifests = %#v", manifests)
+	}
+}
+
 func TestOperatorNetworkPolicyProjectsBothIngressVIPs(t *testing.T) {
 	t.Parallel()
 

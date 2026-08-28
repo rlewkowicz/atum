@@ -299,6 +299,24 @@ The Calico endpoint-to-host override is removed with NodeLocal DNS. Terraform
 still owns dnsmasq, Kubespray still owns cluster DNS and the CNI, and Big Bang
 retains its unmodified default-deny policies and strict mesh settings.
 
+Once TCP forwarding removed the DNS timeout, Policy Reporter exposed the next
+independent boundary:
+
+```text
+failed to create openIDConnect provider
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+The exact Keycloak discovery URL returned HTTP 200 from the same sidecar in
+about 12 milliseconds, proving service and mesh reachability. Big Bang
+`3.31.1` passes that private-CA URL into Kyverno Reporter but does not create
+its documented SSO CA Secret in the package namespace. Policy Reporter
+`3.9.1` already exposes `ui.openIDConnect.certificate`, `ui.extraVolumes`, and
+`extraManifests`. The generated identity values therefore use those native
+interfaces to request one cert-manager Certificate, mount only its `ca.crt`,
+and keep OIDC verification enabled. No generic operator behavior or
+post-render patch is involved.
+
 GitLab registry exposed one independent, documented Garage consumer edge:
 
 ```text
