@@ -159,6 +159,24 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	if network["controlPlaneCidr"] != "10.77.0.8/29" {
 		t.Fatalf("API destination = %v", network["controlPlaneCidr"])
 	}
+	for _, gateway := range []string{"public", "passthrough"} {
+		service := mapAt(
+			local,
+			"istioGateway",
+			"values",
+			"gateways",
+			gateway,
+			"upstream",
+			"service",
+		)
+		if service["externalTrafficPolicy"] != "Local" {
+			t.Fatalf(
+				"%s gateway external traffic policy = %v",
+				gateway,
+				service["externalTrafficPolicy"],
+			)
+		}
+	}
 	for _, policy := range []string{
 		"add-default-securitycontext",
 		"require-non-root-user",

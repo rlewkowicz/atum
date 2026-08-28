@@ -146,3 +146,46 @@ The official full-offline inventory includes payloads for unselected CNIs.
 Seeing `kubespray-cilium-*` content mirrored into Harbor therefore does not
 mean Cilium is deployed; `kube_network_plugin: calico` is the runtime
 selection.
+
+## Fresh Calico deployment follow-up
+
+The clean Calico deployment proved the original admission diagnosis. Kubespray
+completed all three nodes with no failures, every Flux Kustomization became
+Ready, and Kyverno, Istiod, CloudNativePG, Vault, OpenSearch, and Dashboards
+installed without a Cilium-specific policy override. OpenSearch reached green
+cluster health on the official `3.8.0` chart and image.
+
+The remaining wait exposed two local ingress-address handoff defects rather
+than another Big Bang package failure:
+
+```text
+public-ingressgateway  EXTERNAL-IP 10.77.0.20  endpoint 10.233.66.206 node3
+kubevip-public-ingressgateway leader=atum-node-2
+
+VIP from Prometheus:
+connect timeout after 4.002106 seconds
+
+Gateway ClusterIP from the same container:
+HTTP 404 remote=10.233.25.64 connect=0.000354 total=0.004841
+```
+
+The selected kube-vip documentation requires per-Service election for
+`externalTrafficPolicy: Local`; that mode limits election to nodes with a
+Service endpoint. Both gateway Services now use the official Istio chart's
+`upstream.service.externalTrafficPolicy` value. kube-vip already has
+`svc_election=true`, so Flux can express the complete supported handoff without
+a route, host alias, workload patch, or new controller.
+
+The Atum operator also reported:
+
+```text
+KeycloakReady=False ProviderError:
+POST https://keycloak.atum.test/.../token:
+context deadline exceeded
+```
+
+Terraform intentionally maps `keycloak.atum.test` to the passthrough VIP
+`10.77.0.21`, while the operator NetworkPolicy admitted only the public VIP
+`10.77.0.20`. The updater now projects both exact `/32` endpoints: Keycloak on
+passthrough and Vault on public. This remains provider-specific egress for the
+narrow identity controller, not generic operator execution authority.

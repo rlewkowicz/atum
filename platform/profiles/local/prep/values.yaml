@@ -193,12 +193,14 @@ istioGateway:
         upstream:
           service:
             type: LoadBalancer
+            externalTrafficPolicy: Local
             annotations:
               kube-vip.io/loadbalancerIPs: "10.77.0.20"
       passthrough:
         upstream:
           service:
             type: LoadBalancer
+            externalTrafficPolicy: Local
             annotations:
               kube-vip.io/loadbalancerIPs: "10.77.0.21"
 packages:

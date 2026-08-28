@@ -28,10 +28,12 @@ const renderOnlyIdentityCredential = "atum-render-only-credential-00000000000000
 var atumRenderPlaceholderPattern = regexp.MustCompile(`\$\{(ATUM_[A-Z0-9_]+)\}`)
 
 type identityRenderContext struct {
-	Values                string
-	OperatorConfiguration string
-	Namespace             string
-	Cluster               string
+	Values                 string
+	OperatorConfiguration  string
+	PublicIngressCIDR      string
+	PassthroughIngressCIDR string
+	Namespace              string
+	Cluster                string
 }
 
 type identityOutput struct {
@@ -63,14 +65,13 @@ func identityValues(
 	if localAccess == nil {
 		return nil, errors.New("local access is required for identity values")
 	}
-	ssoEndpoint, err := netip.ParseAddr(localAccess.PassthroughIngressVIP)
-	if err != nil || !ssoEndpoint.Is4() {
-		return nil, fmt.Errorf(
-			"local passthrough ingress VIP %q must be an IPv4 address",
-			localAccess.PassthroughIngressVIP,
-		)
+	ssoEndpointCIDR, err := ipv4HostCIDR(
+		"local passthrough ingress VIP",
+		localAccess.PassthroughIngressVIP,
+	)
+	if err != nil {
+		return nil, err
 	}
-	ssoEndpointCIDR := ssoEndpoint.String() + "/32"
 	client := func(application identity.Application) (identity.Client, error) {
 		value, found := contract.ClientForApplication(application)
 		if !found {
@@ -520,7 +521,15 @@ func renderIdentityManifests(
 	contract *identity.Contract,
 	identityValues map[string]any,
 ) error {
-	context, err := newIdentityRenderContext(contract, identityValues)
+	target, found := desired.ActiveTarget()
+	if !found {
+		return errors.New("active platform target is unavailable")
+	}
+	context, err := newIdentityRenderContext(
+		contract,
+		identityValues,
+		target.LocalAccess,
+	)
 	if err != nil {
 		return err
 	}
@@ -580,6 +589,7 @@ func renderIdentityManifests(
 		{"identity-values.yaml.tmpl", "platform/profiles/local/prep/identity-values.yaml", nil},
 		{"local-access-kustomization.yaml.tmpl", "platform/profiles/local/access/kustomization.yaml", nil},
 		{"operator-configuration.yaml.tmpl", "platform/apps/atum-operator/configuration.yaml", nil},
+		{"operator-network-policy.yaml.tmpl", "platform/apps/atum-operator/network-policy.yaml", nil},
 	}
 	for _, namespace := range []string{"harbor", "keycloak", "vault"} {
 		namespace := namespace
@@ -700,9 +710,27 @@ func validateIdentityYAML(relative string, data []byte) error {
 func newIdentityRenderContext(
 	contract *identity.Contract,
 	values map[string]any,
+	localAccess *config.LocalAccess,
 ) (identityRenderContext, error) {
 	if contract == nil {
 		return identityRenderContext{}, errors.New("local identity contract is required for identity rendering")
+	}
+	if localAccess == nil {
+		return identityRenderContext{}, errors.New("local access is required for identity rendering")
+	}
+	publicIngressCIDR, err := ipv4HostCIDR(
+		"local public ingress VIP",
+		localAccess.PublicIngressVIP,
+	)
+	if err != nil {
+		return identityRenderContext{}, err
+	}
+	passthroughIngressCIDR, err := ipv4HostCIDR(
+		"local passthrough ingress VIP",
+		localAccess.PassthroughIngressVIP,
+	)
+	if err != nil {
+		return identityRenderContext{}, err
 	}
 	valuesYAML, err := yaml.Marshal(values)
 	if err != nil {
@@ -713,12 +741,22 @@ func newIdentityRenderContext(
 		return identityRenderContext{}, err
 	}
 	return identityRenderContext{
-		Values: strings.TrimSuffix(string(valuesYAML), "\n"),
+		Values:                 strings.TrimSuffix(string(valuesYAML), "\n"),
+		PublicIngressCIDR:      publicIngressCIDR,
+		PassthroughIngressCIDR: passthroughIngressCIDR,
 		OperatorConfiguration: strings.TrimSuffix(
 			string(configuration),
 			"\n",
 		),
 	}, nil
+}
+
+func ipv4HostCIDR(label, value string) (string, error) {
+	address, err := netip.ParseAddr(value)
+	if err != nil || !address.Is4() {
+		return "", fmt.Errorf("%s %q must be an IPv4 address", label, value)
+	}
+	return address.String() + "/32", nil
 }
 
 func operatorConfiguration(contract *identity.Contract) ([]byte, error) {

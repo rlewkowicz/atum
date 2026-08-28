@@ -122,6 +122,17 @@ func TestIdentityValuesScopeSSOEgressToPassthroughHTTPSVIP(t *testing.T) {
 	}
 }
 
+func TestOperatorNetworkPolicyProjectsBothIngressVIPs(t *testing.T) {
+	t.Parallel()
+
+	text := readPlatformText(t, "platform/apps/atum-operator/network-policy.yaml")
+	for _, cidr := range []string{"10.77.0.20/32", "10.77.0.21/32"} {
+		if strings.Count(text, "cidr: "+cidr) != 1 {
+			t.Fatalf("operator network policy does not contain exactly one %s", cidr)
+		}
+	}
+}
+
 func loadLocalIdentityValues(t *testing.T) map[string]any {
 	t.Helper()
 
