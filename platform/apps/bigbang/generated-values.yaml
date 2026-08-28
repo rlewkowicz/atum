@@ -13,7 +13,7 @@ addons:
         helmRepo:
             chartName: gitlab
             repoName: atum
-            tag: 10.2.4-bb.0
+            tag: 10.2.4-bb.0.atum.68e74a87df9b1b2b
         sourceType: helmRepo
         values:
             global:
@@ -83,7 +83,7 @@ addons:
         helmRepo:
             chartName: harbor
             repoName: atum
-            tag: 1.19.2-bb.0
+            tag: 1.19.2-bb.0.atum.412ae427c3f3551f
         sourceType: helmRepo
         values:
             postgresql:
@@ -170,7 +170,7 @@ addons:
         helmRepo:
             chartName: vault
             repoName: atum
-            tag: 0.34.0-bb.0
+            tag: 0.34.0-bb.0.atum.18fa1b607c7f7582
         sourceType: helmRepo
         values:
             upstream:
@@ -189,7 +189,7 @@ fluentbit:
     helmRepo:
         chartName: fluentbit
         repoName: atum
-        tag: 0.57.9-bb.0
+        tag: 0.57.9-bb.0.atum.ba37ff6e275e02eb
     sourceType: helmRepo
     values:
         upstream:
@@ -344,7 +344,7 @@ monitoring:
     helmRepo:
         chartName: monitoring
         repoName: atum
-        tag: 88.3.0-bb.0
+        tag: 88.3.0-bb.0.atum.3034340c7027bb24
     sourceType: helmRepo
     values:
         blackboxExporter:
@@ -448,7 +448,7 @@ packages:
         helmRepo:
             chartName: garage
             repoName: atum
-            tag: 0.9.3-bb.2
+            tag: 0.9.3-bb.2.atum.856d9665242418b8
         sourceType: helmRepo
         values:
             garageInit:

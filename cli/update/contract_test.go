@@ -86,6 +86,60 @@ networkPolicies:
 	}
 }
 
+func TestNormalizedChartVersionOwnsLocalArchiveIdentity(t *testing.T) {
+	t.Parallel()
+
+	normalizations := []config.ChartNormalization{{
+		Path: "monitoring.blackboxExporter.serviceMonitor.targets",
+		From: "null",
+		To:   "list",
+	}}
+	first, err := normalizedChartVersion(
+		"88.3.0-bb.0",
+		strings.Repeat("a", 64),
+		normalizations,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := normalizedChartVersion(
+		"88.3.0-bb.0",
+		strings.Repeat("a", 64),
+		normalizations,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || !strings.HasPrefix(first, "88.3.0-bb.0.atum.") {
+		t.Fatalf("normalized chart version = %q, repeat = %q", first, second)
+	}
+	changed, err := normalizedChartVersion(
+		"88.3.0-bb.0",
+		strings.Repeat("b", 64),
+		normalizations,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == first {
+		t.Fatalf("normalized chart identity did not change with upstream content: %q", changed)
+	}
+	if _, err := normalizedChartVersion(
+		"88.3.0-bb.0",
+		strings.Repeat("z", 64),
+		normalizations,
+	); err == nil {
+		t.Fatal("normalized chart version accepted a non-hexadecimal upstream digest")
+	}
+	if unchanged, err := normalizedChartVersion(
+		"3.8.0",
+		strings.Repeat("c", 64),
+		nil,
+	); err != nil || unchanged != "3.8.0" {
+		t.Fatalf("unnormalized chart version = %q, %v", unchanged, err)
+	}
+}
+
 func TestNormalizePlaceholderValueMapRejectsNonEmptyCollectionMismatch(t *testing.T) {
 	t.Parallel()
 

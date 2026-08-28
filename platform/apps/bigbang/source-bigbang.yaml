@@ -11,5 +11,5 @@ spec:
         operation: copy
     provider: generic
     ref:
-        tag: 3.31.1
+        tag: 3.31.1-atum.c4157b10605569ee
     url: oci://10.77.0.9:32443/charts/bigbang

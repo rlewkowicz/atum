@@ -582,6 +582,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	for index := range lockedCharts {
 		packagedByID[lockedCharts[index].ID] = lockedCharts[index]
 	}
+	if err := projectPackagedPackageVersions(
+		candidateGenerated,
+		packages,
+		packagedByID,
+	); err != nil {
+		return Result{}, err
+	}
 	for index := range finalArtifacts {
 		packaged, exists := packagedByID[finalArtifacts[index].ID]
 		if !exists {
@@ -593,11 +600,19 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		"completed", 0, "total", len(finalArtifacts), "parallelism", parallelism)
 	progress.Update(ctx, progress.Platform, "update-packaged-render", "Packaged chart rendering",
 		"rendering exact packaged Helm contracts", 0, len(finalArtifacts))
-	finalInspections, err = inspectArtifacts(
+	finalArtifacts, finalInspections, err = inspectAppliedArtifacts(
 		ctx,
 		parallelism,
 		selectedKubernetes.Version,
+		service.root,
+		desired,
+		operational,
+		candidateGenerated,
+		profileRenderValues,
+		supportSourceValues(supportSources),
+		bootstrapValues,
 		finalArtifacts,
+		tree.filesView(),
 		func(id string, completed, total int) {
 			service.logger.InfoContext(ctx, "rendered exact packaged Helm contract",
 				"artifact", id, "completed", completed, "total", total)
@@ -1750,6 +1765,35 @@ func updateGeneratedVersions(
 			chart.Chart.Version,
 		); err != nil {
 			return fmt.Errorf("update generated chart %s source: %w", chart.Chart.ID, err)
+		}
+	}
+	return nil
+}
+
+func projectPackagedPackageVersions(
+	generated map[string]any,
+	packages []resolvedPackage,
+	artifacts map[string]config.ChartArtifact,
+) error {
+	for _, pkg := range packages {
+		artifact, exists := artifacts["package/"+pkg.Package.ID]
+		if !exists {
+			return fmt.Errorf(
+				"packaged chart inventory is missing package/%s",
+				pkg.Package.ID,
+			)
+		}
+		if err := pinChartRepository(
+			generated,
+			pkg.Package.ValuesPath,
+			artifact.Name,
+			artifact.Version,
+		); err != nil {
+			return fmt.Errorf(
+				"project packaged chart version for package %s: %w",
+				pkg.Package.ID,
+				err,
+			)
 		}
 	}
 	return nil

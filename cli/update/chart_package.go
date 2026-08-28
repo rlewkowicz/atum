@@ -12,11 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"atum/cli/config"
 
+	"github.com/Masterminds/semver/v3"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
@@ -189,6 +191,26 @@ func packageChart(root string, registry config.Registry, input chartPackageInput
 	if loaded.Metadata == nil {
 		return config.ChartArtifact{}, fmt.Errorf("chart artifact %s has no metadata", input.ID)
 	}
+	if len(normalizations) != 0 {
+		if input.ID != "bigbang" && !strings.HasPrefix(input.ID, "package/") {
+			return config.ChartArtifact{}, fmt.Errorf(
+				"chart artifact %s requires unsupported local normalizations",
+				input.ID,
+			)
+		}
+		loaded.Metadata.Version, err = normalizedChartVersion(
+			loaded.Metadata.Version,
+			input.UpstreamSHA,
+			normalizations,
+		)
+		if err != nil {
+			return config.ChartArtifact{}, fmt.Errorf(
+				"version normalized chart artifact %s: %w",
+				input.ID,
+				err,
+			)
+		}
+	}
 	archiveRoot := filepath.Join(".atum", "cache", "packaged-charts")
 	if err := os.MkdirAll(filepath.Join(root, archiveRoot), 0o700); err != nil {
 		return config.ChartArtifact{}, err
@@ -238,6 +260,50 @@ func packageChart(root string, registry config.Registry, input chartPackageInput
 		Size: counting.count, File: filepath.ToSlash(relative), Target: target,
 		Normalizations: normalizations,
 	}, nil
+}
+
+func normalizedChartVersion(
+	upstreamVersion string,
+	upstreamSHA256 string,
+	normalizations []config.ChartNormalization,
+) (string, error) {
+	version, err := semver.StrictNewVersion(upstreamVersion)
+	if err != nil {
+		return "", fmt.Errorf("parse upstream chart version %q: %w", upstreamVersion, err)
+	}
+	if len(normalizations) == 0 {
+		return upstreamVersion, nil
+	}
+	upstreamDigest, err := hex.DecodeString(upstreamSHA256)
+	if err != nil || len(upstreamDigest) != sha256.Size {
+		return "", errors.New("normalized chart requires an exact upstream SHA-256")
+	}
+	material, err := config.CanonicalJSON(struct {
+		UpstreamSHA256 string                      `json:"upstreamSha256"`
+		Normalizations []config.ChartNormalization `json:"normalizations"`
+	}{
+		UpstreamSHA256: upstreamSHA256,
+		Normalizations: normalizations,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode normalized chart identity: %w", err)
+	}
+	digest := sha256.Sum256(material)
+	prerelease := version.Prerelease()
+	if prerelease != "" {
+		prerelease += "."
+	}
+	prerelease += "atum." + hex.EncodeToString(digest[:8])
+	if metadata := version.Metadata(); metadata != "" {
+		prerelease += ".meta." + strings.ReplaceAll(metadata, ".", "-")
+	}
+	return fmt.Sprintf(
+		"%d.%d.%d-%s",
+		version.Major(),
+		version.Minor(),
+		version.Patch(),
+		prerelease,
+	), nil
 }
 
 type countingWriter struct {
