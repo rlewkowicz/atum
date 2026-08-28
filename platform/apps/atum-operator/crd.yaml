@@ -100,13 +100,13 @@ spec:
                           maxItems: 16
                           minItems: 1
                           type: array
-                          uniqueItems: true
+                          x-kubernetes-list-type: set
                         webOrigins:
                           items:
                             type: string
                           maxItems: 16
                           type: array
-                          uniqueItems: true
+                          x-kubernetes-list-type: set
                       required:
                       - id
                       - kind
@@ -147,7 +147,6 @@ spec:
                     maxItems: 4
                     minItems: 4
                     type: array
-                    uniqueItems: true
                     x-kubernetes-validations:
                     - message: scopes must be openid, profile, email, groups in canonical
                         order
@@ -221,7 +220,7 @@ spec:
                         maxItems: 16
                         minItems: 1
                         type: array
-                        uniqueItems: true
+                        x-kubernetes-list-type: set
                       scopes:
                         items:
                           enum:
@@ -233,7 +232,6 @@ spec:
                         maxItems: 4
                         minItems: 4
                         type: array
-                        uniqueItems: true
                     required:
                     - clientID
                     - groupsClaim

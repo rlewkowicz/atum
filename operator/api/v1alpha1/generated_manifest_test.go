@@ -72,6 +72,7 @@ func TestGeneratedSchemaOwnsAdmissionContract(t *testing.T) {
 		"self.metadata.name == 'atum'",
 		"self == oldSelf",
 		"x-kubernetes-list-map-keys:",
+		"x-kubernetes-list-type: set",
 		"vault.role.clientID must name one declared confidential client",
 		"Vault role scopes must equal the canonical Keycloak scopes",
 	} {
@@ -87,6 +88,7 @@ func TestGeneratedSchemaOwnsAdmissionContract(t *testing.T) {
 		"mappers:",
 		"attributes:",
 		"providerURL",
+		"uniqueItems: true",
 	} {
 		if strings.Contains(encoded, forbidden) {
 			t.Fatalf("generated schema contains forbidden extension %q", forbidden)

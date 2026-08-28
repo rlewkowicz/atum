@@ -33,7 +33,6 @@ type KeycloakIntent struct {
 	GroupsScope   GroupsScope   `json:"groupsScope"`
 	// +kubebuilder:validation:MinItems=4
 	// +kubebuilder:validation:MaxItems=4
-	// +kubebuilder:validation:UniqueItems=true
 	// +kubebuilder:validation:items:Enum=openid;profile;email;groups
 	// +kubebuilder:validation:XValidation:rule="self == ['openid', 'profile', 'email', 'groups']",message="scopes must be openid, profile, email, groups in canonical order"
 	Scopes []string `json:"scopes"`
@@ -78,10 +77,10 @@ type KeycloakClient struct {
 	Kind ClientKind `json:"kind"`
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:UniqueItems=true
+	// +listType=set
 	RedirectURIs []string `json:"redirectURIs"`
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:UniqueItems=true
+	// +listType=set
 	WebOrigins []string `json:"webOrigins,omitempty"`
 	Audience   bool     `json:"audience,omitempty"`
 }
@@ -117,11 +116,10 @@ type VaultRole struct {
 	ClientID string `json:"clientID"`
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:UniqueItems=true
+	// +listType=set
 	RedirectURIs []string `json:"redirectURIs"`
 	// +kubebuilder:validation:MinItems=4
 	// +kubebuilder:validation:MaxItems=4
-	// +kubebuilder:validation:UniqueItems=true
 	// +kubebuilder:validation:items:Enum=openid;profile;email;groups
 	Scopes []string `json:"scopes"`
 	// +kubebuilder:validation:Enum=groups

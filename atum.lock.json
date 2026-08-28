@@ -2018,7 +2018,7 @@
     "profile": "platform",
     "platform": "linux/amd64",
     "inventorySha256": "0d2ffbece01a438a7d298795af2a55aee6dc08f4584d9b8e7fcb9b791d563ddc",
-    "graphSha256": "393218e5c3a4e9a8f422b553089da9450219c8cb94a45c7abbabaf1ee76a0b9e",
+    "graphSha256": "d512fd9a898307bbb9344f4fc044a893d5b6c2a951235f320ac7b6e6e77b5617",
     "images": [
       {
         "id": "alertmanager",
@@ -2036,7 +2036,7 @@
         "id": "atum-operator",
         "target": "10.77.0.9:32443/atum/atum-operator:0.1.0",
         "digest": "",
-        "inputSha256": "7a1496fb25c3daa278ce69ccad2179978d300096c8515403e801aa8415c12b80",
+        "inputSha256": "74a455e58c50c48b83484ea662a5a839fef94b9a3233d4d1eae87023d4dbe0f1",
         "delivery": {
           "type": "build",
           "bakeTarget": "atum-operator",
@@ -2210,7 +2210,7 @@
         "id": "garage-init-helper",
         "target": "10.77.0.9:32443/atum/garage-init-helper:2.1.0",
         "digest": "",
-        "inputSha256": "f3b570ecc905e877b332749331174837089968ac36a97c64edaceecf24f1a869",
+        "inputSha256": "8e303d6c9889792b63a4af72c56417d93e8e39fb73a4bd20042cf4998f18864c",
         "delivery": {
           "type": "build",
           "bakeTarget": "garage-init-helper",
@@ -2346,7 +2346,7 @@
         "id": "grafana-plugins",
         "target": "10.77.0.9:32443/atum/grafana-plugins:13.0.1",
         "digest": "",
-        "inputSha256": "7a9f004c54a158bc3f544ce3216e8a062c2423692b2aae768c777f39a2b876d4",
+        "inputSha256": "b0b1a44fff65e5a22ca31e2e2827f682dee25ad55a6401e0914940d6fa756711",
         "delivery": {
           "type": "build",
           "bakeTarget": "grafana-plugins",
@@ -3842,7 +3842,7 @@
         "id": "postgresql-18",
         "target": "10.77.0.9:32443/atum/postgresql-18:18.4",
         "digest": "",
-        "inputSha256": "e3d573c80776eedaa0f05a9853d6f58cc0f7ab948d415e986f70b78e301796f6",
+        "inputSha256": "9cedb7fe40f3fd39634b486847b8cf65c54b336e0173fd4cda1b5dfce26f91af",
         "delivery": {
           "type": "build",
           "bakeTarget": "postgresql-18-compat",
@@ -3990,7 +3990,7 @@
         "id": "vault",
         "target": "10.77.0.9:32443/atum/vault:1.21.4",
         "digest": "",
-        "inputSha256": "45b38f3a2f0a7d979f53c95e47e1721d77f78ec97aa00f75cadbb2cb221c78e5",
+        "inputSha256": "d77472f856196a97ca340736692df571888078b7d9dad7b1dc679e4d6c55e1b3",
         "delivery": {
           "type": "build",
           "bakeTarget": "vault-curl-compat",
