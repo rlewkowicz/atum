@@ -123,6 +123,13 @@ USER root
 COPY --from=atum_curl_upstream /usr/bin/curl /usr/local/lib/atum-curl/curl
 COPY --from=atum_curl_upstream /usr/lib/ /usr/local/lib/atum-curl/
 COPY --chmod=0755 compat/vault/curl /usr/bin/curl
+RUN set -eux; \
+    libcurl_target="$(readlink /usr/local/lib/atum-curl/libcurl.so.4)"; \
+    libcurl_target="${libcurl_target##*/}"; \
+    test -f "/usr/local/lib/atum-curl/${libcurl_target}"; \
+    ln -sfn "${libcurl_target}" /usr/local/lib/atum-curl/libcurl.so.4; \
+    ln -sfn libcurl.so.4 /usr/local/lib/atum-curl/libcurl.so; \
+    /usr/bin/curl --version | grep -q 'Protocols:.*http.*https'
 LABEL org.opencontainers.image.created="${ATUM_IMAGE_CREATED}" \
       org.opencontainers.image.licenses="${ATUM_IMAGE_LICENSE}" \
       org.opencontainers.image.source="${ATUM_IMAGE_SOURCE}" \

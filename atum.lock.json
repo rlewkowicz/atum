@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "5f4613cf8d2566258fa1aa5f18b5699e28e1f0b76263941918b4ec656280eb10",
+  "desiredSha256": "734f23fd43941f457077bba9d05fd2d8c8ac8f6d00c82cb572418acc77bde748",
   "resolved": {
     "clusterReleases": [
       {
@@ -2039,8 +2039,8 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "99df48cfe2d6f9c380909a0cd50db2a618be99b58b353f4210776d8774c11269",
-    "graphSha256": "71f80e4a4042819379a70774de329a90c5395c341041990ce472cd659ffb7c99",
+    "inventorySha256": "fd26b376f4c7cc723a1f96e77131858dc753584799add51da431f0870c54fa87",
+    "graphSha256": "ea5555287b785b24c41a03e972fc3bcc50fe3f8f409ba57faad6e9f507e8ce59",
     "images": [
       {
         "id": "alertmanager",
@@ -2056,9 +2056,9 @@
       },
       {
         "id": "atum-operator",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-82271ae3912524e04ace0c19c94393b96266e1f3b7fd601c658725f8a420a581",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-b2af1f49fc6c51bfeacb851cd33e7934569d0dfb7c1ba13cb576c8a52a8feff5",
         "digest": "",
-        "inputSha256": "82271ae3912524e04ace0c19c94393b96266e1f3b7fd601c658725f8a420a581",
+        "inputSha256": "b2af1f49fc6c51bfeacb851cd33e7934569d0dfb7c1ba13cb576c8a52a8feff5",
         "delivery": {
           "type": "build",
           "bakeTarget": "atum-operator",
@@ -2242,9 +2242,9 @@
       },
       {
         "id": "garage-init-helper",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-971f118632c06fbb671df93c3be767883fde79be81cde1cbe671ba59dd0936c8",
         "digest": "",
-        "inputSha256": "6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1",
+        "inputSha256": "971f118632c06fbb671df93c3be767883fde79be81cde1cbe671ba59dd0936c8",
         "delivery": {
           "type": "build",
           "bakeTarget": "garage-init-helper",
@@ -2378,9 +2378,9 @@
       },
       {
         "id": "grafana-plugins",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-749c5927eb5de77f7d9aa265869919a62ae3d35f34dc7fb0568498d5f28c198f",
         "digest": "",
-        "inputSha256": "7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee",
+        "inputSha256": "749c5927eb5de77f7d9aa265869919a62ae3d35f34dc7fb0568498d5f28c198f",
         "delivery": {
           "type": "build",
           "bakeTarget": "grafana-plugins",
@@ -3874,9 +3874,9 @@
       },
       {
         "id": "postgresql-18",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-7a389ed4000a8adbde8da738f472c22fd2d6e88a243fa7707cd782812c99a6e2",
         "digest": "",
-        "inputSha256": "f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9",
+        "inputSha256": "7a389ed4000a8adbde8da738f472c22fd2d6e88a243fa7707cd782812c99a6e2",
         "delivery": {
           "type": "build",
           "bakeTarget": "postgresql-18-compat",
@@ -4022,9 +4022,9 @@
       },
       {
         "id": "vault",
-        "target": "10.77.0.9:32443/atum/vault:build-4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5",
+        "target": "10.77.0.9:32443/atum/vault:build-7287cc2d1e85529bf8624270bb4e624d37ac78b7741068edaf9c837b1d6aa540",
         "digest": "",
-        "inputSha256": "4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5",
+        "inputSha256": "7287cc2d1e85529bf8624270bb4e624d37ac78b7741068edaf9c837b1d6aa540",
         "delivery": {
           "type": "build",
           "bakeTarget": "vault-curl-compat",
