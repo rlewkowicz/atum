@@ -8,7 +8,7 @@ locals {
   node_names              = [for index in range(var.node_count) : format("%s-node-%d", var.name_prefix, index + 1)]
   node_ips                = [for index in range(var.node_count) : var.node_ips[index]]
   node_macs               = [for index in range(var.node_count) : format("52:54:00:61:74:%02x", index + 11)]
-  domain_names            = toset(concat([local.load_balancer_name, local.bastion_name], local.node_names))
+  cluster_domain_names    = toset(concat([local.load_balancer_name], local.node_names))
   ssh_public_key          = trimspace(file(pathexpand(var.ssh_public_key_path)))
   dhcp_range              = { start = "10.77.0.100", end = "10.77.0.199" }
   infrastructure_ips      = concat([var.dns_server, var.bastion_ip, var.load_balancer_ip], local.node_ips)

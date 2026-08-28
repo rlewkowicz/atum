@@ -369,7 +369,7 @@ resource "libvirt_domain" "node" {
 }
 
 resource "terraform_data" "domain_stop_guard" {
-  for_each = local.domain_names
+  for_each = local.cluster_domain_names
 
   input = {
     name = each.value
@@ -389,7 +389,28 @@ resource "terraform_data" "domain_stop_guard" {
 
   depends_on = [
     libvirt_domain.load_balancer,
-    libvirt_domain.bastion,
     libvirt_domain.node,
+  ]
+}
+
+resource "terraform_data" "bastion_stop_guard" {
+  input = {
+    name = local.bastion_name
+    uri  = var.libvirt_uri
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "/usr/bin/env bash \"$ATUM_DOMAIN_STOP_SCRIPT\""
+
+    environment = {
+      ATUM_DOMAIN_STOP_SCRIPT = "${path.module}/scripts/stop-domain.sh"
+      ATUM_LIBVIRT_DOMAIN     = self.input.name
+      ATUM_LIBVIRT_URI        = self.input.uri
+    }
+  }
+
+  depends_on = [
+    libvirt_domain.bastion,
   ]
 }
