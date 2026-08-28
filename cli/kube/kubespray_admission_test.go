@@ -471,7 +471,12 @@ func TestAtumKubesprayInventoryScopesAnonymousAPI(t *testing.T) {
 	assertInventoryEvidence(
 		filepath.Join("orchestration", "inventory", "atum", "group_vars", "k8s_cluster", "k8s-cluster.yml"),
 		[]string{
+			"enable_nodelocaldns: false",
 			"dns_mode: coredns",
+			"upstream_dns_servers:",
+			`- "{{ atum_dns_server }}"`,
+			"dns_upstream_forward_extra_opts:",
+			`force_tcp: ""`,
 			"kube_api_anonymous_auth: false",
 			"default({'enabled': false})",
 			"/healthz, /livez, and",
@@ -479,6 +484,8 @@ func TestAtumKubesprayInventoryScopesAnonymousAPI(t *testing.T) {
 			"kube-public/cluster-info",
 		},
 		[]string{
+			"dns_min_replicas: 1",
+			"coredns_replicas: 1",
 			"'conditions'",
 			"default({'enabled': true})",
 		},

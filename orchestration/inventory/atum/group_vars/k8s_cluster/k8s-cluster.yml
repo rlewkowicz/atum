@@ -12,6 +12,8 @@ dns_mode: coredns
 # selects the CoreDNS Pods, not a link-local hostNetwork cache.
 upstream_dns_servers:
   - "{{ atum_dns_server }}"
+dns_upstream_forward_extra_opts:
+  force_tcp: ""
 
 # Kubespray owns the mounted authentication file and kubeadm flags. Atum hands
 # it one complete projection from the active identity contract, including the
@@ -38,8 +40,6 @@ cilium_version: "1.19.4"
 # its default IPVS mode and the Flux-owned kube-vip release advertises service
 # addresses in ARP mode.
 kube_proxy_strict_arp: true
-dns_min_replicas: 1
-coredns_replicas: 1
 
 # kubeadm's CreateJob upgrade check has a fixed 15-second deadline. On a busy
 # control plane the Job can finish immediately after that deadline even though

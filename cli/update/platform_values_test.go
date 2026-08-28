@@ -75,6 +75,25 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 		strings.Contains(operationalText, "allow-fluentbit-opensearch-to-anywhere") {
 		t.Fatal("obsolete or broad OpenSearch security exception remains")
 	}
+	if mapAt(
+		operational, "addons", "authservice", "values", "config",
+	)["logLevel"] != "info" {
+		t.Fatal("Authservice must not log secret-bearing expanded configuration")
+	}
+	prometheusAnnotations := mapAt(
+		operational,
+		"monitoring",
+		"values",
+		"upstream",
+		"prometheus",
+		"prometheusSpec",
+		"podMetadata",
+		"annotations",
+	)
+	if prometheusAnnotations["vault.hashicorp.com/tls-secret"] != "atum-sso-ca" ||
+		prometheusAnnotations["vault.hashicorp.com/ca-cert"] != "/vault/tls/ca.pem" {
+		t.Fatal("Prometheus Vault Agent must verify the platform Vault certificate")
+	}
 	fluentPolicy := mapAt(
 		operational, "fluentbit", "values", "networkPolicies", "egress",
 		"from", "fluent-bit", "to", "k8s", "opensearch/opensearch:9200",

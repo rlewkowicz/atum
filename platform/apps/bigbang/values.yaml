@@ -83,9 +83,22 @@ fluentbit:
               tls.verify          On
               tls.ca_file         /fluent-bit/tls/ca.crt
 
+monitoring:
+  values:
+    upstream:
+      prometheus:
+        prometheusSpec:
+          podMetadata:
+            annotations:
+              vault.hashicorp.com/tls-secret: atum-sso-ca
+              vault.hashicorp.com/ca-cert: /vault/tls/ca.pem
+
 addons:
   authservice:
     enabled: true
+    values:
+      config:
+        logLevel: info
 
   gitlab:
     enabled: true

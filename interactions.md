@@ -264,13 +264,36 @@ package boundary. Repeating a NodeLocal exception across every package, or
 installing a Calico-specific global policy, would replace one supported default
 with broad Atum-owned policy. The inventory instead disables optional
 NodeLocal DNS and retains Kubespray-owned CoreDNS, matching bb-common's native
-`k8s-app: kube-dns` rule. A constrained BusyBox probe issued 200 concurrent
-lookups for `keycloak.atum.test` directly through the CoreDNS Service and
-reported:
+`k8s-app: kube-dns` rule.
+
+The following clean startup then invalidated the earlier short, 200-query
+CoreDNS probe. Atum had also reduced Kubespray's documented two-replica
+CoreDNS floor to one. Normal `ndots:5` search expansion and simultaneous
+package startup saturated that singleton. Its metrics showed:
 
 ```text
-failures=0
+coredns_dns_requests_total:       495348
+coredns_dns_responses_total{rcode="SERVFAIL"}: 136578
+coredns_forward_max_concurrent_rejects_total:    8741
+coredns_proxy_conn_cache_misses_total{proto="udp"}: 411654
+go_goroutines: 938
 ```
+
+CoreDNS received workload requests, but its one-use UDP forwards to the
+Terraform-owned resolver repeatedly expired:
+
+```text
+[ERROR] plugin/errors: 2 keycloak.atum.test.atum.local. A:
+read udp 10.233.66.194:*->10.77.0.1:53: i/o timeout
+```
+
+This produced the same downstream symptom in Policy Reporter and the narrow
+Atum operator even though the passthrough gateway itself returned HTTP 200
+when the hostname was pinned to its ClusterIP. Kubespray documents
+`dns_upstream_forward_extra_opts` as the extension point for the CoreDNS
+forward block, and CoreDNS specifies that `force_tcp` overrides the built-in
+`prefer_udp` behavior. The inventory now uses that option and removes both
+singleton replica settings, restoring Kubespray's default two-replica floor.
 
 The Calico endpoint-to-host override is removed with NodeLocal DNS. Terraform
 still owns dnsmasq, Kubespray still owns cluster DNS and the CNI, and Big Bang

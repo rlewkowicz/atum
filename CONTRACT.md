@@ -56,8 +56,11 @@ state unchanged, so its separate late resolver lifecycle is not invoked; pod
 `clusterDNS` remains configured by Kubespray and points directly at the
 CoreDNS Service. Kubespray's optional NodeLocal DNS cache is disabled because
 Big Bang's default-deny package policies authorize DNS to the selected
-CoreDNS Pods rather than a link-local host-network endpoint. Terraform, Flux,
-and the Atum operator do not own or transition this policy.
+CoreDNS Pods rather than a link-local host-network endpoint. CoreDNS retains
+Kubespray's default two-replica floor and uses Kubespray's documented
+upstream-forward option to reuse TCP connections to the Terraform-owned
+dnsmasq endpoint. Terraform, Flux, and the Atum operator do not own or
+transition this policy.
 
 `platform/` is the monorepo representation consumed by Flux from the exact
 `main` branch of this repository on the bastion seed Forgejo instance.
