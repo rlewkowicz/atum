@@ -57,6 +57,13 @@ cilium_extra_values:
   # egress. The API servers are self-hosted on cluster nodes, so Cilium must
   # allow ipBlock selectors to match those node identities.
   policyCIDRMatchMode: nodes
+  # The selected chart enables the standalone Envoy metrics listener even
+  # without a metrics consumer. On this kernel, two of three first-start
+  # daemons repeatedly fail the wildcard :9964 bind while no host listener
+  # exists. Keep Envoy itself and remove only that unused listener.
+  envoy:
+    prometheus:
+      enabled: false
   routingMode: native
   tunnelProtocol: ""
   socketLB:

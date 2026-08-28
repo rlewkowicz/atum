@@ -367,9 +367,10 @@ type Delivery struct {
 	Images    []Image                      `json:"images"`
 }
 
-// KubesprayArtifactInventory is the exact output of the selected Kubespray
-// release's official contrib/offline workflow. The updater is its sole writer;
-// delivery projects the image entries into the common image graph and
+// KubesprayArtifactInventory retains the exact output of the selected
+// Kubespray release's official contrib/offline workflow plus the exact runtime
+// image coordinates declared by its selected charts. The updater is its sole
+// writer; delivery projects their union into the common image graph and
 // Kubespray consumes registry settings derived from those same targets.
 type KubesprayArtifactInventory struct {
 	SchemaVersion        string          `json:"schemaVersion"`
@@ -380,11 +381,12 @@ type KubesprayArtifactInventory struct {
 	InventoryScope       string          `json:"inventoryScope"`
 	InventorySHA256      string          `json:"inventorySha256"`
 	OfficialImages       []string        `json:"officialImages"`
+	RuntimeImages        []string        `json:"runtimeImages"`
 	Files                []KubesprayFile `json:"files"`
 	Images               []string        `json:"images"`
 }
 
-const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v6"
+const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v7"
 const KubesprayOfficialScript = "contrib/offline/generate_list.sh"
 const KubesprayFullOfflineInventory = "full-upstream-offline"
 
@@ -3042,6 +3044,7 @@ func validateKubesprayArtifactInventory(
 			inventory.InventoryScope != KubesprayFullOfflineInventory ||
 			!validHexSHA256(inventory.InventorySHA256) ||
 			len(inventory.OfficialImages) == 0 ||
+			len(inventory.RuntimeImages) == 0 ||
 			len(inventory.Files) == 0 || len(inventory.Images) == 0) {
 		*problems = append(*problems, "Kubespray artifact inventory identity is invalid")
 		return
@@ -3069,6 +3072,7 @@ func validateKubesprayArtifactInventory(
 			}
 		}
 	}
+	validateEntries("runtime image", inventory.RuntimeImages)
 	validateEntries("image", inventory.Images)
 	fileVariables := make(map[string]struct{}, len(inventory.Files))
 	fileSources := make(map[string]struct{}, len(inventory.Files))
@@ -3221,39 +3225,37 @@ func validateKubesprayOfficialImageProjection(
 		projectedSources[source] = id
 	}
 
-	expectedSources := make(map[string]struct{}, len(inventory.OfficialImages)+1)
-	for _, official := range inventory.OfficialImages {
-		reference, err := name.ParseReference(official)
+	expectedSources := make(
+		map[string]struct{},
+		len(inventory.OfficialImages)+len(inventory.RuntimeImages),
+	)
+	expected := make(
+		[]string,
+		0,
+		len(inventory.OfficialImages)+len(inventory.RuntimeImages),
+	)
+	expected = append(expected, inventory.OfficialImages...)
+	expected = append(expected, inventory.RuntimeImages...)
+	for _, sourceImage := range expected {
+		reference, err := name.ParseReference(sourceImage)
 		if err != nil {
 			return fmt.Errorf(
-				"Kubespray %s official image %q is invalid: %w",
+				"Kubespray %s source image %q is invalid: %w",
 				inventory.KubernetesVersion,
-				official,
+				sourceImage,
 				err,
 			)
 		}
 		tag, tagged := reference.(name.Tag)
 		if !tagged {
 			return fmt.Errorf(
-				"Kubespray %s official image %q is not tag-addressable",
+				"Kubespray %s source image %q is not tag-addressable",
 				inventory.KubernetesVersion,
-				official,
+				sourceImage,
 			)
 		}
 		source := tag.Name()
 		expectedSources[source] = struct{}{}
-		if tag.Context().Name() == "quay.io/cilium/operator" {
-			generic, err := name.NewTag(
-				"quay.io/cilium/operator-generic:" + tag.TagStr(),
-			)
-			if err != nil {
-				return fmt.Errorf(
-					"derive Kubespray Cilium generic image: %w",
-					err,
-				)
-			}
-			expectedSources[generic.Name()] = struct{}{}
-		}
 	}
 	missing := make([]string, 0)
 	for source := range expectedSources {

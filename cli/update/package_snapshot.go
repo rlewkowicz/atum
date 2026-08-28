@@ -111,10 +111,12 @@ direct mirror or as material for one evidence-backed compatibility build.
 Each row describes the complete image list emitted by the selected release's
 official offline script. It is retained without an Atum CNI, addon, or runtime
 allowlist; alternative Calico, Flannel, MetalLB, Hubble, and other upstream
-entries remain part of the air-gap inventory.
+entries remain part of the air-gap inventory. Chart runtime coordinates are
+recorded separately so an upstream offline tag can never be paired with a
+different chart-selected digest.
 
-| Kubernetes | Kubespray commit | Official script | Script SHA-256 | Official image count | Inventory scope |
-| --- | --- | --- | --- | --- | --- |
+| Kubernetes | Kubespray commit | Official script | Script SHA-256 | Official image count | Chart runtime image count | Inventory scope |
+| --- | --- | --- | --- | --- | --- | --- |
 `)
 	kubesprayRows, err := renderKubesprayInventoryRows(
 		desired.Delivery.Kubespray,
@@ -308,7 +310,8 @@ func renderKubesprayInventoryRows(
 		if inventory.InventoryScope != config.KubesprayFullOfflineInventory ||
 			inventory.OfficialScript != config.KubesprayOfficialScript ||
 			!validHexSHA256(inventory.OfficialScriptSHA256) ||
-			len(inventory.OfficialImages) == 0 {
+			len(inventory.OfficialImages) == 0 ||
+			len(inventory.RuntimeImages) == 0 {
 			return nil, fmt.Errorf(
 				"Kubespray %s package snapshot lacks complete official offline provenance",
 				inventory.KubernetesVersion,
@@ -321,6 +324,7 @@ func renderKubesprayInventoryRows(
 			inventory.OfficialScript,
 			inventory.OfficialScriptSHA256,
 			fmt.Sprintf("%d", len(inventory.OfficialImages)),
+			fmt.Sprintf("%d", len(inventory.RuntimeImages)),
 			inventory.InventoryScope,
 		)
 	}

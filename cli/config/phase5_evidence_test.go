@@ -81,7 +81,10 @@ func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
 	inventory := KubesprayArtifactInventory{
 		KubernetesVersion: "1.35.2",
 		OfficialImages:    official,
-		Images:            make([]string, len(sources)),
+		RuntimeImages: []string{
+			"quay.io/cilium/operator-generic:v1.19.1",
+		},
+		Images: make([]string, len(sources)),
 	}
 	projected := make(map[string]Image, len(sources))
 	projectedList := make([]Image, 0, len(sources))

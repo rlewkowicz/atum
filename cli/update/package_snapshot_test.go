@@ -74,6 +74,11 @@ func TestKubesprayInventoryRowsExposeExactFullUpstreamProvenance(t *testing.T) {
 			"quay.io/cilium/hubble-relay:v1.19.1",
 			"quay.io/cilium/operator:v1.19.1",
 		},
+		RuntimeImages: []string{
+			"quay.io/cilium/cilium:v1.19.1",
+			"quay.io/cilium/cilium-envoy:v1.34.10",
+			"quay.io/cilium/operator-generic:v1.19.1",
+		},
 	}
 	rows, err := renderKubesprayInventoryRows(
 		[]config.KubesprayArtifactInventory{inventory},
@@ -88,6 +93,7 @@ func TestKubesprayInventoryRowsExposeExactFullUpstreamProvenance(t *testing.T) {
 		config.KubesprayOfficialScript,
 		scriptSHA,
 		"5",
+		"3",
 		config.KubesprayFullOfflineInventory,
 	} {
 		if !strings.Contains(text, evidence) {

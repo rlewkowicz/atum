@@ -2,7 +2,10 @@ package update
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"atum/cli/config"
 )
 
 func TestKubesprayFullOfflineImageOutputIsNotFiltered(t *testing.T) {
@@ -15,10 +18,17 @@ func TestKubesprayFullOfflineImageOutputIsNotFiltered(t *testing.T) {
 		"quay.io/cilium/operator:v1.19.1",
 	}
 	wantOfficial := append([]string(nil), official...)
-	expanded, err := includeKubesprayChartRuntimeImages(official)
-	if err != nil {
-		t.Fatal(err)
+	runtime := []kubesprayRuntimeImage{
+		{
+			source: "quay.io/cilium/cilium-envoy:v1.36.6",
+			digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			source: "quay.io/cilium/operator-generic:v1.19.1",
+			digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
 	}
+	expanded := mergeKubesprayRuntimeImages(official, runtime)
 	if !reflect.DeepEqual(official, wantOfficial) {
 		t.Fatalf("official generate_list.sh output was mutated: got %#v want %#v", official, wantOfficial)
 	}
@@ -29,5 +39,70 @@ func TestKubesprayFullOfflineImageOutputIsNotFiltered(t *testing.T) {
 	}
 	if !containsString(expanded, "quay.io/cilium/operator-generic:v1.19.1") {
 		t.Fatalf("chart-derived Cilium runtime image is absent: %#v", expanded)
+	}
+	if !containsString(expanded, "quay.io/cilium/cilium-envoy:v1.36.6") {
+		t.Fatalf("chart-selected Envoy runtime image is absent: %#v", expanded)
+	}
+}
+
+func TestKubesprayCiliumRuntimeTagsUseExactChartCoordinates(t *testing.T) {
+	t.Parallel()
+
+	inventory := config.KubesprayArtifactInventory{
+		RuntimeImages: []string{
+			"quay.io/cilium/cilium:v1.19.4",
+			"quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+			"quay.io/cilium/operator-generic:v1.19.4",
+		},
+	}
+	tags, err := kubesprayCiliumRuntimeTags(inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]string{
+		"cilium_image_tag":              "v1.19.4",
+		"cilium_hubble_envoy_image_tag": "v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+		"cilium_operator_image_tag":     "v1.19.4",
+	}
+	if !reflect.DeepEqual(tags, expected) {
+		t.Fatalf("runtime tags = %#v, want %#v", tags, expected)
+	}
+
+	inventory.RuntimeImages = inventory.RuntimeImages[:2]
+	if _, err := kubesprayCiliumRuntimeTags(inventory); err == nil ||
+		!strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("incomplete runtime graph error = %v", err)
+	}
+}
+
+func TestKubesprayRuntimeDiscoveryUsesExactChartTags(t *testing.T) {
+	t.Parallel()
+
+	runtime := []kubesprayRuntimeImage{
+		{
+			source:              "quay.io/cilium/cilium:v1.19.4",
+			discoveryRepository: "quay.io/cilium/cilium",
+		},
+		{
+			source:              "quay.io/cilium/cilium-envoy:v1.36.6",
+			discoveryRepository: "quay.io/cilium/cilium-envoy",
+		},
+		{
+			source:              "quay.io/cilium/operator-generic:v1.19.4",
+			discoveryRepository: "quay.io/cilium/operator",
+		},
+	}
+	sources := []string{
+		"quay.io/cilium/cilium:v1.19.4",
+		"quay.io/cilium/cilium-envoy:v1.36.6",
+		"quay.io/cilium/operator:v1.19.4",
+	}
+	if err := validateKubesprayRuntimeDiscovery(sources, runtime); err != nil {
+		t.Fatal(err)
+	}
+	sources[1] = "quay.io/cilium/cilium-envoy:v1.34.10"
+	if err := validateKubesprayRuntimeDiscovery(sources, runtime); err == nil ||
+		!strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("mismatched runtime discovery error = %v", err)
 	}
 }

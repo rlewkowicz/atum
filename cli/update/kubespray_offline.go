@@ -34,13 +34,16 @@ const (
 )
 
 type kubesprayOfflineVars struct {
-	KubernetesVersion string `json:"kube_version"`
-	GCRImageRepo      string `json:"gcr_image_repo"`
-	KubeImageRepo     string `json:"kube_image_repo"`
-	KubeadmImageRepo  string `json:"kubeadm_image_repo"`
-	DockerImageRepo   string `json:"docker_image_repo"`
-	QuayImageRepo     string `json:"quay_image_repo"`
-	GitHubImageRepo   string `json:"github_image_repo"`
+	KubernetesVersion         string `json:"kube_version"`
+	GCRImageRepo              string `json:"gcr_image_repo"`
+	KubeImageRepo             string `json:"kube_image_repo"`
+	KubeadmImageRepo          string `json:"kubeadm_image_repo"`
+	DockerImageRepo           string `json:"docker_image_repo"`
+	QuayImageRepo             string `json:"quay_image_repo"`
+	GitHubImageRepo           string `json:"github_image_repo"`
+	CiliumImageTag            string `json:"cilium_image_tag"`
+	CiliumHubbleEnvoyImageTag string `json:"cilium_hubble_envoy_image_tag"`
+	CiliumOperatorImageTag    string `json:"cilium_operator_image_tag"`
 }
 
 type discoveredKubesprayFile struct {
@@ -52,6 +55,12 @@ type discoveredKubesprayFile struct {
 type kubesprayReleaseArtifacts struct {
 	inventory config.KubesprayArtifactInventory
 	images    []config.Image
+}
+
+type kubesprayRuntimeImage struct {
+	source              string
+	digest              string
+	discoveryRepository string
 }
 
 func (service *Service) reconstructKubesprayReleaseArtifacts(
@@ -171,16 +180,37 @@ func (service *Service) reconstructKubesprayArtifacts(
 			"exact Kubespray source is required for offline artifact discovery",
 		)
 	}
-	files, sources, officialImages, scriptSHA256, err := service.runKubesprayOfflineWorkflow(
-		ctx, desired, resolved, kubernetesVersion, parallelism,
+	ciliumVersion, err := service.kubesprayCiliumVersion(desired)
+	if err != nil {
+		return config.KubesprayArtifactInventory{}, err
+	}
+	runtimeImages, err := service.kubesprayChartRuntimeImages(
+		ctx,
+		ciliumVersion,
 	)
 	if err != nil {
 		return config.KubesprayArtifactInventory{}, err
 	}
-	chartDigests, err := service.kubesprayChartImageDigests(ctx, sources)
+	runtimeTags, err := kubesprayCiliumRuntimeTagsFromImages(runtimeImages)
 	if err != nil {
 		return config.KubesprayArtifactInventory{}, err
 	}
+	files, sources, officialImages, scriptSHA256, err := service.runKubesprayOfflineWorkflow(
+		ctx, desired, resolved, kubernetesVersion, runtimeTags, parallelism,
+	)
+	if err != nil {
+		return config.KubesprayArtifactInventory{}, err
+	}
+	if err := validateKubesprayRuntimeDiscovery(sources, runtimeImages); err != nil {
+		return config.KubesprayArtifactInventory{}, err
+	}
+	chartDigests := make(map[string]string, len(runtimeImages))
+	runtimeSources := make([]string, len(runtimeImages))
+	for index, image := range runtimeImages {
+		chartDigests[image.source] = image.digest
+		runtimeSources[index] = image.source
+	}
+	sources = mergeKubesprayRuntimeImages(sources, runtimeImages)
 	images := make([]config.Image, len(sources))
 	group, groupContext := errgroup.WithContext(ctx)
 	group.SetLimit(config.EffectiveWorkLimit(
@@ -202,17 +232,23 @@ func (service *Service) reconstructKubesprayArtifacts(
 					)
 				}
 				digest = resolvedDigest
-			} else if _, err := resolvePinnedImageDigests(
-				groupContext,
-				source,
-				digest,
-			); err != nil {
-				return fmt.Errorf(
-					"resolve chart-pinned Kubespray image %s@%s: %w",
-					source,
-					digest,
-					err,
-				)
+			} else {
+				resolved, resolveErr := resolveImageDigests(groupContext, source)
+				if resolveErr != nil {
+					return fmt.Errorf(
+						"resolve chart-pinned Kubespray image %s: %w",
+						source,
+						resolveErr,
+					)
+				}
+				if resolved.tag != digest {
+					return fmt.Errorf(
+						"chart-pinned Kubespray image %s resolves to root %s, want %s",
+						source,
+						resolved.tag,
+						digest,
+					)
+				}
 			}
 			reference, err := name.ParseReference(source)
 			if err != nil {
@@ -288,6 +324,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 		OfficialScriptSHA256: scriptSHA256,
 		InventoryScope:       config.KubesprayFullOfflineInventory,
 		OfficialImages:       officialImages,
+		RuntimeImages:        runtimeSources,
 		Files:                files,
 		Images:               imageIDs,
 	}
@@ -304,37 +341,52 @@ func (service *Service) reconstructKubesprayArtifacts(
 	return inventory, nil
 }
 
-func (service *Service) kubesprayChartImageDigests(
-	ctx context.Context,
-	sources []string,
-) (map[string]string, error) {
-	sourceByRepository := make(map[string]string, len(sources))
-	version := ""
-	for _, source := range sources {
-		reference, err := name.ParseReference(source)
-		if err != nil {
-			return nil, fmt.Errorf("parse Kubespray image %s: %w", source, err)
-		}
-		repository := reference.Context().Name()
-		if existing, duplicate := sourceByRepository[repository]; duplicate &&
-			existing != source {
-			return nil, fmt.Errorf(
-				"Kubespray image repository %s has multiple tags",
-				repository,
-			)
-		}
-		sourceByRepository[repository] = source
-		if repository != "quay.io/cilium/cilium" {
-			continue
-		}
-		candidate := strings.TrimPrefix(reference.Identifier(), "v")
-		if version != "" && version != candidate {
-			return nil, errors.New("Kubespray Cilium image versions are ambiguous")
-		}
-		version = candidate
+func (service *Service) kubesprayCiliumVersion(
+	desired *config.Document,
+) (string, error) {
+	if desired == nil || desired.Orchestration.Inventory == "" {
+		return "", errors.New("Kubespray inventory is required")
 	}
+	path, err := fssecure.Resolve(
+		service.root,
+		filepath.Join(
+			desired.Orchestration.Inventory,
+			"group_vars", "k8s_cluster", "k8s-cluster.yml",
+		),
+		false,
+	)
+	if err != nil {
+		return "", fmt.Errorf("resolve Kubespray Cilium configuration: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read Kubespray Cilium configuration: %w", err)
+	}
+	var variables map[string]any
+	if err := yaml.Unmarshal(data, &variables); err != nil {
+		return "", fmt.Errorf("decode Kubespray Cilium configuration: %w", err)
+	}
+	configured, ok := variables["cilium_version"].(string)
+	if !ok {
+		return "", errors.New("Kubespray cilium_version must be one string")
+	}
+	configured = strings.TrimSpace(configured)
+	version := strings.TrimPrefix(configured, "v")
+	if version == "" || strings.ContainsAny(version, " \t\r\n{}") {
+		return "", fmt.Errorf(
+			"Kubespray cilium_version %q is not an exact version",
+			configured,
+		)
+	}
+	return version, nil
+}
+
+func (service *Service) kubesprayChartRuntimeImages(
+	ctx context.Context,
+	version string,
+) ([]kubesprayRuntimeImage, error) {
 	if version == "" {
-		return nil, nil
+		return nil, errors.New("Kubespray Cilium version is required")
 	}
 	releases, err := service.charts.HTTPSReleases(
 		ctx,
@@ -379,7 +431,8 @@ func (service *Service) kubesprayChartImageDigests(
 			suffix:    "-generic",
 		},
 	}
-	digests := make(map[string]string, len(bindings))
+	runtime := make([]kubesprayRuntimeImage, 0, len(bindings))
+	seenSources := make(map[string]string, len(bindings))
 	for _, binding := range bindings {
 		image, err := valuesAt(chart.Values, binding.path)
 		if err != nil {
@@ -390,24 +443,100 @@ func (service *Service) kubesprayChartImageDigests(
 			)
 		}
 		repository, _ := image["repository"].(string)
+		tag, _ := image["tag"].(string)
 		digest, _ := image[binding.digestKey].(string)
-		if repository == "" ||
+		if repository == "" || tag == "" ||
 			!strings.HasPrefix(digest, "sha256:") {
 			return nil, fmt.Errorf(
 				"Cilium chart image %s is incomplete",
 				binding.path,
 			)
 		}
-		source, discovered := sourceByRepository[repository+binding.suffix]
-		if !discovered {
-			return nil, fmt.Errorf(
-				"Cilium chart runtime repository %s is absent from Kubespray discovery",
-				repository+binding.suffix,
+		source := repository + binding.suffix + ":" + tag
+		if current, duplicate := seenSources[source]; duplicate {
+			if current != digest {
+				return nil, fmt.Errorf(
+					"Cilium chart runtime image %s has conflicting digests",
+					source,
+				)
+			}
+			continue
+		}
+		seenSources[source] = digest
+		runtime = append(runtime, kubesprayRuntimeImage{
+			source:              source,
+			digest:              digest,
+			discoveryRepository: repository,
+		})
+	}
+	sort.Slice(runtime, func(i, j int) bool {
+		return runtime[i].source < runtime[j].source
+	})
+	return runtime, nil
+}
+
+func validateKubesprayRuntimeDiscovery(
+	sources []string,
+	runtime []kubesprayRuntimeImage,
+) error {
+	sourceByRepository := make(map[string]string, len(sources))
+	for _, source := range sources {
+		reference, err := name.ParseReference(source)
+		if err != nil {
+			return fmt.Errorf("parse Kubespray image %s: %w", source, err)
+		}
+		repository := reference.Context().Name()
+		if existing, duplicate := sourceByRepository[repository]; duplicate &&
+			existing != source {
+			return fmt.Errorf(
+				"Kubespray image repository %s has multiple tags",
+				repository,
 			)
 		}
-		digests[source] = digest
+		sourceByRepository[repository] = source
 	}
-	return digests, nil
+	for _, image := range runtime {
+		runtimeReference, err := name.ParseReference(image.source)
+		if err != nil {
+			return fmt.Errorf(
+				"parse Cilium chart runtime image %s: %w",
+				image.source,
+				err,
+			)
+		}
+		discovered, present := sourceByRepository[image.discoveryRepository]
+		if !present {
+			return fmt.Errorf(
+				"Cilium chart runtime repository %s is absent from Kubespray discovery",
+				image.discoveryRepository,
+			)
+		}
+		discoveredReference, err := name.ParseReference(discovered)
+		if err != nil {
+			return fmt.Errorf("parse Kubespray image %s: %w", discovered, err)
+		}
+		if discoveredReference.Identifier() != runtimeReference.Identifier() {
+			return fmt.Errorf(
+				"Cilium chart runtime image %s does not match Kubespray discovery %s",
+				image.source,
+				discovered,
+			)
+		}
+	}
+	return nil
+}
+
+func mergeKubesprayRuntimeImages(
+	official []string,
+	runtime []kubesprayRuntimeImage,
+) []string {
+	merged := make([]string, 0, len(official)+len(runtime))
+	merged = append(merged, official...)
+	for _, image := range runtime {
+		merged = append(merged, image.source)
+	}
+	sort.Strings(merged)
+	return compactSorted(merged)
 }
 
 func (service *Service) runKubesprayOfflineWorkflow(
@@ -415,6 +544,7 @@ func (service *Service) runKubesprayOfflineWorkflow(
 	desired *config.Document,
 	resolved resolvedGit,
 	kubernetesVersion string,
+	runtimeTags map[string]string,
 	parallelism int,
 ) (
 	files []config.KubesprayFile,
@@ -500,13 +630,16 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		resultErr = errors.Join(resultErr, cleanupInvocation())
 	}()
 	vars := kubesprayOfflineVars{
-		KubernetesVersion: strings.TrimPrefix(kubernetesVersion, "v"),
-		GCRImageRepo:      "gcr.io",
-		KubeImageRepo:     "registry.k8s.io",
-		KubeadmImageRepo:  "registry.k8s.io",
-		DockerImageRepo:   "docker.io",
-		QuayImageRepo:     "quay.io",
-		GitHubImageRepo:   "ghcr.io",
+		KubernetesVersion:         strings.TrimPrefix(kubernetesVersion, "v"),
+		GCRImageRepo:              "gcr.io",
+		KubeImageRepo:             "registry.k8s.io",
+		KubeadmImageRepo:          "registry.k8s.io",
+		DockerImageRepo:           "docker.io",
+		QuayImageRepo:             "quay.io",
+		GitHubImageRepo:           "ghcr.io",
+		CiliumImageTag:            runtimeTags["cilium_image_tag"],
+		CiliumHubbleEnvoyImageTag: runtimeTags["cilium_hubble_envoy_image_tag"],
+		CiliumOperatorImageTag:    runtimeTags["cilium_operator_image_tag"],
 	}
 	varsData, err := json.Marshal(vars)
 	if err != nil {
@@ -647,10 +780,6 @@ func (service *Service) runKubesprayOfflineWorkflow(
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
-	images, err = includeKubesprayChartRuntimeImages(images)
-	if err != nil {
-		return nil, nil, nil, "", err
-	}
 	sort.Strings(images)
 	images = compactSorted(images)
 	archiveRelative, err := filepath.Rel(service.root, downloadArchive)
@@ -703,34 +832,6 @@ func (service *Service) runKubesprayOfflineWorkflow(
 		0, len(images),
 	)
 	return files, images, officialImages, scriptSHA256, nil
-}
-
-// includeKubesprayChartRuntimeImages closes the boundary between Kubespray's
-// offline inventory and images derived by charts at render time. Cilium takes
-// the configured operator repository as a base and appends the selected cloud
-// suffix; the local profile selects the generic operator. Keep the base image
-// required by Kubespray's download role and add the actual chart consumer.
-func includeKubesprayChartRuntimeImages(images []string) ([]string, error) {
-	expanded := make([]string, 0, len(images)+1)
-	for _, image := range images {
-		expanded = append(expanded, image)
-		reference, err := name.ParseReference(image)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"parse Kubespray chart-derived image %s: %w",
-				image,
-				err,
-			)
-		}
-		if reference.Context().Name() != "quay.io/cilium/operator" {
-			continue
-		}
-		expanded = append(
-			expanded,
-			"quay.io/cilium/operator-generic:"+reference.Identifier(),
-		)
-	}
-	return expanded, nil
 }
 
 func readKubesprayList(path string, imageList bool) ([]string, []string, error) {
@@ -1180,7 +1281,106 @@ func kubesprayRegistryValues(desired config.Document) (map[string]any, error) {
 			}
 		}
 	}
+	targetRelease, err := desired.Orchestration.TargetRelease()
+	if err != nil {
+		return nil, err
+	}
+	var targetInventory *config.KubesprayArtifactInventory
+	for index := range desired.Delivery.Kubespray {
+		inventory := &desired.Delivery.Kubespray[index]
+		if inventory.KubernetesVersion != targetRelease.Kubernetes ||
+			inventory.KubesprayCommit != targetRelease.Kubespray.Commit {
+			continue
+		}
+		if targetInventory != nil {
+			return nil, errors.New(
+				"target Kubespray chart runtime inventory is duplicated",
+			)
+		}
+		targetInventory = inventory
+	}
+	if targetInventory == nil {
+		return nil, errors.New(
+			"target Kubespray chart runtime inventory is absent",
+		)
+	}
+	runtimeTags, err := kubesprayCiliumRuntimeTags(*targetInventory)
+	if err != nil {
+		return nil, err
+	}
+	for variable, tag := range runtimeTags {
+		values[variable] = tag
+	}
 	return values, nil
+}
+
+func kubesprayCiliumRuntimeTags(
+	inventory config.KubesprayArtifactInventory,
+) (map[string]string, error) {
+	tags := make(map[string]string, 3)
+	for _, source := range inventory.RuntimeImages {
+		if err := addKubesprayCiliumRuntimeTag(tags, source); err != nil {
+			return nil, err
+		}
+	}
+	return completeKubesprayCiliumRuntimeTags(tags)
+}
+
+func kubesprayCiliumRuntimeTagsFromImages(
+	images []kubesprayRuntimeImage,
+) (map[string]string, error) {
+	tags := make(map[string]string, 3)
+	for _, image := range images {
+		if err := addKubesprayCiliumRuntimeTag(tags, image.source); err != nil {
+			return nil, err
+		}
+	}
+	return completeKubesprayCiliumRuntimeTags(tags)
+}
+
+func addKubesprayCiliumRuntimeTag(
+	tags map[string]string,
+	source string,
+) error {
+	reference, err := name.ParseReference(source)
+	if err != nil {
+		return fmt.Errorf(
+			"parse Kubespray chart runtime image %s: %w",
+			source,
+			err,
+		)
+	}
+	var variable string
+	switch reference.Context().Name() {
+	case "quay.io/cilium/cilium":
+		variable = "cilium_image_tag"
+	case "quay.io/cilium/cilium-envoy":
+		variable = "cilium_hubble_envoy_image_tag"
+	case "quay.io/cilium/operator-generic":
+		variable = "cilium_operator_image_tag"
+	default:
+		return nil
+	}
+	if current, duplicate := tags[variable]; duplicate &&
+		current != reference.Identifier() {
+		return fmt.Errorf(
+			"Kubespray chart runtime variable %s is ambiguous",
+			variable,
+		)
+	}
+	tags[variable] = reference.Identifier()
+	return nil
+}
+
+func completeKubesprayCiliumRuntimeTags(
+	tags map[string]string,
+) (map[string]string, error) {
+	if len(tags) != 3 {
+		return nil, errors.New(
+			"Kubespray Cilium chart runtime image graph is incomplete",
+		)
+	}
+	return tags, nil
 }
 
 func kubesprayCanonicalImages(

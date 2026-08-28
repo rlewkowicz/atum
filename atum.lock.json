@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "fe2e72e52b924c8c1a404d03e53a08195237d5251b60f3ee9b3509c2815d7fa3",
+  "desiredSha256": "5a8af6353dd285b7a810aa2b65e7014494a03e9918acebe2a488eeea1f026315",
   "resolved": {
     "clusterReleases": [
       {
@@ -46,13 +46,13 @@
     ],
     "kubespray": [
       {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
         "kubernetesVersion": "1.33.5",
         "kubesprayCommit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29",
         "officialScript": "contrib/offline/generate_list.sh",
         "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
         "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "581c5280bd42eed773af48ddb80340080659da1a2c0002088256d805cbdcaa01",
+        "inventorySha256": "b300342418db36a306649419e6729df48a15c95cf19cb8e821979ef902a03364",
         "officialImages": [
           "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
           "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
@@ -63,7 +63,7 @@
           "quay.io/cilium/certgen:v0.2.4",
           "quay.io/cilium/hubble-ui:v0.13.3",
           "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
           "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
           "docker.io/flannel/flannel:v0.27.3",
           "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
@@ -106,6 +106,11 @@
           "registry.k8s.io/kube-controller-manager:v1.33.5",
           "registry.k8s.io/kube-scheduler:v1.33.5",
           "registry.k8s.io/kube-proxy:v1.33.5"
+        ],
+        "runtimeImages": [
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator-generic:v1.19.4"
         ],
         "files": [
           {
@@ -310,7 +315,7 @@
           "kubespray-cert-manager-webhook-05059ded9a52",
           "kubespray-certgen-e453d89b438f",
           "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cilium-envoy-cec4be30caef",
           "kubespray-cinder-csi-plugin-fafe59d0f62e",
           "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
           "kubespray-cni-2a722760a7e1",
@@ -358,13 +363,13 @@
         ]
       },
       {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
         "kubernetesVersion": "1.34.3",
         "kubesprayCommit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a",
         "officialScript": "contrib/offline/generate_list.sh",
         "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
         "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "edba3c6a17eb31f762b104a0c37e20962f0b52843ca4c60fdfdca0cc1fd0912a",
+        "inventorySha256": "64eb55f155b83fc03687400f6c790f7797bdf319a1f8fe46d32fd97b68f8bdbb",
         "officialImages": [
           "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
           "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
@@ -375,7 +380,7 @@
           "quay.io/cilium/certgen:v0.2.4",
           "quay.io/cilium/hubble-ui:v0.13.3",
           "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
           "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
           "docker.io/flannel/flannel:v0.27.3",
           "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
@@ -419,6 +424,11 @@
           "registry.k8s.io/kube-controller-manager:v1.34.3",
           "registry.k8s.io/kube-scheduler:v1.34.3",
           "registry.k8s.io/kube-proxy:v1.34.3"
+        ],
+        "runtimeImages": [
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator-generic:v1.19.4"
         ],
         "files": [
           {
@@ -623,7 +633,7 @@
           "kubespray-cert-manager-webhook-05059ded9a52",
           "kubespray-certgen-e453d89b438f",
           "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cilium-envoy-cec4be30caef",
           "kubespray-cinder-csi-plugin-fafe59d0f62e",
           "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
           "kubespray-cni-255e166abdb6",
@@ -672,13 +682,13 @@
         ]
       },
       {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v6",
+        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
         "kubernetesVersion": "1.35.4",
         "kubesprayCommit": "1c9add48975060f45396b34d8e022c30d7f80dab",
         "officialScript": "contrib/offline/generate_list.sh",
         "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
         "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "05f3980dd933e9e46d89717b6386e955af6a6708e6581122ecb7854f00b8e8f5",
+        "inventorySha256": "74a7761420d0cca95d331955653fd092da25b09c1e0c9e425bb552a9e01398c8",
         "officialImages": [
           "quay.io/coreos/etcd:v3.6.10",
           "quay.io/cilium/cilium:v1.19.4",
@@ -687,7 +697,7 @@
           "quay.io/cilium/certgen:v0.2.4",
           "quay.io/cilium/hubble-ui:v0.13.3",
           "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
           "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
           "docker.io/flannel/flannel:v0.28.4",
           "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
@@ -728,6 +738,11 @@
           "registry.k8s.io/kube-controller-manager:v1.35.4",
           "registry.k8s.io/kube-scheduler:v1.35.4",
           "registry.k8s.io/kube-proxy:v1.35.4"
+        ],
+        "runtimeImages": [
+          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+          "quay.io/cilium/cilium:v1.19.4",
+          "quay.io/cilium/operator-generic:v1.19.4"
         ],
         "files": [
           {
@@ -932,7 +947,7 @@
           "kubespray-cert-manager-webhook-05059ded9a52",
           "kubespray-certgen-e453d89b438f",
           "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-9bde4c7d141f",
+          "kubespray-cilium-envoy-cec4be30caef",
           "kubespray-cinder-csi-plugin-fafe59d0f62e",
           "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
           "kubespray-cni-1e7d398d64e9",
@@ -2024,7 +2039,7 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "5b7e7510db91c043a2f05db54077db83623fae8b3fc1e737cb3425fe489c3aef",
+    "inventorySha256": "1dab963977121fe0348f4469d538e51fbc270e59f4c86dd4fb8b11a39b7d0ee7",
     "graphSha256": "34f7bb2b0bbdfe8b07438a5b0ae5b9a5cf64988b305913b931ce82a5a47b3c39",
     "images": [
       {
@@ -2280,12 +2295,12 @@
       {
         "id": "gitlab-exporter",
         "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0",
-        "digest": "sha256:5c626469140b246db681f787fbb0269db8439a2c59a609bd814317b39323e2b1",
-        "inputSha256": "3007e4ee4784adb3d9713a040569a17d553061a1cee83339ec3f8dfa3b169144",
+        "digest": "sha256:67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e50200357e8455580",
+        "inputSha256": "9a979907b7022a3329ba18f64e49be5ef873c5b33b0c56d9b9a0aeef475332b8",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-exporter:16.9.0",
-          "digest": "sha256:5c626469140b246db681f787fbb0269db8439a2c59a609bd814317b39323e2b1",
+          "digest": "sha256:67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e50200357e8455580",
           "sourceProfile": "platform"
         }
       },
@@ -2706,13 +2721,13 @@
         }
       },
       {
-        "id": "kubespray-cilium-envoy-9bde4c7d141f",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+        "id": "kubespray-cilium-envoy-cec4be30caef",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
         "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3",
-        "inputSha256": "71e3ba6592d83200711abc1452c1389c9c44eb0f911fd98ce279cc6de9c8900e",
+        "inputSha256": "87ebec039b02cce5c56fe83f243d27154cb4fde2c6bbfd466eb4694a04f715f5",
         "delivery": {
           "type": "mirror",
-          "source": "quay.io/cilium/cilium-envoy:v1.34.10-1762597008-ff7ae7d623be00078865cff1b0672cc5d9bfc6d5",
+          "source": "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
           "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3",
           "sourceProfile": "platform"
         }
