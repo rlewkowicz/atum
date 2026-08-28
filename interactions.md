@@ -219,6 +219,54 @@ of retaining the initial Cilium-era `enable_nodelocaldns=false` override.
 Terraform still owns dnsmasq, while Kubespray exclusively owns both DNS
 components.
 
+The fresh Calico deployment then exposed the other half of that boundary.
+Kubespray correctly projected NodeLocal DNS into each workload:
+
+```text
+search vault.svc.cluster.local svc.cluster.local cluster.local atum.local
+nameserver 169.254.25.10
+options ndots:5
+```
+
+The selected Vault package also correctly rendered bb-common's default-deny
+egress and its default DNS exception, but that exception selects only the
+central CoreDNS Pods:
+
+```yaml
+name: default-egress-allow-kube-dns
+egress:
+  - ports:
+      - {port: 53, protocol: UDP}
+      - {port: 53, protocol: TCP}
+    to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+```
+
+The live Calico DaemonSet showed
+`FELIX_DEFAULTENDPOINTTOHOSTACTION=RETURN`, while the live NodeLocal DNS
+DaemonSet was host-networked and listened on `169.254.25.10`. The selected
+Kubespray Calico guide documents `calico_endpoint_to_host_action: "ACCEPT"` for
+this exact pod-to-same-node-`hostNetwork` service topology. With `RETURN`, the
+host-local destination remained behind the host firewall after workload policy
+evaluation, so the injected proxy could not obtain a workload certificate:
+
+```text
+failed to sign CSR: create certificate: rpc error: code = Unavailable
+transport: Error while dialing: dial tcp:
+lookup istiod.istio-system.svc: i/o timeout
+```
+
+The deterministic fix remains in Kubespray's ownership plane: set its
+documented Calico endpoint-to-host action to `ACCEPT`. This preserves Big
+Bang's native NetworkPolicies, Istio sidecar injection, hardened
+authorization, and `STRICT` mesh mTLS without copying a NodeLocal exception
+into every package or patching the live cluster.
+
 GitLab registry exposed one independent, documented Garage consumer edge:
 
 ```text

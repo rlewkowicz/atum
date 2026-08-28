@@ -5,6 +5,11 @@ container_manager: containerd
 kube_network_plugin: calico
 enable_nodelocaldns: true
 dns_mode: coredns
+# Kubespray documents ACCEPT for pod traffic to same-node hostNetwork service
+# endpoints. NodeLocal DNS is exactly that topology; Calico's default RETURN
+# leaves the host-local resolver behind the host firewall after workload
+# NetworkPolicy evaluation.
+calico_endpoint_to_host_action: "ACCEPT"
 # Terraform owns the local dnsmasq endpoint and publishes its address. Kubespray
 # remains the sole owner of NodeLocal DNS and CoreDNS. NodeLocal DNS uses
 # Kubespray's default host-network path to the endpoint so the
