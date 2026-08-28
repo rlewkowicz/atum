@@ -72,6 +72,8 @@ const (
 )
 
 type KeycloakClient struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
 	ID   string     `json:"id"`
 	Kind ClientKind `json:"kind"`
@@ -112,6 +114,8 @@ const (
 type VaultRole struct {
 	// +kubebuilder:validation:Enum=atum-admin
 	Name string `json:"name"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
 	ClientID string `json:"clientID"`
 	// +kubebuilder:validation:MinItems=1

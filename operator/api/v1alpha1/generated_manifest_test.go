@@ -57,6 +57,27 @@ func TestGeneratedSchemaOwnsAdmissionContract(t *testing.T) {
 		string(roleNameSchema.Enum[0].Raw) != `"atum-admin"` {
 		t.Fatalf("Vault role name admission = %#v", roleNameSchema.Enum)
 	}
+	clientIDSchema := rootSchema.Properties["spec"].
+		Properties["keycloak"].
+		Properties["clients"].
+		Items.Schema.
+		Properties["id"]
+	vaultClientIDSchema := rootSchema.Properties["spec"].
+		Properties["vault"].
+		Properties["role"].
+		Properties["clientID"]
+	if clientIDSchema.MinLength == nil || *clientIDSchema.MinLength != 1 ||
+		clientIDSchema.MaxLength == nil || *clientIDSchema.MaxLength != 63 ||
+		vaultClientIDSchema.MinLength == nil || *vaultClientIDSchema.MinLength != 1 ||
+		vaultClientIDSchema.MaxLength == nil || *vaultClientIDSchema.MaxLength != 63 {
+		t.Fatalf(
+			"CEL client ID bounds = keycloak(%v,%v), vault(%v,%v)",
+			clientIDSchema.MinLength,
+			clientIDSchema.MaxLength,
+			vaultClientIDSchema.MinLength,
+			vaultClientIDSchema.MaxLength,
+		)
+	}
 	scopesSchema := rootSchema.Properties["spec"].
 		Properties["keycloak"].
 		Properties["scopes"]

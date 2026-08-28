@@ -87,6 +87,8 @@ spec:
                         audience:
                           type: boolean
                         id:
+                          maxLength: 63
+                          minLength: 1
                           pattern: ^[a-z][a-z0-9-]{0,62}$
                           type: string
                         kind:
@@ -204,6 +206,8 @@ spec:
                   role:
                     properties:
                       clientID:
+                        maxLength: 63
+                        minLength: 1
                         pattern: ^[a-z][a-z0-9-]{0,62}$
                         type: string
                       groupsClaim:

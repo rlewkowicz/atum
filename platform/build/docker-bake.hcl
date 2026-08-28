@@ -49,7 +49,7 @@ target "atum-operator" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.operator"
   target     = "atum-operator"
-  tags       = ["10.77.0.9:32443/atum/atum-operator:build-db8910da29318b141036c2e5223a3071e5f00efbe76ae10a040f39af30985e58"]
+  tags       = ["10.77.0.9:32443/atum/atum-operator:build-f6884e538d93a8b9bb07e3a482e2d43a1b7b984705ff2004cf2a5af674b0f39d"]
   contexts = {
     atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135"
     atum_source = "../.."
@@ -67,7 +67,7 @@ target "garage-init-helper" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "garage-init-helper"
-  tags       = ["10.77.0.9:32443/atum/garage-init-helper:build-abbfef03bf3768170d430f40618179f9879ff0e4e249cc0a7e24e0308cc12168"]
+  tags       = ["10.77.0.9:32443/atum/garage-init-helper:build-e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a"]
   args = {
     ATUM_IMAGE_LICENSE = "Debian"
     ATUM_IMAGE_SOURCE = "https://www.debian.org/;https://snapshot.debian.org/"
@@ -81,7 +81,7 @@ target "grafana-plugins" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "grafana-plugins"
-  tags       = ["10.77.0.9:32443/atum/grafana-plugins:build-6523e482f95693b29b46c30cf73062a1c5880521d9a1f9820544a4ddaf8a0c25"]
+  tags       = ["10.77.0.9:32443/atum/grafana-plugins:build-985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690"]
   contexts = {
     atum_grafana_upstream = "docker-image://docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455"
   }
@@ -99,7 +99,7 @@ target "postgresql-18-compat" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "postgresql-compat"
-  tags       = ["10.77.0.9:32443/atum/postgresql-18:build-84685418278f631f10ddab4e31f10ea6f859a6cfd403d6fceec318739b9fd30a"]
+  tags       = ["10.77.0.9:32443/atum/postgresql-18:build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154"]
   contexts = {
     atum_postgresql_upstream = "docker-image://docker.io/library/postgres@sha256:4cc13dede823cab4e05290c7fb3350fb4e599ecabd9b07e6706b5d5e8f5bc929"
   }
@@ -116,7 +116,7 @@ target "vault-curl-compat" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "vault-curl-compat"
-  tags       = ["10.77.0.9:32443/atum/vault:build-4df326c72a3099ec442da6051e3bfb9c673d62aaf92afb8c1610669d144d6569"]
+  tags       = ["10.77.0.9:32443/atum/vault:build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e"]
   contexts = {
     atum_curl_upstream = "docker-image://docker.io/curlimages/curl@sha256:43ebaa53d3806db6b1ce4353b6b26ae638ec1c167ee351524b05690f988bb20d"
     atum_vault_upstream = "docker-image://docker.io/hashicorp/vault@sha256:6c77f568e6b6310d5bc68befb5711b9215c574de7da489e7c24332581176888b"

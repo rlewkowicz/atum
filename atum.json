@@ -1626,7 +1626,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-db8910da29318b141036c2e5223a3071e5f00efbe76ae10a040f39af30985e58",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-f6884e538d93a8b9bb07e3a482e2d43a1b7b984705ff2004cf2a5af674b0f39d",
         "scopes": [
           "bigbang"
         ],
@@ -1991,7 +1991,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-abbfef03bf3768170d430f40618179f9879ff0e4e249cc0a7e24e0308cc12168",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a",
         "scopes": [
           "bigbang"
         ],
@@ -2490,7 +2490,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-6523e482f95693b29b46c30cf73062a1c5880521d9a1f9820544a4ddaf8a0c25",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690",
         "scopes": [
           "bigbang"
         ],
@@ -5615,7 +5615,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-84685418278f631f10ddab4e31f10ea6f859a6cfd403d6fceec318739b9fd30a",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154",
         "scopes": [
           "bigbang"
         ],
@@ -6087,7 +6087,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-4df326c72a3099ec442da6051e3bfb9c673d62aaf92afb8c1610669d144d6569",
+        "target": "10.77.0.9:32443/atum/vault:build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e",
         "scopes": [
           "bigbang"
         ],
