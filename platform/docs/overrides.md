@@ -72,10 +72,13 @@ selected child chart remains the resource and lifecycle owner.
 
 ## Local profile values
 
-The sole author of every value in this table is
-`platform/profiles/local/prep/values.yaml`; its scope is the supported local
-libvirt profile. Terraform remains authoritative for literal addresses and
-Kubespray for node/CNI facts.
+Static values in this table are authored in
+`platform/profiles/local/prep/values.yaml`. Identity-dependent values are
+projected by `atum pull updates` into
+`platform/profiles/local/prep/identity-values.yaml` from the identity contract
+and active target. Their scope is the supported local libvirt profile.
+Terraform remains authoritative for literal addresses and Kubespray for
+node/CNI facts.
 
 | Exact value or coupled set | Upstream evidence and reason | Security effect and owner | Removal condition |
 | --- | --- | --- | --- |
@@ -86,6 +89,7 @@ Kubespray for node/CNI facts.
 | `monitoring.values.networkPolicies.ingress.to.kube-prometheus-stack-prometheus-operator:10250.from` | Big Bang `3.31.1` injects `controlPlaneCidr` as a source at `chart/templates/monitoring/values.yaml:193-201`; the selected Monitoring chart accepts an overriding `from` map. | Disables the API destination range as a source and consumes only `controlPlaneWebhooks`. | Remove when Big Bang separates API destinations from webhook sources. |
 | `addons.vault.values.networkPolicies.egress.definitions.kubeAPI` | Big Bang `3.31.1`'s deprecated `vpcCidr` migration broadens this definition when no VPC exists. | Uses only the minimal API endpoint CIDR; no invented VPC range. | Remove with the Big Bang 4 migration removal or equivalent selected fix. |
 | `istioGateway.values.gateways.public.networkPolicies.ingress.to.public-ingressgateway:[8080,8443].from.k8s.*=true` | The selected Big Bang gateway defaults admit RFC1918 load-balancer sources with `ipBlock`, but Cilium preserves an in-cluster client's pod identity after translating the public VIP to the gateway backend. Those CIDRs therefore do not match Vault-injected workloads or the Atum operator when they call the same public HTTPS endpoints. | Admits Kubernetes pods only to the public gateway's application ports. Gateway TLS, host routing, application authentication, and downstream policies remain authoritative; the passthrough gateway is unchanged. | Remove when the selected gateway policy natively admits Cilium-identified clients of its public endpoints or internal provider endpoints replace every public hairpin dependency. |
+| `networkPolicies.egress.definitions.sso` set to the configured passthrough ingress VIP `/32` on TCP `443` | Big Bang `3.31.1` documents this global definition as the CIDR where SSO is served. Local Keycloak is served through the Terraform-reserved passthrough `LoadBalancer` VIP; selecting gateway Pods does not admit Cilium egress to that external VIP. | The updater projects the active target's exact VIP and HTTPS port. Terraform remains the address owner, Big Bang distributes the named definition, and each selected package owns its egress policy. | Remove when every SSO client uses a policy-addressable internal endpoint or the selected Big Bang/CNI integration can authorize the serving endpoint without an IP projection. |
 | `istiod.values.upstream.pilot.autoscaleEnabled=false` and `replicaCount=1` | Local capacity cannot support the production autoscaling topology. | Availability reduction limited to the local profile. | Remove in an HA profile. |
 | `kiali.values.upstream.cr.spec.deployment.replicas=1` | Local capacity override. | Local availability reduction. | Remove in an HA profile. |
 | Four Kyverno controller replica values set to `1` | Local capacity override for admission, background, cleanup, and reports controllers. | Local availability reduction; policy semantics are unchanged. | Raise independently as local capacity permits. |

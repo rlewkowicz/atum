@@ -148,7 +148,11 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	generatedIdentityValues, err := identityValues(identityContract)
+	var localAccess *config.LocalAccess
+	if target, found := desired.ActiveTarget(); found {
+		localAccess = target.LocalAccess
+	}
+	generatedIdentityValues, err := identityValues(identityContract, localAccess)
 	if err != nil {
 		return Result{}, err
 	}

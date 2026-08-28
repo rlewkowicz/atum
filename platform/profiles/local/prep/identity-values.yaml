@@ -172,13 +172,12 @@ stringData:
         egress:
             definitions:
                 sso:
+                    ports:
+                        - port: 443
+                          protocol: TCP
                     to:
-                        - namespaceSelector:
-                            matchLabels:
-                                kubernetes.io/metadata.name: istio-gateway
-                          podSelector:
-                            matchLabels:
-                                istio: ingressgateway
+                        - ipBlock:
+                            cidr: 10.77.0.21/32
     packages:
         opensearch:
             istio:

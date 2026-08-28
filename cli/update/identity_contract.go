@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -52,10 +53,24 @@ func loadCandidateIdentity(tree *candidateTree, desired config.Document) (*ident
 	return identity.Parse(data, relative)
 }
 
-func identityValues(contract *identity.Contract) (map[string]any, error) {
+func identityValues(
+	contract *identity.Contract,
+	localAccess *config.LocalAccess,
+) (map[string]any, error) {
 	if contract == nil {
 		return map[string]any{}, nil
 	}
+	if localAccess == nil {
+		return nil, errors.New("local access is required for identity values")
+	}
+	ssoEndpoint, err := netip.ParseAddr(localAccess.PassthroughIngressVIP)
+	if err != nil || !ssoEndpoint.Is4() {
+		return nil, fmt.Errorf(
+			"local passthrough ingress VIP %q must be an IPv4 address",
+			localAccess.PassthroughIngressVIP,
+		)
+	}
+	ssoEndpointCIDR := ssoEndpoint.String() + "/32"
 	client := func(application identity.Application) (identity.Client, error) {
 		value, found := contract.ClientForApplication(application)
 		if !found {
@@ -177,13 +192,9 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 			"egress": map[string]any{"definitions": map[string]any{
 				"sso": map[string]any{
 					"to": []any{map[string]any{
-						"namespaceSelector": map[string]any{"matchLabels": map[string]any{
-							"kubernetes.io/metadata.name": "istio-gateway",
-						}},
-						"podSelector": map[string]any{"matchLabels": map[string]any{
-							"istio": "ingressgateway",
-						}},
+						"ipBlock": map[string]any{"cidr": ssoEndpointCIDR},
 					}},
+					"ports": []any{map[string]any{"port": 443, "protocol": "TCP"}},
 				},
 			}},
 		},

@@ -54,18 +54,7 @@ func TestOperatorConfigurationProjectsIdentityKindAndCanonicalClaims(t *testing.
 func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
 	t.Parallel()
 
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err := identity.Load(root, "platform/profiles/local/identity/contract.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	values, err := identityValues(contract)
-	if err != nil {
-		t.Fatal(err)
-	}
+	values := loadLocalIdentityValues(t)
 	addons := values["addons"].(map[string]any)
 	authservice := addons["authservice"].(map[string]any)
 	for name, value := range authservice["chains"].(map[string]any) {
@@ -93,18 +82,7 @@ func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
 func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 	t.Parallel()
 
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err := identity.Load(root, "platform/profiles/local/identity/contract.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	values, err := identityValues(contract)
-	if err != nil {
-		t.Fatal(err)
-	}
+	values := loadLocalIdentityValues(t)
 	kiali := values["kiali"].(map[string]any)
 	if len(kiali) != 1 {
 		t.Fatalf("Kiali identity values bypass Big Bang's SSO contract: %#v", kiali)
@@ -115,6 +93,53 @@ func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 		sso["client_secret"] != "${ATUM_KIALI_CLIENT_SECRET}" {
 		t.Fatalf("Kiali SSO values = %#v", sso)
 	}
+}
+
+func TestIdentityValuesScopeSSOEgressToPassthroughHTTPSVIP(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	networkPolicies := values["networkPolicies"].(map[string]any)
+	egress := networkPolicies["egress"].(map[string]any)
+	definitions := egress["definitions"].(map[string]any)
+	sso := definitions["sso"].(map[string]any)
+	to := sso["to"].([]any)
+	if len(to) != 1 {
+		t.Fatalf("SSO egress destinations = %#v", to)
+	}
+	destination := to[0].(map[string]any)
+	ipBlock := destination["ipBlock"].(map[string]any)
+	if ipBlock["cidr"] != "10.77.0.21/32" || len(destination) != 1 {
+		t.Fatalf("SSO egress destination = %#v", destination)
+	}
+	ports := sso["ports"].([]any)
+	if len(ports) != 1 {
+		t.Fatalf("SSO egress ports = %#v", ports)
+	}
+	port := ports[0].(map[string]any)
+	if port["port"] != 443 || port["protocol"] != "TCP" {
+		t.Fatalf("SSO egress port = %#v", port)
+	}
+}
+
+func loadLocalIdentityValues(t *testing.T) map[string]any {
+	t.Helper()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := identity.Load(root, "platform/profiles/local/identity/contract.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := identityValues(contract, &config.LocalAccess{
+		PassthroughIngressVIP: "10.77.0.21",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return values
 }
 
 func TestFluxRenderValuesSubstituteOnlyUpdaterInspectionCopy(t *testing.T) {
