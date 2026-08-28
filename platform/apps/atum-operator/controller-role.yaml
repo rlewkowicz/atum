@@ -27,6 +27,14 @@ rules:
   resourceNames:
   - atum
   resources:
+  - platformidentityconfigurations
+  verbs:
+  - patch
+- apiGroups:
+  - platform.atum.dev
+  resourceNames:
+  - atum
+  resources:
   - platformidentityconfigurations/finalizers
   verbs:
   - update

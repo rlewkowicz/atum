@@ -141,8 +141,24 @@ func TestGeneratedRoleHasFixedSecretCustody(t *testing.T) {
 		t.Fatalf("generated Role identity = %s/%s", role.Namespace, role.Name)
 	}
 	foundSecrets := false
+	foundSingletonPatch := false
 	for _, rule := range role.Rules {
 		for _, resource := range rule.Resources {
+			if resource == "platformidentityconfigurations" {
+				for _, verb := range rule.Verbs {
+					if verb != "patch" {
+						continue
+					}
+					if len(rule.ResourceNames) != 1 ||
+						rule.ResourceNames[0] != SingletonName {
+						t.Fatalf(
+							"PlatformIdentityConfiguration patch custody = %v",
+							rule.ResourceNames,
+						)
+					}
+					foundSingletonPatch = true
+				}
+			}
 			if resource != "secrets" {
 				continue
 			}
@@ -156,5 +172,8 @@ func TestGeneratedRoleHasFixedSecretCustody(t *testing.T) {
 	}
 	if !foundSecrets {
 		t.Fatal("generated Role has no fixed Secret rule")
+	}
+	if !foundSingletonPatch {
+		t.Fatal("generated Role cannot patch the singleton finalizer")
 	}
 }

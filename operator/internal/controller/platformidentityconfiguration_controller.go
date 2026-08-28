@@ -42,6 +42,7 @@ type PlatformIdentityConfigurationReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations,verbs=get;list;watch,namespace=atum-system
+// +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations,resourceNames=atum,verbs=patch,namespace=atum-system
 // +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations/status,resourceNames=atum,verbs=get;update;patch,namespace=atum-system
 // +kubebuilder:rbac:groups=platform.atum.dev,resources=platformidentityconfigurations/finalizers,resourceNames=atum,verbs=update,namespace=atum-system
 // +kubebuilder:rbac:groups="",resources=secrets,resourceNames=atum-provider-credentials;atum-provider-ca,verbs=get,namespace=atum-system
