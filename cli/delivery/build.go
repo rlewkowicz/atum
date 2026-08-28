@@ -21,8 +21,7 @@ import (
 )
 
 const (
-	indexLimit       = 4 << 20
-	layoutEntryLimit = 10_000
+	indexLimit = 4 << 20
 )
 
 type buildOutput struct {
@@ -350,7 +349,7 @@ func lockedBuildOutput(ctx context.Context, output buildOutput) (config.LockedIm
 }
 
 func openBuildLayout(ctx context.Context, directory string) (*ocistore.Store, ocispec.Descriptor, error) {
-	if err := verifyOCILayoutTree(directory); err != nil {
+	if err := atumoci.ValidateLayoutTree(directory); err != nil {
 		return nil, ocispec.Descriptor{}, err
 	}
 	indexPath := filepath.Join(directory, ocispec.ImageIndexFile)
@@ -388,32 +387,4 @@ func openBuildLayout(ctx context.Context, directory string) (*ocistore.Store, oc
 		return nil, ocispec.Descriptor{}, err
 	}
 	return store, descriptor, nil
-}
-
-func verifyOCILayoutTree(directory string) error {
-	root, err := os.Lstat(directory)
-	if err != nil {
-		return err
-	}
-	if root.Mode()&os.ModeSymlink != 0 || !root.IsDir() {
-		return fmt.Errorf("OCI output is not a real directory")
-	}
-	entries := 0
-	return filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		entries++
-		if entries > layoutEntryLimit {
-			return fmt.Errorf("OCI output exceeds %d filesystem entries", layoutEntryLimit)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
-			return fmt.Errorf("OCI output contains unsupported path %s", path)
-		}
-		return nil
-	})
 }

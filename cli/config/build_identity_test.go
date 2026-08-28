@@ -63,6 +63,68 @@ func TestMirrorImageInputIncludesPublicationTarget(t *testing.T) {
 	if first == second {
 		t.Fatal("mirror publication target did not change its input identity")
 	}
+	tag, err := ContentAddressedMirrorTag("v"+image.Version, delivery.Digest)
+	if err != nil {
+		t.Fatalf("resolve content-addressed mirror tag: %v", err)
+	}
+	if tag != "v1.2.3-mirror-"+strings.Repeat("a", mirrorTagIdentityLength) {
+		t.Fatalf("content-addressed mirror tag = %q", tag)
+	}
+}
+
+func TestContentAddressedMirrorTagsPreserveSharedHubVersion(t *testing.T) {
+	images := []Image{
+		{
+			ID:      "pilot",
+			Version: "1.30.3",
+			Target:  "registry.example/atum/pilot:1.30.3",
+			Delivery: ImageDelivery{Default: DeliveryChoice{
+				Type:   "mirror",
+				Source: "docker.io/istio/pilot:1.30.3",
+				Digest: "sha256:" + strings.Repeat("a", 64),
+			}},
+		},
+		{
+			ID:      "proxyv2",
+			Version: "1.30.3",
+			Target:  "registry.example/atum/proxyv2:1.30.3",
+			Delivery: ImageDelivery{Default: DeliveryChoice{
+				Type:   "mirror",
+				Source: "docker.io/istio/proxyv2:1.30.3",
+				Digest: "sha256:" + strings.Repeat("b", 64),
+			}},
+		},
+	}
+	first, err := ContentAddressedMirrorTags(images)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first["pilot"] != first["proxyv2"] ||
+		!strings.HasPrefix(first["pilot"], "1.30.3-mirror-set-") {
+		t.Fatalf("shared hub/version tags = %#v", first)
+	}
+	for index := range images {
+		images[index].Target = "registry.example/atum/" +
+			images[index].ID + ":" + first[images[index].ID]
+	}
+	second, err := ContentAddressedMirrorTags(images)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first["pilot"] != second["pilot"] ||
+		first["proxyv2"] != second["proxyv2"] {
+		t.Fatalf("repeat shared tags changed from %#v to %#v", first, second)
+	}
+	images[1].Delivery.Default.Digest =
+		"sha256:" + strings.Repeat("c", 64)
+	changed, err := ContentAddressedMirrorTags(images)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed["pilot"] == first["pilot"] ||
+		changed["pilot"] != changed["proxyv2"] {
+		t.Fatalf("changed shared tags = %#v, original %#v", changed, first)
+	}
 }
 
 func TestBuildGraphIdentityNormalizesOnlyCanonicalTargetTags(t *testing.T) {

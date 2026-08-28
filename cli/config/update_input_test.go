@@ -87,6 +87,76 @@ func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 	}
 }
 
+func TestExactMirrorReceiptsRetainOnlyImmutableCacheAddresses(t *testing.T) {
+	t.Parallel()
+	digest := "sha256:" + strings.Repeat("a", 64)
+	targetTag, err := ContentAddressedMirrorTag(
+		"1.28.2-alpine",
+		digest,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := Image{
+		ID:        "kubespray-nginx",
+		Discovery: "kubespray",
+		Target:    "registry.atum.test/atum/kubespray-nginx:" + targetTag,
+		Delivery: ImageDelivery{Default: DeliveryChoice{
+			Type:   "mirror",
+			Source: "index.docker.io/library/nginx:1.28.2-alpine",
+			Digest: digest,
+		}},
+	}
+	forbidden := canonical
+	forbidden.ID = "forbidden"
+	forbidden.Target = "registry.atum.test/atum/forbidden:" + targetTag
+	forbidden.Delivery.Default.Source =
+		"registry1.dso.mil/ironbank/opensource/nginx/nginx:1.28.2"
+	invalidDigest := canonical
+	invalidDigest.ID = "invalid-digest"
+	invalidDigest.Target =
+		"registry.atum.test/atum/invalid-digest:" + targetTag
+	invalidDigest.Delivery.Default.Digest = ""
+
+	receipts, err := exactMirrorReceipts(
+		DeliveryPolicy{
+			MutableTagsForbidden:  true,
+			RuntimeRegistryPrefix: "registry.atum.test/atum/",
+			ForbiddenArtifactPrefixes: []string{
+				"registry1.dso.mil/ironbank",
+			},
+		},
+		[]Image{canonical, forbidden, invalidDigest},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 1 {
+		t.Fatalf("exact mirror receipts = %#v, want one", receipts)
+	}
+	receipt := receipts[canonical.ID]
+	if receipt.ID != canonical.ID ||
+		receipt.Target != canonical.Target ||
+		receipt.Source != canonical.Delivery.Default.Source ||
+		receipt.Digest != digest {
+		t.Fatalf("exact mirror receipt = %#v", receipt)
+	}
+
+	duplicate := canonical
+	receipts, err = exactMirrorReceipts(
+		DeliveryPolicy{
+			RuntimeRegistryPrefix: "registry.atum.test/atum/",
+		},
+		[]Image{canonical, duplicate},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 0 {
+		t.Fatalf("duplicate mirror produced receipts: %#v", receipts)
+	}
+}
+
 func TestCompatibilityReceiptsAreDeepCopiedAndFiltered(t *testing.T) {
 	t.Parallel()
 	digest := "sha256:" + strings.Repeat("d", 64)

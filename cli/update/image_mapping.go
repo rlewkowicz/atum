@@ -10,6 +10,7 @@ import (
 	"atum/cli/config"
 
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
 )
 
@@ -24,6 +25,212 @@ func imageTargetsByID(images []config.Image) map[string]string {
 		targets[image.ID] = image.Target
 	}
 	return targets
+}
+
+// bootstrapSourceRenderFiles returns a render-only view of managed bootstrap
+// values. Exact updater-owned Harbor projections are restored to their
+// official tagged sources so the selected charts, rather than prior derived
+// image records, reconstruct the current runtime inventory.
+func bootstrapSourceRenderFiles(
+	root string,
+	files map[string][]byte,
+	charts []config.Chart,
+	receipts map[string]config.ImageMirrorReceipt,
+) (map[string][]byte, error) {
+	replacements := make([]imageReplacement, 0, len(receipts))
+	for _, receipt := range receipts {
+		if receipt.Target == "" || receipt.Source == "" {
+			continue
+		}
+		replacements = append(replacements, imageReplacement{
+			Old: receipt.Target,
+			New: receipt.Source,
+		})
+	}
+	replacements, err := compactReplacements(replacements)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"resolve bootstrap source projections: %w",
+			err,
+		)
+	}
+	if len(replacements) == 0 {
+		return files, nil
+	}
+	projected := make(map[string][]byte, len(files))
+	for path, data := range files {
+		projected[path] = data
+	}
+	for _, chart := range charts {
+		current, err := readManagedYAML(root, files, chart.Values)
+		if err != nil {
+			return nil, err
+		}
+		candidate := cloneMap(current)
+		if err := replaceBootstrapImageReferences(
+			candidate,
+			replacements,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"restore bootstrap chart %s official image sources: %w",
+				chart.ID,
+				err,
+			)
+		}
+		data, err := yaml.Marshal(candidate)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"encode bootstrap chart %s source-render values: %w",
+				chart.ID,
+				err,
+			)
+		}
+		projected[chart.Values] = data
+	}
+	return projected, nil
+}
+
+func replaceBootstrapImageReferences(
+	value any,
+	replacements []imageReplacement,
+) error {
+	byReference := make(map[string]imageReplacement, len(replacements))
+	byRepository := make(map[string][]imageReplacement, len(replacements))
+	for _, replacement := range replacements {
+		byReference[replacement.Old] = replacement
+		repository := imageRepository(replacement.Old)
+		byRepository[repository] = append(
+			byRepository[repository],
+			replacement,
+		)
+	}
+	var restoreErr error
+	var walk func(any)
+	walk = func(current any) {
+		if restoreErr != nil {
+			return
+		}
+		switch typed := current.(type) {
+		case map[string]any:
+			for key, item := range typed {
+				if text, ok := item.(string); ok {
+					if replacement, exists := byReference[text]; exists {
+						typed[key] = replacement.New
+					} else if prefix, reference, embedded :=
+						embeddedImageReference(text); embedded {
+						if replacement, exists :=
+							byReference[reference]; exists {
+							typed[key] = prefix + replacement.New
+						}
+					}
+				}
+				walk(typed[key])
+			}
+			for _, repositoryKey := range [...]string{
+				"repository",
+				"repo",
+				"image",
+				"image_name",
+				"newName",
+			} {
+				repository, ok := typed[repositoryKey].(string)
+				if !ok {
+					continue
+				}
+				qualified := repository
+				registryKey := ""
+				for _, key := range [...]string{
+					"registry",
+					"defaultRegistry",
+				} {
+					registry, exists := typed[key].(string)
+					if !exists || registry == "" {
+						continue
+					}
+					qualified = strings.TrimSuffix(registry, "/") +
+						"/" + strings.TrimPrefix(repository, "/")
+					registryKey = key
+					break
+				}
+				candidates := byRepository[imageRepository(qualified)]
+				if len(candidates) == 0 {
+					continue
+				}
+				for _, tagKey := range [...]string{
+					"tag",
+					"imageTag",
+					"image_version",
+					"newTag",
+				} {
+					tag, ok := typed[tagKey].(string)
+					if !ok {
+						continue
+					}
+					replacement, found, err :=
+						matchingImageReplacement(tag, candidates)
+					if err != nil {
+						restoreErr = fmt.Errorf(
+							"bootstrap image %s:%s: %w",
+							qualified,
+							tag,
+							err,
+						)
+						return
+					}
+					if !found {
+						continue
+					}
+					newRepository := imageRepository(replacement.New)
+					if registryKey == "" {
+						typed[repositoryKey] = newRepository
+					} else {
+						registry, remainder, qualified :=
+							strings.Cut(newRepository, "/")
+						if !qualified {
+							restoreErr = fmt.Errorf(
+								"bootstrap source %s has no registry",
+								replacement.New,
+							)
+							return
+						}
+						typed[registryKey] = registry
+						typed[repositoryKey] = remainder
+					}
+					typed[tagKey] = matchTagStyle(
+						tag,
+						imageTag(replacement.New),
+					)
+				}
+			}
+		case []any:
+			for _, item := range typed {
+				walk(item)
+			}
+		}
+	}
+	walk(value)
+	return restoreErr
+}
+
+func matchingImageReplacement(
+	tag string,
+	candidates []imageReplacement,
+) (imageReplacement, bool, error) {
+	var matched imageReplacement
+	found := false
+	for _, candidate := range candidates {
+		if !equivalentTag(tag, imageTag(candidate.Old)) {
+			continue
+		}
+		if found && candidate.New != matched.New {
+			return imageReplacement{}, false, errors.New(
+				"conflicting exact source projections",
+			)
+		}
+		matched = candidate
+		found = true
+	}
+	return matched, found, nil
 }
 
 func projectOperatorImage(tree *candidateTree, images []config.Image) error {
@@ -103,6 +310,41 @@ func renderedImageTargetReplacements(
 	return compactReplacements(replacements)
 }
 
+func projectContentAddressedMirrorTargets(
+	desired *config.Document,
+) ([]imageReplacement, error) {
+	tags, err := config.ContentAddressedMirrorTags(desired.Delivery.Images)
+	if err != nil {
+		return nil, fmt.Errorf("resolve content-addressed mirror tags: %w", err)
+	}
+	replacements := make([]imageReplacement, 0, len(desired.Delivery.Images))
+	for index := range desired.Delivery.Images {
+		image := &desired.Delivery.Images[index]
+		if image.Delivery.Default.Type != "mirror" {
+			continue
+		}
+		tag, exists := tags[image.ID]
+		if !exists {
+			return nil, fmt.Errorf(
+				"content-addressed mirror tag %s is absent",
+				image.ID,
+			)
+		}
+		if err := projectContentAddressedTarget(
+			image,
+			tag,
+			&replacements,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"project content-addressed mirror target %s: %w",
+				image.ID,
+				err,
+			)
+		}
+	}
+	return compactReplacements(replacements)
+}
+
 func projectContentAddressedBuildTargets(
 	desired *config.Document,
 	profile string,
@@ -126,19 +368,35 @@ func projectContentAddressedBuildTargets(
 		if err != nil {
 			return nil, fmt.Errorf("resolve content-addressed tag %s: %w", image.ID, err)
 		}
-		target, err := replaceImageTag(image.Target, tag)
-		if err != nil {
+		if err := projectContentAddressedTarget(
+			image,
+			tag,
+			&replacements,
+		); err != nil {
 			return nil, fmt.Errorf("project content-addressed target %s: %w", image.ID, err)
-		}
-		if target != image.Target {
-			replacements = append(replacements, imageReplacement{
-				Old: image.Target,
-				New: target,
-			})
-			image.Target = target
 		}
 	}
 	return compactReplacements(replacements)
+}
+
+func projectContentAddressedTarget(
+	image *config.Image,
+	tag string,
+	replacements *[]imageReplacement,
+) error {
+	target, err := replaceImageTag(image.Target, tag)
+	if err != nil {
+		return err
+	}
+	if target == image.Target {
+		return nil
+	}
+	*replacements = append(*replacements, imageReplacement{
+		Old: image.Target,
+		New: target,
+	})
+	image.Target = target
+	return nil
 }
 
 func reconcileBootstrapImageVersions(

@@ -94,10 +94,10 @@ func (graph *bakeGraph) validateVersionMappedTargets(problems *[]string, images 
 			(mapping.Source != "upstreamImageTag" && mapping.Source != "chartAppVersion") {
 			continue
 		}
-		expectedTargetTag := mapping.TagPrefix + image.Version + mapping.TagSuffix
-		if imageReferenceTag(image.Target) != expectedTargetTag {
+		expectedSourceTag := mapping.UpstreamTagPrefix + image.Version
+		if imageReferenceTag(image.Delivery.Default.Source) != expectedSourceTag {
 			*problems = append(*problems, fmt.Sprintf(
-				"delivery image %s target tag does not match its mapped version", image.ID,
+				"delivery image %s source tag does not match its mapped version", image.ID,
 			))
 		}
 

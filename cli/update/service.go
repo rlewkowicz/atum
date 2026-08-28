@@ -84,6 +84,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	project := updateInput.Project
 	compatibilityReceipts := updateInput.CompatibilityReceipts
+	mirrorReceipts := updateInput.MirrorReceipts
 	desired, lock, err := cloneState(project.Desired, project.Lock)
 	if err != nil {
 		return Result{}, err
@@ -97,13 +98,18 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if options.Parallelism != 0 {
 		desired.Updates.Parallelism = options.Parallelism
 	}
-	resetRenderedImageInventory(&desired)
 	previousImages := make(map[string]config.Image, len(desired.Delivery.Images))
 	for index := range desired.Delivery.Images {
 		image := desired.Delivery.Images[index]
 		previousImages[image.ID] = image
 	}
+	resetRenderedImageInventory(&desired)
 	initialImageTargets := imageTargetsByID(desired.Delivery.Images)
+	for id, receipt := range mirrorReceipts {
+		if _, retained := initialImageTargets[id]; !retained {
+			initialImageTargets[id] = receipt.Target
+		}
+	}
 	currentClusterTarget, err := desired.Orchestration.TargetRelease()
 	if err != nil {
 		return Result{}, err
@@ -129,6 +135,15 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, errors.New("declarative state changed while the updater was loading it; retry without discarding the concurrent edit")
 	}
 	managedFiles := tree.filesView()
+	sourceRenderFiles, err := bootstrapSourceRenderFiles(
+		service.root,
+		managedFiles,
+		desired.Platform.Bootstrap.Charts,
+		mirrorReceipts,
+	)
+	if err != nil {
+		return Result{}, err
+	}
 	identityContract, err := loadCandidateIdentity(tree, desired)
 	if err != nil {
 		return Result{}, err
@@ -324,7 +339,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		trackedChartCatalogs,
 		bootstrapChartCatalogs,
 		parallelism,
-		managedFiles,
+		sourceRenderFiles,
 		historicalBigBang,
 		identityContract,
 	)
@@ -359,6 +374,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		selection.clusterReleases,
 		selection.kubespray,
 		parallelism,
+		mirrorReceipts,
 	)
 	if err != nil {
 		return Result{}, err
@@ -400,6 +416,19 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	fluxReplacements, err := renderedImageTargetReplacements(desired.Delivery.Images)
+	if err != nil {
+		return Result{}, err
+	}
+	bootstrapReplacements := append(
+		append(
+			make([]imageReplacement, 0, len(replacements)+len(fluxReplacements)),
+			replacements...,
+		),
+		fluxReplacements...,
+	)
+	bootstrapReplacements, err = compactReplacements(
+		bootstrapReplacements,
+	)
 	if err != nil {
 		return Result{}, err
 	}
@@ -509,12 +538,19 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, fmt.Errorf("inspect candidate Flux overlay: %w", err)
 	}
 
-	bootstrapValues, err := readBootstrapValues(service.root, desired.Platform.Bootstrap.Charts, managedFiles)
+	bootstrapValues, err := readBootstrapValues(
+		service.root,
+		desired.Platform.Bootstrap.Charts,
+		sourceRenderFiles,
+	)
 	if err != nil {
 		return Result{}, err
 	}
 	for _, values := range bootstrapValues {
-		if err := replaceImageReferences(values, replacements); err != nil {
+		if err := replaceBootstrapImageReferences(
+			values,
+			bootstrapReplacements,
+		); err != nil {
 			return Result{}, err
 		}
 	}
@@ -676,11 +712,13 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	lastAdmissionProgress := 0
 	if err := admitFinalRenderedImages(
 		ctx,
+		service.root,
 		parallelism,
 		&desired,
 		finalArtifacts,
 		finalInspections,
 		previousImages,
+		mirrorReceipts,
 		compatibilityReceipts,
 		renderContractsUnchanged,
 		func(completed, total int) {
@@ -702,6 +740,81 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
 		return Result{}, err
 	}
+	mirrorReplacements, err := projectContentAddressedMirrorTargets(&desired)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := replaceImageReferences(candidateGenerated, mirrorReplacements); err != nil {
+		return Result{}, err
+	}
+	if err := projectSelectedImageValues(candidateGenerated, desired); err != nil {
+		return Result{}, err
+	}
+	for _, values := range bootstrapValues {
+		if err := replaceImageReferences(values, mirrorReplacements); err != nil {
+			return Result{}, err
+		}
+	}
+	containerdValues, err = kubesprayRegistryValues(desired)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := tree.SetYAML(containerdPath, containerdValues); err != nil {
+		return Result{}, err
+	}
+	if err := replaceImageReferences(
+		candidateFluxKustomization,
+		mirrorReplacements,
+	); err != nil {
+		return Result{}, err
+	}
+	for _, replacement := range mirrorReplacements {
+		fluxManifest = bytes.ReplaceAll(
+			fluxManifest,
+			[]byte(replacement.Old),
+			[]byte(replacement.New),
+		)
+	}
+	desired.Platform.Flux.Assets[0].SHA256 = config.SHA256(fluxManifest)
+	candidateFluxKustomizationData, err = yaml.Marshal(
+		candidateFluxKustomization,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf(
+			"encode content-addressed Flux Kustomization: %w",
+			err,
+		)
+	}
+	candidateFluxOverlay, err = service.renderFluxOverlay(
+		fluxOverlayDirectory,
+		filepath.Base(desired.Platform.Flux.Assets[0].File),
+		fluxManifest,
+		candidateFluxKustomizationData,
+		filepath.Base(fluxProfilePatchPath),
+		candidateFluxProfilePatchData,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf(
+			"render content-addressed Flux overlay: %w",
+			err,
+		)
+	}
+	finalFluxInspection, err = inspectManifestData(
+		"flux-overlay",
+		candidateFluxOverlay,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf(
+			"inspect content-addressed Flux overlay: %w",
+			err,
+		)
+	}
+	if len(finalInspections) == 0 {
+		return Result{}, errors.New(
+			"final rendered inspection set has no Flux boundary",
+		)
+	}
+	finalInspections[len(finalInspections)-1] = finalFluxInspection
 	buildGraph, err := renderBuildGraph(desired)
 	if err != nil {
 		return Result{}, fmt.Errorf("render canonical delivery build graph: %w", err)

@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "5a8af6353dd285b7a810aa2b65e7014494a03e9918acebe2a488eeea1f026315",
+  "desiredSha256": "c7a43005cd8f1cf373eee5f15eccf6d1f4b784e83e5755c72862a56a33c18455",
   "resolved": {
     "clusterReleases": [
       {
@@ -1008,7 +1008,7 @@
           "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
           "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
           "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
-          "sha256": "c25997b4cfbcbc72f70b2c30dbb1609e2773a0cfc462ffebf54c2f07029ebb4b"
+          "sha256": "e846ebd60eb784e755960fc1ca43c18b0fe82e4d02f8a6190aaa73550b486272"
         }
       ]
     },
@@ -2039,14 +2039,14 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "1dab963977121fe0348f4469d538e51fbc270e59f4c86dd4fb8b11a39b7d0ee7",
-    "graphSha256": "34f7bb2b0bbdfe8b07438a5b0ae5b9a5cf64988b305913b931ce82a5a47b3c39",
+    "inventorySha256": "9d8632eebe79e8a404b68fe7f39c8d181a5066dd166d87c57cd66196177bbe49",
+    "graphSha256": "71f80e4a4042819379a70774de329a90c5395c341041990ce472cd659ffb7c99",
     "images": [
       {
         "id": "alertmanager",
-        "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1",
+        "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1-mirror-a89f8d4520954079275441eecdb71444328bd90633dd4edd",
         "digest": "sha256:a89f8d4520954079275441eecdb71444328bd90633dd4eddfc33b9ed657f349b",
-        "inputSha256": "fc553d3f83bf44fa6285ca7982e0dbf5889363c5e04f04372cde007876fbe83b",
+        "inputSha256": "d3d32d099558cc7ee985760460b86bc1ae589e110a550cfee1f172da1322710f",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus/alertmanager:v0.33.1",
@@ -2056,9 +2056,9 @@
       },
       {
         "id": "atum-operator",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-82271ae3912524e04ace0c19c94393b96266e1f3b7fd601c658725f8a420a581",
         "digest": "",
-        "inputSha256": "d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
+        "inputSha256": "82271ae3912524e04ace0c19c94393b96266e1f3b7fd601c658725f8a420a581",
         "delivery": {
           "type": "build",
           "bakeTarget": "atum-operator",
@@ -2074,9 +2074,9 @@
       },
       {
         "id": "authservice",
-        "target": "10.77.0.9:32443/atum/authservice:1.1.5",
+        "target": "10.77.0.9:32443/atum/authservice:1.1.5-mirror-d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8",
         "digest": "sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82",
-        "inputSha256": "76efbc1d25f4b5050dcd104b30b4b3923185c39ae7590dc998086d72dc68f527",
+        "inputSha256": "09bc687d9e8053c8d6035c2bbe865ea71553dbb9d7d8027375647b37290af302",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/istio-ecosystem/authservice/authservice:1.1.5",
@@ -2086,9 +2086,9 @@
       },
       {
         "id": "blackbox-exporter",
-        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0",
+        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0-mirror-43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f",
         "digest": "sha256:43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f477b45c4e38dac68",
-        "inputSha256": "11e6c115f1743219912cf2d80e081111a562f507df54a23e0a650e5ec4ad5249",
+        "inputSha256": "0977664c02ebc5613ce43b630ce887cf0a21d9711bfe6b0159042539548958fd",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus/blackbox-exporter:v0.28.0",
@@ -2098,9 +2098,9 @@
       },
       {
         "id": "buildkit",
-        "target": "10.77.0.9:32443/atum/buildkit:v0.25.2",
+        "target": "10.77.0.9:32443/atum/buildkit:v0.25.2-mirror-72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bb",
         "digest": "sha256:72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bbf108088caf810f05",
-        "inputSha256": "b9c383a2e7e51be34c5ffc2060c19ff166546798c137d8302df63501d5f76059",
+        "inputSha256": "7dd7cbefc68a9ce858ef4322cca54c2a39c9d2a5bb3f4dec9b457ea040de615b",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/moby/buildkit:v0.25.2",
@@ -2110,9 +2110,9 @@
       },
       {
         "id": "busybox",
-        "target": "10.77.0.9:32443/atum/busybox:1.37.0",
+        "target": "10.77.0.9:32443/atum/busybox:1.37.0-mirror-7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0",
         "digest": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
-        "inputSha256": "6bd27018ac63514fba758f233f94ad2f8d51befa4c28c8ca9d952ad6a41f0463",
+        "inputSha256": "a3a120be5b8a3a3156914ab122d84644ec9a7c0a533742ed69066d1f492c71e7",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/library/busybox:1.37.0",
@@ -2122,9 +2122,9 @@
       },
       {
         "id": "cert-manager-acmesolver",
-        "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "digest": "sha256:e5a8da10354cdd0225eb039c84ad3696d47282de18c21905a25bb3a392542b34",
-        "inputSha256": "07f7c21bece7efb2fe6467f9a346e6536fcd04fe3cfeec524f09c45c443e8026",
+        "inputSha256": "c92db1a87962ee9a8ed88a631b7c3039a4a56bb243fbbec2387af140c2736d64",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-acmesolver:v1.21.1",
@@ -2134,9 +2134,9 @@
       },
       {
         "id": "cert-manager-cainjector",
-        "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "digest": "sha256:1910ad7e134880e27d229e07affb43da1b07841a77f70c364f17467cb4e49bd9",
-        "inputSha256": "dd8f5f981f808cbd421e31a466c6d52be56ed5bf6587d44612d7f620fd118e86",
+        "inputSha256": "477d1a395ef72445108fa72e51e8056fd137852a9ce1a97bb926b865abdad7ca",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-cainjector:v1.21.1",
@@ -2146,9 +2146,9 @@
       },
       {
         "id": "cert-manager-controller",
-        "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "digest": "sha256:4c2b5201fd66085b777dc6b256d96d7d346b6445404cec34db5f8aea86182cc5",
-        "inputSha256": "8c63502236cf8cfd0a6fd2940aca4c3d5a6564cbdeaf0ed8ea4c1e38f1248625",
+        "inputSha256": "7c939f47410ece0cbe4977c29658194a65f1baf70028b342f10358a1e9c4c016",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-controller:v1.21.1",
@@ -2158,9 +2158,9 @@
       },
       {
         "id": "cert-manager-startupapicheck",
-        "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "digest": "sha256:15cafecd3d23a4fa2226185f78c4792914010b2713f59060a1b9b484029041e4",
-        "inputSha256": "6f17c06ad1594a5349819fee9b7761d7a2f3bd3138dbca11ddc4e56d0223b9b0",
+        "inputSha256": "df7e0a7c29d8244ddd05572905f6a01894b778c4e553827b68208008f0b47701",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-startupapicheck:v1.21.1",
@@ -2170,9 +2170,9 @@
       },
       {
         "id": "cert-manager-webhook",
-        "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "digest": "sha256:741084291faf115a2909bfe3515458b54926c67f039ac20effd821bac69817a4",
-        "inputSha256": "1305605153bbdb9139d2e292b6984e5a3926503a33976cef4ca6d79995e62c2c",
+        "inputSha256": "15a4d4bb73147e7d14a6e8ca604ae3e43e304c5803a12d0d2f109246dfd5afdd",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-webhook:v1.21.1",
@@ -2182,9 +2182,9 @@
       },
       {
         "id": "certificates",
-        "target": "10.77.0.9:32443/atum/certificates:v19.2.4",
+        "target": "10.77.0.9:32443/atum/certificates:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:b0f89595e31e7aee2ebeb1dc80faf9038deced1c8a0c1fa569bdc50fc6426202",
-        "inputSha256": "fe66a045be8915640b619bd504e8c0b1ca2bda7485d1b4863b7602353f4ace24",
+        "inputSha256": "de185cdbd8a511b617911fc617d643397667b003325e9900adc4a7750f157894",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/certificates:v19.2.4",
@@ -2194,9 +2194,9 @@
       },
       {
         "id": "cfssl-self-sign",
-        "target": "10.77.0.9:32443/atum/cfssl-self-sign:v19.2.4",
+        "target": "10.77.0.9:32443/atum/cfssl-self-sign:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:4be2e62f66d9a789ea4bb484ae0a63825152f55bb00ebe0418cec87d2c6ffdce",
-        "inputSha256": "c66577a47a8d6695968cf435b173a1d35f137d4ceb98d750339d571be37dc67a",
+        "inputSha256": "95e691c2b4e44fc1a89b33f7188711d9229bad89b40a409d96096d18712f6dee",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/cfssl-self-sign:v19.2.4",
@@ -2206,9 +2206,9 @@
       },
       {
         "id": "cloudnative-pg",
-        "target": "10.77.0.9:32443/atum/cloudnative-pg:1.30.0",
+        "target": "10.77.0.9:32443/atum/cloudnative-pg:1.30.0-mirror-091d306935cfdf646debfe78010d59ebfb572150eb6eb922",
         "digest": "sha256:091d306935cfdf646debfe78010d59ebfb572150eb6eb922b0203873c0c68841",
-        "inputSha256": "480b7388dbf1fb99feb35fe4cbe1f81c53e9259677790943ee44b5b4aeb60646",
+        "inputSha256": "c64009acae9803d3451e526b9dbdd68ab0da9eca265ce67b28b060ee123cc2ac",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0",
@@ -2218,9 +2218,9 @@
       },
       {
         "id": "fluent-bit",
-        "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9",
+        "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9-mirror-1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f6",
         "digest": "sha256:1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f655cdbb2fd75f563c",
-        "inputSha256": "421ee373047ada5800efdcc5b8ce9b73c88840423e3b1e4f29e8b54c873dd9f9",
+        "inputSha256": "67463cf7fbc7949755755dc59f2538c35645c5e9fb3e4f126727a6ac33990f8d",
         "delivery": {
           "type": "mirror",
           "source": "cr.fluentbit.io/fluent/fluent-bit:5.0.9",
@@ -2230,9 +2230,9 @@
       },
       {
         "id": "garage",
-        "target": "10.77.0.9:32443/atum/garage:v2.3.0",
+        "target": "10.77.0.9:32443/atum/garage:v2.3.0-mirror-dac0c92add4f1a0b41035e94b41036a270ffbe88a37c7ac9",
         "digest": "sha256:dac0c92add4f1a0b41035e94b41036a270ffbe88a37c7ac9c3f19e6dc5bdccf2",
-        "inputSha256": "cab14347bfc324fb5bf3a85eefc962d6bc5cfb032e8344cb89f8be5adc6c28d8",
+        "inputSha256": "58c523ed288e9160cd759b058d8c2d004aba4846911bd1cd9431879470b78325",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/dxflrs/garage:v2.3.0",
@@ -2242,9 +2242,9 @@
       },
       {
         "id": "garage-init-helper",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1",
         "digest": "",
-        "inputSha256": "85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
+        "inputSha256": "6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1",
         "delivery": {
           "type": "build",
           "bakeTarget": "garage-init-helper",
@@ -2258,9 +2258,9 @@
       },
       {
         "id": "gitaly",
-        "target": "10.77.0.9:32443/atum/gitaly:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitaly:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:ce5d4f54c352c76ee7a4ec24330604000185c008ed126792e33fbd4e6e7bf0c9",
-        "inputSha256": "d5fd9640622b3ff1145f9ef78f2b15c7b193409a379b86ae3df059077b7cf1e3",
+        "inputSha256": "221d74119df9851fde143350b5aae42098dba9a45ec519dcb645240b47c29a35",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitaly:v19.2.4",
@@ -2270,9 +2270,9 @@
       },
       {
         "id": "gitlab-base",
-        "target": "10.77.0.9:32443/atum/gitlab-base:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-base:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:ba0c650c5cbeb9adca5b77f8fc0cbf9781cb50a29d57c67ab9ee718678a12326",
-        "inputSha256": "f315664211ceb1c1bff02b33c4619bed63af9b9b5235cf8acd411c0c4fe68632",
+        "inputSha256": "02c787eaac95009520ebbb9a2d46ff3fa9fd82461769d7cc3f7d793a93dda86f",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-base:v19.2.4",
@@ -2282,9 +2282,9 @@
       },
       {
         "id": "gitlab-container-registry",
-        "target": "10.77.0.9:32443/atum/gitlab-container-registry:v4.40.2-gitlab",
+        "target": "10.77.0.9:32443/atum/gitlab-container-registry:v4.40.2-gitlab-mirror-2962b4b72175d8ec43e508ab621718028574462f46c14744",
         "digest": "sha256:2962b4b72175d8ec43e508ab621718028574462f46c14744614959ce113bc54f",
-        "inputSha256": "9566d0f271e8b38858ca36772a8a25ea8dd284b2f63e7500507a58bfe96a07c5",
+        "inputSha256": "d9242b0d01e62d5fc42e59d9f78f11f0cef3ac0935c033b0e656e099a12b1908",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-container-registry:v4.40.2-gitlab",
@@ -2294,9 +2294,9 @@
       },
       {
         "id": "gitlab-exporter",
-        "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0",
+        "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0-mirror-67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e",
         "digest": "sha256:67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e50200357e8455580",
-        "inputSha256": "9a979907b7022a3329ba18f64e49be5ef873c5b33b0c56d9b9a0aeef475332b8",
+        "inputSha256": "a2fbd0cb3785abd6403ce82de573ddf8a7fe2e90cb3a263c86cd5a47477c93d0",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-exporter:16.9.0",
@@ -2306,9 +2306,9 @@
       },
       {
         "id": "gitlab-kubectl",
-        "target": "10.77.0.9:32443/atum/gitlab-kubectl:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-kubectl:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:8efd840d3133ac8ba24bf732b082a40c820b72f72f19aa4476385c3646e2a925",
-        "inputSha256": "96e8c943dae16aacc0b53b71a2981b81f93e303388b5a7096166926b88bb6f96",
+        "inputSha256": "2836805cef55fc35789e9cf08379bfd54bb1255de9e2e5bf7de3d6602815fffd",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/kubectl:v19.2.4",
@@ -2318,9 +2318,9 @@
       },
       {
         "id": "gitlab-shell",
-        "target": "10.77.0.9:32443/atum/gitlab-shell:v14.56.1",
+        "target": "10.77.0.9:32443/atum/gitlab-shell:v14.56.1-mirror-531dc40928bdffdf1ea61930b1478944351f48664aaf4935",
         "digest": "sha256:531dc40928bdffdf1ea61930b1478944351f48664aaf49350ecd171b3695cafa",
-        "inputSha256": "d8acefc42f79f8b91796dad19d7dfa3e4d0ab06344f84ad72b8c7368ba3247fc",
+        "inputSha256": "f455c4c34120b576588adef2678ed71d0f83efa028fe21435b93c4b097eccb87",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-shell:v14.56.1",
@@ -2330,9 +2330,9 @@
       },
       {
         "id": "gitlab-sidekiq",
-        "target": "10.77.0.9:32443/atum/gitlab-sidekiq:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-sidekiq:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:0dd10741737d685038f87f4b03ab6ef15c3d1104a1bc84698fda7d5e1a6c101c",
-        "inputSha256": "1b83fa0f87e3365ca4483c275ff851d9e11ed0b4dc018239c7d1ffe3b8e66148",
+        "inputSha256": "f9e6ee3fe14fc7a591527e17f7fa3720e4470e82eee3919e9ec472c08f7e0799",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-sidekiq-ee:v19.2.4",
@@ -2342,9 +2342,9 @@
       },
       {
         "id": "gitlab-toolbox",
-        "target": "10.77.0.9:32443/atum/gitlab-toolbox:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-toolbox:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:0becf88586bd1f85974950da6c976eddabb796eeab3c7bdb00d9d8db46febda6",
-        "inputSha256": "6d3da2e024cfae33c3c942ea9bb015fbede60c7df73a9daf60325c2e0256fe1f",
+        "inputSha256": "c932ca9e8108c97ace576ab8c2c77e7ed1568efe157f24d57c85554694d78a1a",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-toolbox-ee:v19.2.4",
@@ -2354,9 +2354,9 @@
       },
       {
         "id": "gitlab-webservice",
-        "target": "10.77.0.9:32443/atum/gitlab-webservice:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-webservice:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:6ff46a09606a47d90a9df9a320971ea4643976e097871c9a1f86cb507b6c9458",
-        "inputSha256": "b8e9ca6c102381cadf4aafa2c13b1d59852cb3a735cd73001e3b96c40394948e",
+        "inputSha256": "f48ad854a7b19349c112f8925884d836a3a95a4cec05201e333ad1272a01d0df",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-webservice-ee:v19.2.4",
@@ -2366,9 +2366,9 @@
       },
       {
         "id": "gitlab-workhorse",
-        "target": "10.77.0.9:32443/atum/gitlab-workhorse:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-workhorse:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "digest": "sha256:3d24a7980b8872664e73452ca295b81714f288b91218d4eeea71adf7a37541bc",
-        "inputSha256": "a94c5b1b1b1977d61dba01d56e9bcb6ad104513cc58bc3d125a57c3121e24997",
+        "inputSha256": "9cf7fea09b13049226306a8a71bb6aa2ab20f0cb2ad8056564412ccac3a0032d",
         "delivery": {
           "type": "mirror",
           "source": "registry.gitlab.com/gitlab-org/build/cng/gitlab-workhorse-ee:v19.2.4",
@@ -2378,9 +2378,9 @@
       },
       {
         "id": "grafana-plugins",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee",
         "digest": "",
-        "inputSha256": "53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
+        "inputSha256": "7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee",
         "delivery": {
           "type": "build",
           "bakeTarget": "grafana-plugins",
@@ -2398,9 +2398,9 @@
       },
       {
         "id": "harbor-harbor-core",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-core:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-core:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7",
-        "inputSha256": "18e43a3ee0609d4ccc3d7072f3157fda8ac0384be7a585eea200103e5813052b",
+        "inputSha256": "9c832facbfb6e0bf03201c938078f60f4ec0ca2a25b602cb0413c4bd0f542bee",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/harbor-core:v2.15.2",
@@ -2410,9 +2410,9 @@
       },
       {
         "id": "harbor-harbor-exporter",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-exporter:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-exporter:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:e1b0a248f61aad5084c5d1612d5f1da89f99c23ce743eaf8cba913d6d00c0547",
-        "inputSha256": "eb36488aec1d39a0d4477e2afb161577dd7a4df5da622133a07e7db4a6a2ee92",
+        "inputSha256": "1c4ed6bdc8192484b90192f99d1e9aeb86af897603c47224bf4ba9c5e3fd2df8",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/harbor-exporter:v2.15.2",
@@ -2422,9 +2422,9 @@
       },
       {
         "id": "harbor-harbor-jobservice",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-jobservice:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-jobservice:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598",
-        "inputSha256": "da400e096a8f453bd5564f33abc57d189a07318c856718ec2326a5aa60a88019",
+        "inputSha256": "dd5a3d4c9b52137727147bc795d8e1e72f647d7d0aef02cc8531753a5ac8506c",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/harbor-jobservice:v2.15.2",
@@ -2434,9 +2434,9 @@
       },
       {
         "id": "harbor-harbor-portal",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-portal:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-portal:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d",
-        "inputSha256": "5e6a86b301d387ec798d621cf4821462ebc6d8a7f052f5afe6b848e05c14e93d",
+        "inputSha256": "7fb57d29e7a3c28b60e8aaf68b5e511eec9d0b7e1107816df1c9747233ee81a9",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/harbor-portal:v2.15.2",
@@ -2446,9 +2446,9 @@
       },
       {
         "id": "harbor-harbor-registryctl",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-registryctl:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-registryctl:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362",
-        "inputSha256": "6c0bddc1496a32416e451f88a0069f4520890c36019c59d2deb9f6a37cf62b23",
+        "inputSha256": "57ffbf69f1f77b136bc85ed31b4c865c36ca6c6c03d176910b508fd84cdde39a",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/harbor-registryctl:v2.15.2",
@@ -2458,9 +2458,9 @@
       },
       {
         "id": "harbor-registry",
-        "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855",
-        "inputSha256": "b13bcb0add4f7986e1ccebac4b6d7452372c568ca51b92b7222a6b8a4f1de653",
+        "inputSha256": "fee283181431560873eadd07ee5ed8fd19ec4fdc54dc53028b0df99df4fc6860",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/registry-photon:v2.15.2",
@@ -2470,9 +2470,9 @@
       },
       {
         "id": "harbor-trivy-adapter",
-        "target": "10.77.0.9:32443/atum/harbor-trivy-adapter:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-trivy-adapter:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "digest": "sha256:215c07b71c37fc7fc16e02d9185d936dcb8884a80e810817c2cd058bbd7c4e98",
-        "inputSha256": "79409d315053ec0bbd2309fc449917167ad740d9ffb7ecd16445c3f0b3960699",
+        "inputSha256": "b63891840c5823562318b2b8923ba73d8e74b8eb9bb90a8620eabc29fb58bb94",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/goharbor/trivy-adapter-photon:v2.15.2",
@@ -2482,9 +2482,9 @@
       },
       {
         "id": "headlamp",
-        "target": "10.77.0.9:32443/atum/headlamp:v0.44.0",
+        "target": "10.77.0.9:32443/atum/headlamp:v0.44.0-mirror-a3fc96b5e825ba1149216e7731eaf23bc0ed8cf254a92296",
         "digest": "sha256:a3fc96b5e825ba1149216e7731eaf23bc0ed8cf254a9229682dfb17ef8d042d4",
-        "inputSha256": "99a4f55b637c853e6fb2d864ad65f2f325aaf609845d36bba48e25d23f6e0b9e",
+        "inputSha256": "d2e1dda1595ee06f0bb2e7b447e0a2c493438fbaf6650675939818be388101fa",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/headlamp-k8s/headlamp:v0.44.0",
@@ -2494,9 +2494,9 @@
       },
       {
         "id": "helm-controller",
-        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3",
+        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3-mirror-22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37",
         "digest": "sha256:22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37740f01226bd044a2",
-        "inputSha256": "5e1a1ff8ac3e5e19eab746f9226c71c899f3a45f9abbe2c6f492940880feb446",
+        "inputSha256": "3b3a9f0dbe8cefe49c6e3b4415f0f146de0fc35f73ed1a11f26aad5353a723df",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/helm-controller:v1.6.3",
@@ -2506,9 +2506,9 @@
       },
       {
         "id": "k8s-sidecar",
-        "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
+        "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1-mirror-44065fae116464099acd5bfddb62dcb2cf53c8fa18948d21",
         "digest": "sha256:44065fae116464099acd5bfddb62dcb2cf53c8fa18948d215109d64a5560306e",
-        "inputSha256": "716fd607bb2bf5f7d89d5867e974fafcd068d072ba2fdc4ba05ce652493ce88e",
+        "inputSha256": "c9b3d7940520bde6583ad769d6e55b4b9390da7168da33e822be443cfb0bd816",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/kiwigrid/k8s-sidecar:2.8.1",
@@ -2518,9 +2518,9 @@
       },
       {
         "id": "keycloak",
-        "target": "10.77.0.9:32443/atum/keycloak:26.7.2",
+        "target": "10.77.0.9:32443/atum/keycloak:26.7.2-mirror-c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f6",
         "digest": "sha256:c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f661a9efa0911463b0",
-        "inputSha256": "afbf8ed6fc25b8db8513b43d223db5985c28b0e5bf7213384e818f453eff69ed",
+        "inputSha256": "f63a619eef107e8047a5a63183ab14c09b74d3bbab3fab4aea531fcea6a711fa",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/keycloak/keycloak:26.7.2",
@@ -2530,9 +2530,9 @@
       },
       {
         "id": "kiali",
-        "target": "10.77.0.9:32443/atum/kiali:v2.30.0",
+        "target": "10.77.0.9:32443/atum/kiali:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d",
         "digest": "sha256:84d1eb1a55cdde88ec35640409e7129ff525597416d338ce577ab7fe6bdbd49e",
-        "inputSha256": "7ef71fb4da063da24d62318d49cb30b36bf1aa9f507beeb9460afcd1d9b1fe13",
+        "inputSha256": "b93b81545d4a149c106f83ecf67337be74ed1df31a4adc88dbc412aa33702a32",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/kiali/kiali:v2.30.0",
@@ -2542,9 +2542,9 @@
       },
       {
         "id": "kiali-operator",
-        "target": "10.77.0.9:32443/atum/kiali-operator:v2.30.0",
+        "target": "10.77.0.9:32443/atum/kiali-operator:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d",
         "digest": "sha256:b118395ce9b00c456c2a72e46bae94d23da5f16f3bda4c594aed88f95dd1e029",
-        "inputSha256": "e09a6a248aa0ca6cb8c10bbf86a35c29d09d679d428096a92908d9462c54b64d",
+        "inputSha256": "b8978bcba3e068113e0eb8050af33d921b22bab92abaca23217cb29f28d3d8b9",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/kiali/kiali-operator:v2.30.0",
@@ -2554,9 +2554,9 @@
       },
       {
         "id": "kube-state-metrics",
-        "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1",
+        "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1-mirror-7661da8c99b733d43117e4cba12bd9865d335e5777191d0a",
         "digest": "sha256:7661da8c99b733d43117e4cba12bd9865d335e5777191d0af3d789807aded9f4",
-        "inputSha256": "cedd74e256a0753108d4aab570be0ae0e096cbfff8f62c5fe2717cc3d962c633",
+        "inputSha256": "92c0461025d31fc674fab664c34e4cc466125cee6a0e4afbefce5c1af4c6cfbc",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.1",
@@ -2566,9 +2566,9 @@
       },
       {
         "id": "kube-vip",
-        "target": "10.77.0.9:32443/atum/kube-vip:v1.2.3",
+        "target": "10.77.0.9:32443/atum/kube-vip:v1.2.3-mirror-7f1863c91be5e9b305af4c4c783de11894586dfa7c09aec9",
         "digest": "sha256:7f1863c91be5e9b305af4c4c783de11894586dfa7c09aec92d984dff18c0c057",
-        "inputSha256": "03072c4bb59ed5cd72a96e84cd7f93603a3feb72c5285ae75f42dc14ae1eccd4",
+        "inputSha256": "446caaa36380432d4598064b0663f309686cd95953c629b44853fc85520aa84a",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kube-vip/kube-vip:v1.2.3",
@@ -2578,9 +2578,9 @@
       },
       {
         "id": "kube-vip-cloud-provider",
-        "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12",
+        "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12-mirror-33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55",
         "digest": "sha256:33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55e4bbab5e4793ed7b",
-        "inputSha256": "b7954ee651cdb96bf78e0acfaff2bfe5c8efb1e389eca09b3e92137a22da5a31",
+        "inputSha256": "42dcda5043595eb808da02c1709f52c7af63cff3e9e6348112e0cc2a3789397f",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.12",
@@ -2590,9 +2590,9 @@
       },
       {
         "id": "kube-webhook-certgen",
-        "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9",
+        "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9-mirror-f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd",
         "digest": "sha256:f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd93f664883d481331",
-        "inputSha256": "db316fcc4330d1b2d519f84802a68aad4f0b8d46b566206b8c571d159a6d2ff8",
+        "inputSha256": "74e061283925f700727b85ac6853dcebc6a1b8417ac0b8e688f128f6162910ea",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9",
@@ -2602,9 +2602,9 @@
       },
       {
         "id": "kubespray-apiserver-1d7c4ffd1961",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "digest": "sha256:955d0c0b2e46dfb64f675ea6fd7ca58b102ffc9af6bbe386bdb0d4f3c672e944",
-        "inputSha256": "b55af22e21fa7683f587197fcba7465dbaf3a136321d056482d210394f784969",
+        "inputSha256": "98bee95a01edf9e2148a49520f2099f06c80175264eb2c8d66a854d33012c6e7",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/apiserver:v3.30.6",
@@ -2614,9 +2614,9 @@
       },
       {
         "id": "kubespray-apiserver-85ba6a8d3824",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "digest": "sha256:7ee459630a68fc6872773033b6b9d281c4d5804950e3d054fe423376d4f695cf",
-        "inputSha256": "748cfcf98f887d7cdbd700aecaf63a866b306d969a37013d9f3563f76b68c841",
+        "inputSha256": "c58c3e619987cdf29a3b779fa9ff602e1aa5d3070d7f2a8a17e50a376c01c6bb",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/apiserver:v3.30.5",
@@ -2626,9 +2626,9 @@
       },
       {
         "id": "kubespray-apiserver-ffd3bba1be1d",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "digest": "sha256:8a487c14daa06afaf11695fdd5556e493a21288131742c8a5114d3b0860677b7",
-        "inputSha256": "73ec1c1f65501d6664ffd63d9895d8ccb432ddd56a192630eecf0d1a12a47205",
+        "inputSha256": "bcad46412094a29af17ec30f6264608abe51355abf131784257d3c2ceaa7c0ed",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/apiserver:v3.31.5",
@@ -2638,9 +2638,9 @@
       },
       {
         "id": "kubespray-aws-alb-ingress-controller-29b987dd4951",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9-mirror-43d732b96fd96ec4b5a42878df648cf805d3677eba8277e6",
         "digest": "sha256:43d732b96fd96ec4b5a42878df648cf805d3677eba8277e616972302caf9a14f",
-        "inputSha256": "9b00510fd8cea86b7b1b65839bc6ada73a445c60b84c63819c15422f6ac9b8e6",
+        "inputSha256": "b21f2dbec1d1daf1ebcf28b436c889c64131e5c47f1bdcb492ab14b15d7cd317",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
@@ -2650,9 +2650,9 @@
       },
       {
         "id": "kubespray-aws-ebs-csi-driver-61044fd4e148",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0-mirror-eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f",
         "digest": "sha256:eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f540a29a070362c66",
-        "inputSha256": "748df553b99451487e35237bd36bf14bebab9eed6448a19ddbc414fc3461fcf2",
+        "inputSha256": "f43f4e4d21798316647c80712b30c38c23052f498cb1561ecd87dc134aa9e7a2",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
@@ -2662,9 +2662,9 @@
       },
       {
         "id": "kubespray-cert-manager-cainjector-142b028ec4b1",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "digest": "sha256:6802c6afea2da91f5782880b79008179bb98147a23ce00f3cab5ba799807b5d6",
-        "inputSha256": "86b7930e3e8fdefa4dfb95e0dce2a3d161a6c4bb54010c531935f5fda6747892",
+        "inputSha256": "db43697043f4ac45757e46c95a7e043422f61d8ee4adbc6b3391b613f86871de",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
@@ -2674,9 +2674,9 @@
       },
       {
         "id": "kubespray-cert-manager-controller-aa76aaadadd6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "digest": "sha256:631ba2b3bf7be0bd0d446b8bfcbeb56f8fe735cd02a267567a8d94682d03165b",
-        "inputSha256": "947fc87c3f79c34a616e232a7fb59cf5cf268131ebf04da82adf0df609da07cc",
+        "inputSha256": "965881ef15ead598818a46098d57620e6a6ac3141c6efb5ae19558273e224882",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-controller:v1.15.3",
@@ -2686,9 +2686,9 @@
       },
       {
         "id": "kubespray-cert-manager-webhook-05059ded9a52",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "digest": "sha256:373e3acd7b96c87a574f9234bb4fbfd576e3205c502d6da5dade41165c9dc828",
-        "inputSha256": "c88cc8d5eeead7b0fe5a76d984ab6dfc521ee0531709445cb2abc61f4c9824d7",
+        "inputSha256": "d7f4b3882b6dc8204c4bc2e4d82cc7a4b8a64155f19bd9f139dc2011c9d46c56",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/jetstack/cert-manager-webhook:v1.15.3",
@@ -2698,9 +2698,9 @@
       },
       {
         "id": "kubespray-certgen-e453d89b438f",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4-mirror-cf231218850d22ee160347a67483860e85606d6d3ad0649b",
         "digest": "sha256:cf231218850d22ee160347a67483860e85606d6d3ad0649b5b7daef168cc84da",
-        "inputSha256": "b7d3671ac2bb90760b88103229dc4da194d60d18554f5e5e86122f98c0cc9563",
+        "inputSha256": "bd6d75d6f41adfea8ba488c47a184187fce2ef10736f3314f79c9b09b4bf2007",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/certgen:v0.2.4",
@@ -2710,9 +2710,9 @@
       },
       {
         "id": "kubespray-cilium-5651485d8c29",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "digest": "sha256:2eb67991eaa9368ba199c2fac2c573cb0ffdeb79184533344f42fc9a7ff6af3c",
-        "inputSha256": "dbc21e78bfabc5c106fb5e67ddb38b5fcd63b3c44af0d2c68afbef84d04717e2",
+        "inputSha256": "f09221926a06dabe40cafbcdb07dd009d2dde791937460930f52125960ecc214",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/cilium:v1.19.4",
@@ -2722,9 +2722,9 @@
       },
       {
         "id": "kubespray-cilium-envoy-cec4be30caef",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496-mirror-71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313b",
         "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3",
-        "inputSha256": "87ebec039b02cce5c56fe83f243d27154cb4fde2c6bbfd466eb4694a04f715f5",
+        "inputSha256": "79e2bb4d73b4062224c60404756c275bdc7315442161185e1b045076c97164d4",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
@@ -2734,9 +2734,9 @@
       },
       {
         "id": "kubespray-cinder-csi-plugin-fafe59d0f62e",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0-mirror-cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4e",
         "digest": "sha256:cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4ea246c54e753e82d6",
-        "inputSha256": "06f327dc2e973ae93cd7b5cecb9a890871b87b9c7d8974747839dcf4818abae0",
+        "inputSha256": "3956c20f579ba0103fdba6566c58ad0e4be9fc242fa29f0c741afdf0068310a4",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
@@ -2746,9 +2746,9 @@
       },
       {
         "id": "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8-mirror-93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183",
         "digest": "sha256:93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183094df8daee1094a1",
-        "inputSha256": "9b7043da974cbfb72b540909189cb75e0d817a6af54feef42a29fdd4f0da3c36",
+        "inputSha256": "b8ae0e58c7ed96e3059b9deb742216916d7eb7f34780030e257c3ff4746fda25",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
@@ -2758,9 +2758,9 @@
       },
       {
         "id": "kubespray-cni-1e7d398d64e9",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "digest": "sha256:2a0ce169973b1531cc50af7c2164474a741061c5a37886fab1553ad77e4ac272",
-        "inputSha256": "2f13ed50d1533b5ef04ae2c2b72f5956bf9045a67a813f499ecd82c29f6ac45b",
+        "inputSha256": "dbdf0686e2433a533928edd790e32d738723030b242a1a6b981f214169fa325c",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/cni:v3.31.5",
@@ -2770,9 +2770,9 @@
       },
       {
         "id": "kubespray-cni-255e166abdb6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "digest": "sha256:6ab06560b689151ad2ed24f01d6bf18661881627babcd47b2e1463529ed22005",
-        "inputSha256": "41f05e08aa7a8fe09b5cad9dc577f5bf1e5371651044a42d32ca3ebc14b582f9",
+        "inputSha256": "b25d1e66c3a8238d64ac2fda41b61c8a455b89ef0217bad591aec8ea4f8668bb",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/cni:v3.30.6",
@@ -2782,9 +2782,9 @@
       },
       {
         "id": "kubespray-cni-2a722760a7e1",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "digest": "sha256:5f00517832659c081467fc1cf768510d368eb6b0a8ffd71e4e2ae84b3f7ce2a7",
-        "inputSha256": "3d4dc64beaf1393de2f2fce20e2e4d1bd80e63882bc60733e47b9773b57852b7",
+        "inputSha256": "665fa0b9d8f9d39b2c8fea9c60f7099457158d2209c7a8e90e6551f04f61a99e",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/cni:v3.30.5",
@@ -2794,9 +2794,9 @@
       },
       {
         "id": "kubespray-controller-27840469ef8d",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
         "digest": "sha256:3fb6daa527ccd65db369f02cb1a6aa52523f406adda33244fac1b4e1f983f088",
-        "inputSha256": "dd4dfe3d8389ece3748c8151f888b9318e68c03150d680c51e06a49f7c410d78",
+        "inputSha256": "afff8c4f01f812d1dd89632956295e2c1a905919321f76eb4602440f0dd02304",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/metallb/controller:v0.13.9",
@@ -2806,9 +2806,9 @@
       },
       {
         "id": "kubespray-controller-74a944e7ad97",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3-mirror-7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822",
         "digest": "sha256:7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822bcd394fc2bcd8e83",
-        "inputSha256": "7046966b4a1ae6283e0e582cc0a9ed91f9928ff5a430bf518163afd20a8fdc19",
+        "inputSha256": "96956b85ab1b77ea6a0c4003b2dce064a2b6395e1c3c08a0ab7e5908c9bc7701",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/ingress-nginx/controller:v1.13.3",
@@ -2818,9 +2818,9 @@
       },
       {
         "id": "kubespray-coredns-19e9472ad36d",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0-mirror-2324f485c8db937628a18c293d946327f3a7229b9f77213e",
         "digest": "sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee",
-        "inputSha256": "074c6e887d9c5e66092c4c510a648a890579c6fd13f55ab18414373e1b64c595",
+        "inputSha256": "9af620def6bf67600a23c7c59e7ce0662fb44ccb361a39f87ed3f2031495086b",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/coredns/coredns:v1.12.0",
@@ -2830,9 +2830,9 @@
       },
       {
         "id": "kubespray-coredns-c0a1763e2e8b",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4-mirror-5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff008783",
         "digest": "sha256:5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff00878325f3f2645d9d465c",
-        "inputSha256": "8748d0d95c7d83b440ed6c601f1122950b0c75d6d0a27074cb4008cc42465d43",
+        "inputSha256": "9defc568e0e0a53fc06211da9b75d0534a98fb5b91fe44c17078e27515d93969",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/coredns/coredns:v1.12.4",
@@ -2842,9 +2842,9 @@
       },
       {
         "id": "kubespray-coredns-eb936e6d1fb6",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1-mirror-4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ec",
         "digest": "sha256:4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ecbf14004181f91998",
-        "inputSha256": "dd23a05d0ca0bf42fda531c807caaaf9bc2364e3812f3861f727827839265d67",
+        "inputSha256": "0ff890823c74f1b86f08b0e7aaa80af8677b92d57956b0a133e3ade54f6dec0c",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/coredns/coredns:v1.12.1",
@@ -2854,9 +2854,9 @@
       },
       {
         "id": "kubespray-csi-attacher-54214cd5c68a",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2-mirror-304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f9",
         "digest": "sha256:304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f92645d898757db1e0",
-        "inputSha256": "7ef13e6039368433924eb41d98eb767bfca47c2d1322296d951ea0e6d9658fa5",
+        "inputSha256": "2f7115be67dd68e08ecf90152ee63a9a3fab15d30640879bdf3d60fd320d4b86",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
@@ -2866,9 +2866,9 @@
       },
       {
         "id": "kubespray-csi-attacher-c020451f8db4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0-mirror-ac8d4216d1684f5469319f9d665f91c5582bf32d063d037e",
         "digest": "sha256:ac8d4216d1684f5469319f9d665f91c5582bf32d063d037ec8666173407e4db1",
-        "inputSha256": "453ae27e582d87305f8b25c47f836a51e8b447fc9eab31116d88b9d88d0fa011",
+        "inputSha256": "c6ddff734f94d7aaa7a4b4158ba0b50bd4b1567cf101a22d3b87cf6468565528",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
@@ -2878,9 +2878,9 @@
       },
       {
         "id": "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0-mirror-0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07",
         "digest": "sha256:0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07972b1ce8858d9cb7",
-        "inputSha256": "41b582f1439e6da05fdbcb8e1130395275be4ef7497c7a8487fb11edccde9ffe",
+        "inputSha256": "b42c2fa7c2fe5e7a5b470b035d95c818946ce59ca73eeff4b825e4578808ea8a",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
@@ -2890,9 +2890,9 @@
       },
       {
         "id": "kubespray-csi-provisioner-b1c0015e8797",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0-mirror-875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d4",
         "digest": "sha256:875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d402ee1e2efdf70450",
-        "inputSha256": "7c3181f5ab36b158e104860b23df166eb9cd934e03fbe4d570a9bfc9eba28a7e",
+        "inputSha256": "54a35f5e6bf71eb966934fc6e911c51ad2b6501b9451a4585ea2b06a0e87081c",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
@@ -2902,9 +2902,9 @@
       },
       {
         "id": "kubespray-csi-provisioner-c95b16a748c1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2-mirror-ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a",
         "digest": "sha256:ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a709fbf3e16a782ca",
-        "inputSha256": "3094b89487ebd055bbc30613666ea8392ea72a8aa9e8db7b9bfdb208f5046b43",
+        "inputSha256": "a96bd93304c4a2d20f131f4699f045e08079ac8948d2798692abfdcd19844b0e",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
@@ -2914,9 +2914,9 @@
       },
       {
         "id": "kubespray-csi-resizer-17c09eac50f2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2-mirror-8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd",
         "digest": "sha256:8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd4870192d1c586bd0",
-        "inputSha256": "fca503f817a8691d5b9f41b0e02b2cbd4620f536591163f0c9f0c7f9ee3438ee",
+        "inputSha256": "e40bb510d4ae9cb25c1e1a0eff48e9a51921a9a77bbe4df82f63f2a327f5c9c5",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
@@ -2926,9 +2926,9 @@
       },
       {
         "id": "kubespray-csi-resizer-cbf66a4bf48d",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0-mirror-35ec0c736ec8266bd4a46f9e942315f148f3139beed99879",
         "digest": "sha256:35ec0c736ec8266bd4a46f9e942315f148f3139beed99879d0ad8b8e5074d641",
-        "inputSha256": "bade4d9c14cbf97b3cea2ad1a1e32045a68a8c3c0079509d86ad39ce06c6da9d",
+        "inputSha256": "b04205ac92e6ea77c5f327bb1d6c26525724334c1d74e2892ebb00626fc6fe13",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
@@ -2938,9 +2938,9 @@
       },
       {
         "id": "kubespray-csi-snapshotter-0eecf4b68dbb",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2-mirror-651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406d",
         "digest": "sha256:651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406da659878729d799db",
-        "inputSha256": "1c390ac6be82635abd5bf8e7bb8b9b6c2e943c2dc1eb992834f3b10035049ff3",
+        "inputSha256": "202bd399a33ac23d2089d050636b799ccc44ccabe6c000178f4eb9d6603a74e2",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
@@ -2950,9 +2950,9 @@
       },
       {
         "id": "kubespray-csi-snapshotter-9b1b230f4947",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0-mirror-640e0275af6df4ad84339d4c449ea52559c25ae11c92ea46",
         "digest": "sha256:640e0275af6df4ad84339d4c449ea52559c25ae11c92ea4655252bed789a3bb3",
-        "inputSha256": "64701221ec0fdb4e7bddf542c59903d8a686dd7a284fe23fb4df69244fd0a6f5",
+        "inputSha256": "001d605f6509d665c9af2af4e8705e716e9f18e8d54f5e2bda7b93986e7cd660",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
@@ -2962,9 +2962,9 @@
       },
       {
         "id": "kubespray-dashboard-d40878c7d46f",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0-mirror-ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71",
         "digest": "sha256:ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71b053cdf8b5dc3029",
-        "inputSha256": "bd952165fd60f4ebf86239c9e9554561050b09bd56e3a4e4030e8a871568c18b",
+        "inputSha256": "b2624c903a1e92829987d75b0d0a58846a6bee19acb68ae7269bc61b7dcc56f3",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/kubernetesui/dashboard:v2.7.0",
@@ -2974,9 +2974,9 @@
       },
       {
         "id": "kubespray-etcd-303eba369353",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26-mirror-8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc",
         "digest": "sha256:8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc4cde280aec910c33",
-        "inputSha256": "f1c58834b0da948bbe9b548ea5190a3215d96741d78b34108280fc12854a98d6",
+        "inputSha256": "e67babb7d7a34a808441e6d7fc46e09c9b7f9c072d856f29c8e3598ea56a450c",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/coreos/etcd:v3.5.26",
@@ -2986,9 +2986,9 @@
       },
       {
         "id": "kubespray-etcd-3c5d6be819ca",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25-mirror-dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf",
         "digest": "sha256:dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf509fd409d7162a9d",
-        "inputSha256": "6593dbcff0f538394a193ce976ae42e4b49d596c516eba5bd8ccef9e2de970a2",
+        "inputSha256": "759fdffe72f4928f2c2fbc313d76ad4a66f4a7fa50b9f96b2a60e14b90b6189e",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/coreos/etcd:v3.5.25",
@@ -2998,9 +2998,9 @@
       },
       {
         "id": "kubespray-etcd-ca5f72edf851",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10-mirror-8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43e",
         "digest": "sha256:8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43efae659d882999e32",
-        "inputSha256": "458b05b18a00c76ee72378bddc785437b6f2c1e60a43df6469d43a4a1e42cfe9",
+        "inputSha256": "2fa4c93db4f0c4d5fdbd1ebab4327a8e4db2deac7a214edadcd58bc916a4f4fe",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/coreos/etcd:v3.6.10",
@@ -3010,9 +3010,9 @@
       },
       {
         "id": "kubespray-flannel-05cceee7aa3e",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4-mirror-e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e",
         "digest": "sha256:e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e94096687858db111",
-        "inputSha256": "cabae7d26d602da17f432e1ba1d43f0649596c896bf155fec9b947c43607487a",
+        "inputSha256": "f5af3fa9a84c10910232b5975aa6189bf2b35bead3bb1a4de5789135b1b447c2",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/flannel/flannel:v0.28.4",
@@ -3022,9 +3022,9 @@
       },
       {
         "id": "kubespray-flannel-4a66f2488d69",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3-mirror-0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd",
         "digest": "sha256:0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd156fcbf6d2f083d1",
-        "inputSha256": "4468803abd96d4f244ea0ed1e690d98f4fd4067c3255c1d5d56d90987c7133fe",
+        "inputSha256": "29a1b45cd8cdde5ab596104413e73ecb01e227633ca871f729d119fed6acc45a",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/flannel/flannel:v0.27.3",
@@ -3034,9 +3034,9 @@
       },
       {
         "id": "kubespray-flannel-cni-plugin-628a10cfbf92",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1-mirror-003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a",
         "digest": "sha256:003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a58d0421d721305ea",
-        "inputSha256": "e546c121336e4f4621c0d718914f732dbd12043f8f5d41c622a35d69b4c9f7d0",
+        "inputSha256": "9fe9e29aea08662a6a76dd3f462d53b18c5020f2839668e779133b7def46fb94",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
@@ -3046,9 +3046,9 @@
       },
       {
         "id": "kubespray-haproxy-c627c8545636",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine-mirror-4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5",
         "digest": "sha256:4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5bc874e89b9554a71",
-        "inputSha256": "fee6d711832ae3b7066f86cfe357ae17998b355e100e455ef014e3001198fbd9",
+        "inputSha256": "a9f2c56512269fd0eb0fc250065b63f5505ba21c32011691eefb9bdaffc2700c",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/library/haproxy:3.2.13-alpine",
@@ -3058,9 +3058,9 @@
       },
       {
         "id": "kubespray-haproxy-e759b61b7326",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine-mirror-1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8",
         "digest": "sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d",
-        "inputSha256": "6a0dbc99a322b74844b912ce4693aa92f40d384bb0b64801d2dea511b825c92d",
+        "inputSha256": "9ec4c332745577a88d55edd7730cc4c4ad44fa886cc9165ef2656fae72529fba",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/library/haproxy:3.2.4-alpine",
@@ -3070,9 +3070,9 @@
       },
       {
         "id": "kubespray-hubble-relay-af135d8ceffb",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "digest": "sha256:5da3a57ae08c6e85816e93cb4cd44abe7021b319da2a21d2c6e4e6560ac21135",
-        "inputSha256": "4c0cf86dd64f14480a160decf44d6c7f312b65837436a148e1370e10d4ea7cfc",
+        "inputSha256": "1f3f0b92a972d58c6465843bc853351f73a2b58a7356080e3b4c941f8dbb7845",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/hubble-relay:v1.19.4",
@@ -3082,9 +3082,9 @@
       },
       {
         "id": "kubespray-hubble-ui-aa9daec9d667",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
         "digest": "sha256:e1fd0debd32db200273ed3f98afa358dd19870dea14f03945714d079cea8101c",
-        "inputSha256": "559f4e39e4abb6450d9b2689835cebe3a5947c826429da7600b639606021b277",
+        "inputSha256": "c5e93dbda19eed5c3746f9fbceb498d365dd8190e726e3163db1d38477b619f9",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/hubble-ui:v0.13.3",
@@ -3094,9 +3094,9 @@
       },
       {
         "id": "kubespray-hubble-ui-backend-80373e4df8f7",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
         "digest": "sha256:c05242a910241a6d0aa46e9d7409dc5e9a8a505a38d4849802a9d7b406b56367",
-        "inputSha256": "f777b5a2f79ed58eb5b7cfe45502384885b431b84c0aba56eb5e1a5c4bcb814d",
+        "inputSha256": "c1c86c4b4c4b2f864697bf8e1244650d73506dbf90565ca27d11fd92ea0ba1d2",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/hubble-ui-backend:v0.13.3",
@@ -3106,9 +3106,9 @@
       },
       {
         "id": "kubespray-k8s-dns-node-cache-eaa2f69f0965",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0-mirror-926add157b0563f30bdf49a6299f4401a1a4b007814fc41f",
         "digest": "sha256:926add157b0563f30bdf49a6299f4401a1a4b007814fc41fe903a685166cfc0a",
-        "inputSha256": "1795c1668fea6367aa4ac4d4dc0d3cc6de0ddd0b4bf88c4ce39522587141dd89",
+        "inputSha256": "4ad14feafdfe91001c30631a85137f030bb259757f338936422e47db0ccac29d",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
@@ -3118,9 +3118,9 @@
       },
       {
         "id": "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
         "digest": "sha256:a7c6fcc0700c394583ed0cb61410ee399f7fc0c2fdec1a5495c583f136846067",
-        "inputSha256": "af6398012ac5320d48157b463cbcdd1752fd65582205ad4f5f63b49bbf53a1b1",
+        "inputSha256": "66d62f86e1bfb7cba8710c2d7385b2dd989c86c240866c5529c43a77d62eb267",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
@@ -3130,9 +3130,9 @@
       },
       {
         "id": "kubespray-k8s-netchecker-server-0648e3074092",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
         "digest": "sha256:f33c8071ee1a3333213a6a7bee80cbc75675dc465ccc1491cbe558d0823b46be",
-        "inputSha256": "50dac3c7ec013d6a499a93d65605e3039e50efcf83f593c98b04305564142890",
+        "inputSha256": "bf30e76bd16aeae7fa180e9f6faec0468674a3fe47d2357a413fd8d8d8e20d31",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
@@ -3142,9 +3142,9 @@
       },
       {
         "id": "kubespray-kube-apiserver-35a4e8593b81",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "digest": "sha256:9b2e9bae4dc94991e51c601ba6a00369b45064243ba7822143b286edb9d41f9e",
-        "inputSha256": "d868eeab6fd09d20284d6090827d3bba4da46e238a69affdc7e84a61606c5740",
+        "inputSha256": "05cb2b3fbc1e11d6521cfa9e5244ab59b39727ad72c976bff018c12b243ffb02",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-apiserver:v1.34.3",
@@ -3154,9 +3154,9 @@
       },
       {
         "id": "kubespray-kube-apiserver-7a7a5e018a18",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "digest": "sha256:9a6035a846ee85e400b68183b82194157c2717851a067ac8ec99fe4eaadcd540",
-        "inputSha256": "f70b553bfe4a77714bb2a47046e1b861d5c7a45a5b5ff6b78cbe9480b13b7805",
+        "inputSha256": "dc0ba67ec9ca5e16a6b6354fb61bee8205bec996f5a30c77124468137bf693b8",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-apiserver:v1.33.5",
@@ -3166,9 +3166,9 @@
       },
       {
         "id": "kubespray-kube-apiserver-a41c80c0ea0e",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "digest": "sha256:683fc83d3a14a364071ecace749ad42642655fa63d7b2233a996c7a6fc3a8242",
-        "inputSha256": "2f92d0080f45946a4ecaa65a8f7a8671b722520b3d507a895fbd8dcdbaff67eb",
+        "inputSha256": "dfe94d882d38d3306c199442b825a5cdc81b924c83b7bf59ed1f2612f62e52e0",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-apiserver:v1.35.4",
@@ -3178,9 +3178,9 @@
       },
       {
         "id": "kubespray-kube-controller-manager-200d516fa1b9",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "digest": "sha256:b29bb573acfc2d9b9b1e777be2c32ab2711e3384dcccbdd652a1519cde47b9ef",
-        "inputSha256": "3c483c1504564650fb76f4e27d7048140f062c129bf2896dcf6f1bfc248619ed",
+        "inputSha256": "45738fa532c72e3d8bfb8f14e7d5dc040cea3483cc080221e6c9d2cb9556ff9d",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-controller-manager:v1.33.5",
@@ -3190,9 +3190,9 @@
       },
       {
         "id": "kubespray-kube-controller-manager-6380ebf00c81",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "digest": "sha256:71e603d3f0e6edf5cccb06ae09387e24ea43e21096d39aef60714a3b25a82b49",
-        "inputSha256": "6fed9a7871caed6201432317a30125392faefc05f116f17a3f99ba9e5791dcc7",
+        "inputSha256": "717f68edc11a30e2cf2ad522bed9b7636618cd2e7f35abf16df845f01138ae40",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-controller-manager:v1.35.4",
@@ -3202,9 +3202,9 @@
       },
       {
         "id": "kubespray-kube-controller-manager-cb79eac61c34",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "digest": "sha256:90ceecee64b3dac0e619928b9b21522bde1a120bb039971110ab68d830c1f1a2",
-        "inputSha256": "e8291facab3d5ffdcf348f49d52b8bc74ff51ca8c3f8f245d30b96abf38f8b51",
+        "inputSha256": "a2fc8760dd4453d9818987b0d1c5f83e123111ff25e19f920d452644b142df66",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-controller-manager:v1.34.3",
@@ -3214,9 +3214,9 @@
       },
       {
         "id": "kubespray-kube-controllers-569b5b422819",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "digest": "sha256:ec80d7515ed843483cf0895781bc1fbbc44c750953a84c2073c1de8adc60fee5",
-        "inputSha256": "e5bdae6a05b5f1c3bdb00937dd719b8f3f0265e85b728998c5f3b93d1befb3b5",
+        "inputSha256": "cc969c8b2ab51af46d51577e7799a34701933e587f7b788a0a79eb61897d84f0",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/kube-controllers:v3.30.5",
@@ -3226,9 +3226,9 @@
       },
       {
         "id": "kubespray-kube-controllers-ab24c787861c",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "digest": "sha256:4a1c3d86e8501edb1429226b4b8939b57d2b297ef990703c5dbea30a0b3bd84d",
-        "inputSha256": "04329f542c11ab662e212d3a5f414ae8d1fa3d2eb67c37a3f3c328869b35e427",
+        "inputSha256": "0f5d01fef94df570a29a9fc8b80b556449c8ab97fa8aee375eeada13435d4691",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/kube-controllers:v3.31.5",
@@ -3238,9 +3238,9 @@
       },
       {
         "id": "kubespray-kube-controllers-b9b25dbd1bb6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "digest": "sha256:424441c7d5e6b78ee8800f645b08a3c0174096dca33234bbac1a716c6e336df1",
-        "inputSha256": "711a59dc163171a95fc55e97b443bbb0bf5d75bc5652f9c8766d8d20be318ed2",
+        "inputSha256": "942f19505a6aa17617efa9f6f5d24535f973f0605f5975a90ec1339c14b19faa",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/kube-controllers:v3.30.6",
@@ -3250,9 +3250,9 @@
       },
       {
         "id": "kubespray-kube-ovn-d5b7e3e6a128",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21-mirror-b24bf383511da382c928de8b69df518b3d4375684a477204",
         "digest": "sha256:b24bf383511da382c928de8b69df518b3d4375684a477204fc7e7f3a7e7bcb4b",
-        "inputSha256": "4477350188652efa0fbd0dee9752b27360e482298a7b9e359bb8e14cc9de5be0",
+        "inputSha256": "45712737783de45199bfd9fb15fcf1ca0f8d8256013744e5d3128d198e9dabe0",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/kubeovn/kube-ovn:v1.12.21",
@@ -3262,9 +3262,9 @@
       },
       {
         "id": "kubespray-kube-proxy-01d2fe37ba1b",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "digest": "sha256:aee44d152c9eaa4f3e10584e61ee501a094880168db257af1201c806982a0945",
-        "inputSha256": "6a683cfc7621d1342d7dcc52efb39b7dc76915abeecda5ed2959dae1a72350e4",
+        "inputSha256": "ef3057720e3e24be92dc0817daf6897a58e386ef354532e443f70281015de8d7",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-proxy:v1.34.3",
@@ -3274,9 +3274,9 @@
       },
       {
         "id": "kubespray-kube-proxy-2a95f8e3469a",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "digest": "sha256:1a1a228e08acc4129edb1798dc7eff54bbd129aecc82a1642e1737ef19297354",
-        "inputSha256": "d0ebb73e0a1b52a6150f6e0c0803fd917b6b909284a641e80d8b7ced823ad5e9",
+        "inputSha256": "2ac359a42abf653a5aafd76bdb69ddcd0d755a8134ae6ac90a27e41ef587a054",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-proxy:v1.33.5",
@@ -3286,9 +3286,9 @@
       },
       {
         "id": "kubespray-kube-proxy-f41a80af8ea3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "digest": "sha256:1fdd5616de6ae625723a988c036f9976e42b507bc5ad3ea140ffdd4ecf5ffeb7",
-        "inputSha256": "2fc63ccf8d265a2608eb88ec509d346c35d427b3d618a87031d642c048635725",
+        "inputSha256": "95a0603beeae8ac79f19391a8354a325ac4c8f7a05f5985b8a9948e8becc74d3",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-proxy:v1.35.4",
@@ -3298,9 +3298,9 @@
       },
       {
         "id": "kubespray-kube-router-a15345e0ac99",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1-mirror-6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c",
         "digest": "sha256:6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c151a461bec02b706",
-        "inputSha256": "19e4977a6ce66b2ec8fdb73120c189bc9ae4864af550b59ce7306730e6ff11ec",
+        "inputSha256": "c8f0fa0b800c22e7bd2880b933cc8003fbc4da9ed10de1bc73671ba2e345d591",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/cloudnativelabs/kube-router:v2.1.1",
@@ -3310,9 +3310,9 @@
       },
       {
         "id": "kubespray-kube-scheduler-21faa420e1ed",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "digest": "sha256:490ff7b484d67db4a77e8d4bba9f12da68f6a3cae8da3b977522b60c8b5092c9",
-        "inputSha256": "8c92bbe6481bcf274a04dfee6be3877a26872fb6c747197e12a20a6574b08d03",
+        "inputSha256": "1227ecadc8048f4e335f6f261c6a2abf17c90ee347394fc2cd9c17623981f78a",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-scheduler:v1.34.3",
@@ -3322,9 +3322,9 @@
       },
       {
         "id": "kubespray-kube-scheduler-98ff489f17d0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "digest": "sha256:a0eb16738760343f3b81dab6154de066695a41c6a27a2f5632954121729bb8a1",
-        "inputSha256": "93ace4f8efe5e8412f919b2fc3ad4ffa98504d95f0e5af41c66cb810c3b70228",
+        "inputSha256": "5af0048565b1eeab40dccfdb8c38f436cca118065d9074c263549e6af608fedf",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-scheduler:v1.33.5",
@@ -3334,9 +3334,9 @@
       },
       {
         "id": "kubespray-kube-scheduler-ec5cf060af83",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "digest": "sha256:7b652cb033c8f48b345351a969bf1ca9cdcb6ea65f4f8cfcee6d3b97691361a3",
-        "inputSha256": "57eb852343689d38d1c00a9404e968fa44bbb13ef1c8eab03b49c5a5186bccf8",
+        "inputSha256": "cb5d4881fc88196a682b811140f76ee29d1878c245ee86c9db5d6732e6a9bd1d",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/kube-scheduler:v1.35.4",
@@ -3346,9 +3346,9 @@
       },
       {
         "id": "kubespray-kube-vip-d0dc4887640c",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3-mirror-682e231fd0759906b65ed56ac124cc8ae093b9506aac0006",
         "digest": "sha256:682e231fd0759906b65ed56ac124cc8ae093b9506aac00063c66c2ffa7fb5d9e",
-        "inputSha256": "2f7529511aed8fb55d0f202101fcee4fcfb3f3602a2195ac969350de2cd162dd",
+        "inputSha256": "3fdb7dc01b3a4c03a80e30275e5b158ca216c28e8ec45df396f9e82abe62334e",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kube-vip/kube-vip:v1.0.3",
@@ -3358,9 +3358,9 @@
       },
       {
         "id": "kubespray-kube-vip-f8a2ed10eb61",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9-mirror-0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931ac",
         "digest": "sha256:0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931acb5c5729dcf094345",
-        "inputSha256": "bc623bbd6fac5a930db17a40eb5b3ceb465069b013fccb3a3d5adb07f461185a",
+        "inputSha256": "30c227c10e36b9402860c4af1e6419188ba1abcf03546b285608fa9173e881fa",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kube-vip/kube-vip:v0.8.9",
@@ -3370,9 +3370,9 @@
       },
       {
         "id": "kubespray-livenessprobe-3f00aa1aa37d",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0-mirror-4a1e22167d03746e6748cdc41b6374262c666bc85999e901",
         "digest": "sha256:4a1e22167d03746e6748cdc41b6374262c666bc85999e90112edc236dfb2c95a",
-        "inputSha256": "14af3cb7e4128a1aea958535a5c9d105716a60f53793906f0c7220101dfdc7e8",
+        "inputSha256": "74ffd379ec316d477f10852451c8d7a6f5ded401edb9e366f391fd0d341672c8",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
@@ -3382,9 +3382,9 @@
       },
       {
         "id": "kubespray-local-path-provisioner-bea410f5d32c",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32-mirror-64975a72cb31bda96fea61f4b59e6cca4545e531487a13fa",
         "digest": "sha256:64975a72cb31bda96fea61f4b59e6cca4545e531487a13fab7ba1b7aba95bd6c",
-        "inputSha256": "43186496ae08d5afc475ab0bb75d11de01547bc14d2dfe60d901099ebd92ffab",
+        "inputSha256": "acec7cf3a07bc58bf5b3d19a6165ce80f2901cc8ea4a875619ae439284a505d6",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/rancher/local-path-provisioner:v0.0.32",
@@ -3394,9 +3394,9 @@
       },
       {
         "id": "kubespray-local-volume-provisioner-647b2d0ec790",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0-mirror-19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3f",
         "digest": "sha256:19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3fd84a2e42023aba22",
-        "inputSha256": "461d9f19491a78cdefd88c49790b4d45c073fea2a2c798cc70bc256d33c4ebc7",
+        "inputSha256": "21ccce45283efc1de4d12285df8a602abe4f26eb4a5ecc45b49f50c86ca39ff8",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
@@ -3406,9 +3406,9 @@
       },
       {
         "id": "kubespray-metrics-scraper-411975044da7",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8-mirror-43227e8286fd379ee0415a5e2156a9439c4056807e3caa38",
         "digest": "sha256:43227e8286fd379ee0415a5e2156a9439c4056807e3caa38e1dd413b0644807a",
-        "inputSha256": "4aa81f45549483d792b27fc44209309f5afc5ad265686e8a30a567a2e3c06ca8",
+        "inputSha256": "6bc217b9aa9f17b340e11ec20c205958e4e8534c15a04595b76f43566afdcbb8",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
@@ -3418,9 +3418,9 @@
       },
       {
         "id": "kubespray-metrics-server-78a748c4b508",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0-mirror-5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f",
         "digest": "sha256:5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f9f54cf9f54cddbc1",
-        "inputSha256": "b7bbdc997e6d1e304bf1467a63db0acc3336d5e6fae7987ea9e89635b88daff0",
+        "inputSha256": "131fc5556c373d52071ffa7fb74129cd4a97dfe7080ad7697ada53bc1f64493d",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
@@ -3430,9 +3430,9 @@
       },
       {
         "id": "kubespray-metrics-server-96c8158a4a11",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce",
         "digest": "sha256:6231fb0a1ffab76c92ab880f51a0d11b290f688373647bcedff85af025dfd8a9",
-        "inputSha256": "7429fb49b9c0d125dc29da058a316a34678d827d8b4772d8b9ec77543f85a981",
+        "inputSha256": "4bf1d6af43359c3330f6e76a25390f3b56622a307950455485861eae74fbbeba",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
@@ -3442,9 +3442,9 @@
       },
       {
         "id": "kubespray-multus-cni-da567c68368a",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2-mirror-9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc9",
         "digest": "sha256:9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc951ab06d0a0144be8",
-        "inputSha256": "e288b27c608366f50ddf501fa2ac5337f0d1e5c304de8aa7fce3255aa1d2554f",
+        "inputSha256": "b21d6b5359ffcedf57e03e07f81e69defa76d1be58effb73f0cdea3b72aa4fc5",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
@@ -3454,9 +3454,9 @@
       },
       {
         "id": "kubespray-nginx-4fbf2a6c1299",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine-mirror-09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b74",
         "digest": "sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c",
-        "inputSha256": "2a883522b9b00a86acd48127ba0d9d2850043ac9f11a0faa587e2eb2b53ce304",
+        "inputSha256": "f847914b7d97c8496c3d2368cb2808cbe4d45416be8c28c154b49f810cf80227",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/library/nginx:1.28.0-alpine",
@@ -3466,9 +3466,9 @@
       },
       {
         "id": "kubespray-nginx-7167e4ebc08b",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine-mirror-0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c4",
         "digest": "sha256:0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c469d507095dd2c77e",
-        "inputSha256": "64670598a8f17e893720d4330fefe53fceef60fefdc3360d9444f4fb4c837f97",
+        "inputSha256": "1dbef24db1ca6144360843b970b539250c2d1010f1f74a5ae3ee8fdfdb8a1c7a",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/library/nginx:1.28.2-alpine",
@@ -3478,9 +3478,9 @@
       },
       {
         "id": "kubespray-node-117e4c2a0fbf",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "digest": "sha256:3a1cdf9512ca47555fd450fd26444ab35d4c77081c25e4ab0699375e9d1651ff",
-        "inputSha256": "6e73a667ade96c08d39e05fd81ca2bd9dd8ad72e7e352772c877567d550e3ca5",
+        "inputSha256": "6ee1a816ae3e86f19cadf0b1dcbc58b135443b9cb6d4f574c31c91e9b2eb855d",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/node:v3.30.6",
@@ -3490,9 +3490,9 @@
       },
       {
         "id": "kubespray-node-77c1a7981006",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "digest": "sha256:584e225717b812c55c5d7b3d1b99a565002733976ed4dde6eb9392423fd727e8",
-        "inputSha256": "9b86ca9a25b333098f5cc2a757aa1c180872023ab8f9ff5c898f98b4e2059baa",
+        "inputSha256": "064fb1d78416b450ce7b8538a612795f32cc325cd27837146e5ffdb8eb1b8954",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/node:v3.31.5",
@@ -3502,9 +3502,9 @@
       },
       {
         "id": "kubespray-node-f33bf95c654d",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "digest": "sha256:71c8c021c6aa8fbf70bb3cfaedc01bdcc4a4b493e52efd1a18112c6f1b1e58ad",
-        "inputSha256": "f04bf8c8746368e8510bcf6d2719e5a2bb54e66cbfcec88d634b2e3e97cd9de2",
+        "inputSha256": "73a06b7ae22e713e18149a1e815906b5ee980086f184c3b1efa2e16eb79996eb",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/node:v3.30.5",
@@ -3514,9 +3514,9 @@
       },
       {
         "id": "kubespray-operator-7c35bff2c3cc",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "digest": "sha256:f4e6d781137b6709cccc2c9f8e18528a6a05559c04cae419b9ced30c818f082a",
-        "inputSha256": "dbb58851d2c6fb656ba76dc79fdd9f334fb2c127f7f0bc2aa17e73849e5a7398",
+        "inputSha256": "3a852f87f899daff010c87d55f9e6a9c6924fecc9b9b1855cc5ee0562c2efe07",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/operator:v1.19.4",
@@ -3526,9 +3526,9 @@
       },
       {
         "id": "kubespray-operator-generic-c6b4e2064d8e",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "digest": "sha256:1aa2b62735e7d8ab49ee840ae59c346932024c88901579121395c1271b435f71",
-        "inputSha256": "0f3d156f07591806560211db090ce1088d68711c524719c6aafb9ad521c554d3",
+        "inputSha256": "416ae01769deb090b53149bc82f2db13fc065664942654a866fe0b182e144bf8",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/cilium/operator-generic:v1.19.4",
@@ -3538,9 +3538,9 @@
       },
       {
         "id": "kubespray-pause-6bafff9caf95",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1-mirror-e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd",
         "digest": "sha256:e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd3afcf9d890cf1f41",
-        "inputSha256": "6b2e3c690eea4f3a960f0a483f02eaacea37cd00c1ceb67cd277801ab03f53db",
+        "inputSha256": "b98c8ac5135429c777c8a9236c1d1e04b6f7d3f99a75a42d4998c8036f38c6ce",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/pause:3.10.1",
@@ -3550,9 +3550,9 @@
       },
       {
         "id": "kubespray-pause-6f731803067f",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10-mirror-7c38f24774e3cbd906d2d33c38354ccf787635581c122965",
         "digest": "sha256:7c38f24774e3cbd906d2d33c38354ccf787635581c122965132c9bd309754d4a",
-        "inputSha256": "5c4bba59c2396b4a074feaba8acb4e55b22d4a99b280ed1002a168c38cd9bbb6",
+        "inputSha256": "18ddcc59ab1d019cbc7dd6ef8594aadaadf2ebda4a3a5ded5ded5a724b626485",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/pause:3.10",
@@ -3562,9 +3562,9 @@
       },
       {
         "id": "kubespray-registry-8a454201835a",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1-mirror-85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507ad",
         "digest": "sha256:85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507add9faca39064bf9b0",
-        "inputSha256": "a9fbd128923aead6b82cbcffc6085b16803790bb84b620a34b942b0646fba150",
+        "inputSha256": "2f70e9a43b9f602c20768418d0a98327213998076e3c9464ee8d224f2f53bc74",
         "delivery": {
           "type": "mirror",
           "source": "index.docker.io/library/registry:2.8.1",
@@ -3574,9 +3574,9 @@
       },
       {
         "id": "kubespray-snapshot-controller-714b107c1ee8",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2-mirror-fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919",
         "digest": "sha256:fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919747d1c83204d2684",
-        "inputSha256": "d591934156c4c79a55d2b464ec5bf4022fff35d2f3d3bb28f7a96e6073ec0419",
+        "inputSha256": "f406365bb7d94cf168a1afd3ac64f82991d970796ff75842de842e755f14f5cf",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
@@ -3586,9 +3586,9 @@
       },
       {
         "id": "kubespray-speaker-665977c8efe1",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
         "digest": "sha256:d314a4140a5b2341718d7185f4129f8776141ce64874487743ebe42ec9cf275f",
-        "inputSha256": "14b0a415ed65fd842afa2e5e9e309e4a44c62f3592fbc05ba78a5f6fb52ea18a",
+        "inputSha256": "4f7a269960d4e4568b96c744543c7340cccd72f90e4ebb2b8bc242ac57927021",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/metallb/speaker:v0.13.9",
@@ -3598,9 +3598,9 @@
       },
       {
         "id": "kubespray-typha-32be33bfb81f",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "digest": "sha256:edd3c5b8ba1af10a77a21865bdbbbd8584eba84e20feceb99645aa6b48c31e99",
-        "inputSha256": "689318bb8dc5a886727eeb0a32471fc466a73343cbb0adbd6a0e44baa3aad850",
+        "inputSha256": "33be38cb6973b4b7fed16a8803fddc18812831b22f40bb79e062693996921741",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/typha:v3.31.5",
@@ -3610,9 +3610,9 @@
       },
       {
         "id": "kubespray-typha-a2c9cbcbd89b",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "digest": "sha256:47e9f0eac793d3c122a761b1c47ac699882737085e095a22d90372535cfc000b",
-        "inputSha256": "be1e420c5ac2eacba8b52a75b7a4b163d339fba188b649d8e6aad08c60b2d015",
+        "inputSha256": "e74cdb6d21b00e21a66c6473d0f34cd1475780dc8da38f30ae9389a3a1085bba",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/typha:v3.30.6",
@@ -3622,9 +3622,9 @@
       },
       {
         "id": "kubespray-typha-e994ea476f5f",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "digest": "sha256:c8ed836f43aa3b7a13582c7d7dfdc21ad338b9fc62e77ca360a0c01ee123737c",
-        "inputSha256": "0356865dca6efb3e46f582a2c9a933b4651a4dd00dd284986001fdfbc42242b0",
+        "inputSha256": "ad9630783f97d6b07102ba001c345afed1fd91195953cb60078df8770a1770dd",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/calico/typha:v3.30.5",
@@ -3634,9 +3634,9 @@
       },
       {
         "id": "kustomize-controller",
-        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4",
+        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
         "digest": "sha256:3e57aecb74419be93d09ba062cfc882bea405193c474009e0da1826de71a4ebd",
-        "inputSha256": "e595030944adaa2d6eaecf95ba963203bfffab27cbd69bbcd6951d8e5dd47b8a",
+        "inputSha256": "730b69af7b19d6cc08f98b803584b8848d9d2c4b0ee179159311bb57cafb0cf7",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/kustomize-controller:v1.9.4",
@@ -3646,9 +3646,9 @@
       },
       {
         "id": "kyverno-admission-controller",
-        "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:11cc08bf7116e0881c00412729dc25c299f29fa3dc6b8e1e53fc623d5158c182",
-        "inputSha256": "bb9055acbc71ac044a660e6167c2a145d4226eaad4197c6f1214e556e578c204",
+        "inputSha256": "a1c0b7f4c95169eb19c7bd6639a068da45959a1aa365b0d9b25fd35093711b89",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/kyverno:v1.18.2",
@@ -3658,9 +3658,9 @@
       },
       {
         "id": "kyverno-background-controller",
-        "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:92193ee48d319d86692673b38abbb10177d5d13bdcb50e85feb97b03b4bf4920",
-        "inputSha256": "6ddad5839b9b49b2ff4794f8d9611ad66c49677bee4d1455f8326e7003b4f2ad",
+        "inputSha256": "e45962df0a4a7edf93b3847774aee4b4c5f11ed94c42575b093a757a5164a93c",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/background-controller:v1.18.2",
@@ -3670,9 +3670,9 @@
       },
       {
         "id": "kyverno-cleanup-controller",
-        "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:2084dacbfc3365cdbeb8b3ccb4a768d3a94b2d1a243f0f36c3d02cc5ce26d5df",
-        "inputSha256": "f70277f10d2deaf01ca9c481c0f71f16b36b0eb37c515629b1146861c1fdcc12",
+        "inputSha256": "1f23bb86ecc99cd74c79890d650131cadc9b4ff0e72452175edb7f0bfeec0679",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/cleanup-controller:v1.18.2",
@@ -3682,9 +3682,9 @@
       },
       {
         "id": "kyverno-cli",
-        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:d152f86f9f044460fa025d6dd04f71c483ee6c7adbf53dcceb5750df0e8d1194",
-        "inputSha256": "c2b1d8638d1be3bd3534bf14e75f709d3b4c1ea4ba846a40e63e207a9e4b584c",
+        "inputSha256": "7af17be909345fb0ad0371160c28e307d3ac8844a7c826a38d7fbc7249fd9304",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/kyverno-cli:v1.18.2",
@@ -3694,9 +3694,9 @@
       },
       {
         "id": "kyverno-preflight",
-        "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:341402e2860cce765a744735c0a3a9c0d0978a82dfdff7b76332afb8d3a2d20b",
-        "inputSha256": "000dd063d3fd67d8640eec3e0ac19fd5cd4122d549a015c91720ff24f895f88e",
+        "inputSha256": "69eaad50c4decfa44e3cf4ed99a9b7404ccb9069cac2761f60f62204a095bef4",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/kyvernopre:v1.18.2",
@@ -3706,9 +3706,9 @@
       },
       {
         "id": "kyverno-readiness-checker",
-        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:da8212b0de60fb82399b24a46f0867807b3a42449205d6d3168635ec1d084b70",
-        "inputSha256": "41d7b76d5dc6d5e91350ded160620a712de70ac487a00a11f696b57809741cfb",
+        "inputSha256": "4d23959f43c1b93b6613d4d5c3d3a51496ffe535f7703c17137e44a042242620",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kyverno/readiness-checker:v1.18.2",
@@ -3718,9 +3718,9 @@
       },
       {
         "id": "kyverno-reports-controller",
-        "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "digest": "sha256:207138d7a52ca4f8ebfcefae203ec22ff57ac21a5bc9437ee428882ca69dbcf2",
-        "inputSha256": "5b80a297954865527db069e8a5ff3ae00e99bc4f49633c5986adb4daf4776f40",
+        "inputSha256": "2349c2d85ffb7395bc326015a394d58357ec6cc913c5d8b11c093cb2f2621d95",
         "delivery": {
           "type": "mirror",
           "source": "reg.kyverno.io/kyverno/reports-controller:v1.18.2",
@@ -3730,9 +3730,9 @@
       },
       {
         "id": "local-path-provisioner",
-        "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37",
+        "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37-mirror-c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2d",
         "digest": "sha256:c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2dfc36a7e66fe99c08",
-        "inputSha256": "43f6964372332c0b17aeb753dc422c352a747aca1ce4a32660355ce963b029a5",
+        "inputSha256": "e932c0f7824fb345f416743e4e614b442989a8c596c407542b969f85c01921f0",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/rancher/local-path-provisioner:v0.0.37",
@@ -3742,9 +3742,9 @@
       },
       {
         "id": "metrics-server",
-        "target": "10.77.0.9:32443/atum/metrics-server:v0.8.1",
+        "target": "10.77.0.9:32443/atum/metrics-server:v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce",
         "digest": "sha256:6231fb0a1ffab76c92ab880f51a0d11b290f688373647bcedff85af025dfd8a9",
-        "inputSha256": "3edab3ed520254383d48dcd71051d77c65aeb862cbec959f59efd1be78296ac4",
+        "inputSha256": "8831fb806806b24ee6a4dd27ca9130575d02fb3898e9a78222f4e149a5718593",
         "delivery": {
           "type": "mirror",
           "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
@@ -3754,9 +3754,9 @@
       },
       {
         "id": "node-exporter",
-        "target": "10.77.0.9:32443/atum/node-exporter:v1.12.1",
+        "target": "10.77.0.9:32443/atum/node-exporter:v1.12.1-mirror-da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e2",
         "digest": "sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798",
-        "inputSha256": "c46e6f2193c178dcd915a73260b5bd451ac18cc7b7757284a9eb1f6ccfbacb2e",
+        "inputSha256": "b5ecb04763146f8594b6f08857c70932c9c4306b0669748a94116a563ba49796",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus/node-exporter:v1.12.1",
@@ -3766,9 +3766,9 @@
       },
       {
         "id": "notification-controller",
-        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3",
+        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3-mirror-782897674cbaa7e6ec716cae22400fd2385f6ec68101daef",
         "digest": "sha256:782897674cbaa7e6ec716cae22400fd2385f6ec68101daef9a13e4218b6d5bd7",
-        "inputSha256": "ced5aab73305bb920beeb1d59b1b05b4a7a5b1a892dc498bb7dfa3850682c354",
+        "inputSha256": "fc4a1d380c60ede7fc829c0f0c9263fe314c85f2a0002a7759f0fe7817903e18",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/notification-controller:v1.9.3",
@@ -3778,9 +3778,9 @@
       },
       {
         "id": "opensearch",
-        "target": "10.77.0.9:32443/atum/opensearch:3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch:3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d",
         "digest": "sha256:39a8f8c63028e8b5d6b70539af1d0339b15a6729002dd5b3f4a65f520376fd30",
-        "inputSha256": "60ea1d80662963a74dfeac583c2d75f969731a0394fd594fa9e750c218753498",
+        "inputSha256": "fc9197855b247da2b6e651a7857853139358c0ef0f93c6d4667e2aef55c48fdc",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/opensearchproject/opensearch:3.8.0",
@@ -3790,9 +3790,9 @@
       },
       {
         "id": "opensearch-dashboards",
-        "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d",
         "digest": "sha256:803638a32d12d585d705cdb623948614d748dda9356a4565c8745fe125077777",
-        "inputSha256": "98122130a7032fef345daa97233e37c2c529fa7c3dcd076d615a543be22cdce3",
+        "inputSha256": "38ee89974374f8c012f69df820402f47f9e0a2c85921ade53a2270ca9a40bab0",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/opensearchproject/opensearch-dashboards:3.8.0",
@@ -3802,9 +3802,9 @@
       },
       {
         "id": "operator-builder",
-        "target": "10.77.0.9:32443/atum/operator-builder:1.26.0",
+        "target": "10.77.0.9:32443/atum/operator-builder:1.26.0-alpine-mirror-7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3",
         "digest": "sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135",
-        "inputSha256": "56d0991a6ae278fcdb4db9d197982d06ec3208c6f1fb2389f394ea3b2fe6003f",
+        "inputSha256": "b39a7a5fddeb0d7e6b73e3cf6eefb3b8a77c1815619d2ecc68fc486a04c42bc6",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/library/golang:1.26.0-alpine",
@@ -3814,9 +3814,9 @@
       },
       {
         "id": "pilot",
-        "target": "10.77.0.9:32443/atum/pilot:1.30.3",
+        "target": "10.77.0.9:32443/atum/pilot:1.30.3-mirror-set-183cc0a514b8e94737334dcff29217b948a7a66002cae44a",
         "digest": "sha256:73d3a30729dd741f72979a9fe9a7cc9072e67eb8099c47fc85450a0510f93b89",
-        "inputSha256": "7a33a269bf3ecf4ef487c41ead9f990acdf6a2b46dbcf42ac1148020f063de7c",
+        "inputSha256": "d3e641c35083c8ad88b35f37dec792f1ebdd5426a8f655f55a49f4899ac2f4f2",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/istio/pilot:1.30.3",
@@ -3826,9 +3826,9 @@
       },
       {
         "id": "policy-reporter",
-        "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0",
+        "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0-mirror-f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7a",
         "digest": "sha256:f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7afdf37bb52743654a",
-        "inputSha256": "ead4412fe744a46f349dc45b3d0a61344b146aaf54f26f75faac11ce93690b03",
+        "inputSha256": "211246fc8bd15ac4330abe1f5045471ed0f83afc3438ab37b77391b423a3440a",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kyverno/policy-reporter:3.9.0",
@@ -3838,9 +3838,9 @@
       },
       {
         "id": "policy-reporter-kyverno-plugin",
-        "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2",
+        "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2-mirror-082c10f8f02bb2c59612a29f08005852367bee07795d3e53",
         "digest": "sha256:082c10f8f02bb2c59612a29f08005852367bee07795d3e53f5387b52c8a9cf57",
-        "inputSha256": "90c0a9c186bb5378c6470e102fb0927f5596d9eceaf9d2e1e73a44a4d80e43e7",
+        "inputSha256": "30abd4952afdd62a8798b4de766451a9189e25a203fdb59706186c2aece35339",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kyverno/policy-reporter/kyverno-plugin:0.6.2",
@@ -3850,9 +3850,9 @@
       },
       {
         "id": "policy-reporter-ui",
-        "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.1",
+        "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.1-mirror-40feb3508eb626ec7d0303a6d4829f5462786518ac31cbf1",
         "digest": "sha256:40feb3508eb626ec7d0303a6d4829f5462786518ac31cbf1de531dcbe7aaca7b",
-        "inputSha256": "85455eced8a828fc4c0ec6c5a2ebc26751839314b32bc49090fdf0071a147391",
+        "inputSha256": "596557ecabf2a293dd9082c102a0e07cfffa1bd9fcc231a98c5741a24231ad5b",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/kyverno/policy-reporter-ui:2.7.1",
@@ -3862,9 +3862,9 @@
       },
       {
         "id": "postgresql-17",
-        "target": "10.77.0.9:32443/atum/postgresql-17:17",
+        "target": "10.77.0.9:32443/atum/postgresql-17:17-mirror-675bd4a902ec570cd9b39d5304136d96508b5b0e15fdd811",
         "digest": "sha256:675bd4a902ec570cd9b39d5304136d96508b5b0e15fdd81163089c138126e8c0",
-        "inputSha256": "1846dbc854f1a9ab6671cdcd13e0469a52c06d8ae4067620ba65cb340c89f660",
+        "inputSha256": "36026be75eb7f81e1846687fee7d05411286e5f9adf7c79a134af6701c75ee7d",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/cloudnative-pg/postgresql:17",
@@ -3874,9 +3874,9 @@
       },
       {
         "id": "postgresql-18",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9",
         "digest": "",
-        "inputSha256": "264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
+        "inputSha256": "f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9",
         "delivery": {
           "type": "build",
           "bakeTarget": "postgresql-18-compat",
@@ -3890,9 +3890,9 @@
       },
       {
         "id": "prometheus",
-        "target": "10.77.0.9:32443/atum/prometheus:v3.13.2",
+        "target": "10.77.0.9:32443/atum/prometheus:v3.13.2-mirror-1147c92841726a6fef55fe6124491d6f85480f8de204f7d4",
         "digest": "sha256:1147c92841726a6fef55fe6124491d6f85480f8de204f7d420304ca5bbd0a8f7",
-        "inputSha256": "6d69d3ebda3a684d3d2bce312b4d24aba225edc01b8caf21ee2952cf547cc354",
+        "inputSha256": "b60acdb179ee89bf927786fee0cdee88e71360f6eecf4e702b1b3c66db380a82",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus/prometheus:v3.13.2",
@@ -3902,9 +3902,9 @@
       },
       {
         "id": "prometheus-config-reloader",
-        "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.93.1",
+        "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161",
         "digest": "sha256:a8ef925b324babee5da12ff39dc9754c655a0374e84cc072b3ea5625f8349e9c",
-        "inputSha256": "72836f57e96976417177695aa6242f3fa156404d6eff9f8bcd45140fc34cc72c",
+        "inputSha256": "49e06b6802f5f3fd5022dacd347e400bb99af231e42b8bb3d3e7cd1bc2b36bbd",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1",
@@ -3914,9 +3914,9 @@
       },
       {
         "id": "prometheus-operator",
-        "target": "10.77.0.9:32443/atum/prometheus-operator:v0.93.1",
+        "target": "10.77.0.9:32443/atum/prometheus-operator:v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161",
         "digest": "sha256:43b87fc949b56f035ff5bf0b228054e753c10801cdf32ebfe0a6448014f80353",
-        "inputSha256": "a2949fa94c1e78d85ccb102ad77f6153d42e6c4db78d78093c3d5ed6df52c08f",
+        "inputSha256": "daab3f28abc9e5af257cd94b777cc7b91c6e0797401a59d1bd49ee42f30ddd01",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/prometheus-operator/prometheus-operator:v0.93.1",
@@ -3926,9 +3926,9 @@
       },
       {
         "id": "proxyv2",
-        "target": "10.77.0.9:32443/atum/proxyv2:1.30.3",
+        "target": "10.77.0.9:32443/atum/proxyv2:1.30.3-mirror-set-183cc0a514b8e94737334dcff29217b948a7a66002cae44a",
         "digest": "sha256:dadeba31ff2b92dfa9b73ce6cf41d09d62448dba149fe11b162b6a1e5474147f",
-        "inputSha256": "d61a5654b9ae8ba9a0906c527bf66ef58706dc749207905edf73e11c50862abd",
+        "inputSha256": "75ad0650b985560f1eb104843d4471d30943b52aa147a6d620990ee86a6183c1",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/istio/proxyv2:1.30.3",
@@ -3938,9 +3938,9 @@
       },
       {
         "id": "redis-8-10-0",
-        "target": "10.77.0.9:32443/atum/redis-8-10-0:8.10.0",
+        "target": "10.77.0.9:32443/atum/redis-8-10-0:8.10.0-mirror-52334768d4a6594d8969f51a1a6fee3ffa7545f6359a4877",
         "digest": "sha256:52334768d4a6594d8969f51a1a6fee3ffa7545f6359a4877229cdc754d2def82",
-        "inputSha256": "df67db56be8e58fc9649c63ab931fc58d646a9646c31b6522818a92b5ffa1151",
+        "inputSha256": "95e47109ee3ecd2d1bf03a06860e937bc3b0632e5a7147e02edbf837d9a38745",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/library/redis:8.10.0",
@@ -3950,9 +3950,9 @@
       },
       {
         "id": "redis-8-8-0",
-        "target": "10.77.0.9:32443/atum/redis-8-8-0:8.8.0",
+        "target": "10.77.0.9:32443/atum/redis-8-8-0:8.8.0-mirror-5d2c689b4b55fc3fab4b0cc8aaa950f85b508c76c1e0f35a",
         "digest": "sha256:5d2c689b4b55fc3fab4b0cc8aaa950f85b508c76c1e0f35a90d8f411d55a8b2b",
-        "inputSha256": "f5d05d699b2eceffcdb056029b6ace55a90b56048f860a0ae0a49d566c97d8a5",
+        "inputSha256": "7f09be61e27c6656e6dba01129fa6f10271c0266a1ba2908ae97fe3445820202",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/library/redis:8.8.0",
@@ -3962,9 +3962,9 @@
       },
       {
         "id": "sbom-scanner",
-        "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0",
+        "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0-mirror-13864237fb990943433f89d698590aad1de38d4a7e13d38e",
         "digest": "sha256:13864237fb990943433f89d698590aad1de38d4a7e13d38e7b12f2488c1952e7",
-        "inputSha256": "e23b01a55919c47844fb96122846d164aac7895095424b1458f8ef5269af5f5a",
+        "inputSha256": "46893839c6603a2f61bbf3a6a6d25ccb3a06753d65c1189c34644515a4bc2ccd",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/docker/buildkit-syft-scanner:1.11.0",
@@ -3974,9 +3974,9 @@
       },
       {
         "id": "source-controller",
-        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4",
+        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
         "digest": "sha256:aea98854cac3df335fa7c416135e0395e36436afb8299f7c8ee1433481c40316",
-        "inputSha256": "c80c9ca11d2f70c439b67d57e1afeb2d97f30b62a897867a5e96e2e7230c04f1",
+        "inputSha256": "f3154953f2ac04a590d98f62404cc461932398ea5ca2755370ac1aac289b32c6",
         "delivery": {
           "type": "mirror",
           "source": "ghcr.io/fluxcd/source-controller:v1.9.4",
@@ -3986,9 +3986,9 @@
       },
       {
         "id": "tempo",
-        "target": "10.77.0.9:32443/atum/tempo:2.10.5",
+        "target": "10.77.0.9:32443/atum/tempo:2.10.5-mirror-7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3",
         "digest": "sha256:7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3be21e97fe83de502",
-        "inputSha256": "38ed672edaa410a4e3dfbf11337d472e5248807de0d2714035e8bafe63541357",
+        "inputSha256": "9b1458b0ff979e837c8a0b64d451db199ee94d2a06357747249a9ea92433d8b0",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/grafana/tempo:2.10.5",
@@ -3998,9 +3998,9 @@
       },
       {
         "id": "thanos",
-        "target": "10.77.0.9:32443/atum/thanos:v0.42.4",
+        "target": "10.77.0.9:32443/atum/thanos:v0.42.4-mirror-ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a",
         "digest": "sha256:ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a0f1394cc43e09422",
-        "inputSha256": "ab208cd8091fff37a9ea1817e32e4e6730af95349baccf55c72b414c0166f724",
+        "inputSha256": "e22b4f93357b57c6a9e684e34c310a62a4a4714be4e45bc7c4be3459d794a52a",
         "delivery": {
           "type": "mirror",
           "source": "quay.io/thanos/thanos:v0.42.4",
@@ -4010,9 +4010,9 @@
       },
       {
         "id": "ubi9",
-        "target": "10.77.0.9:32443/atum/ubi9:9.8",
+        "target": "10.77.0.9:32443/atum/ubi9:9.8-mirror-03b3d228574922e50bc654aea24a213f68467937c5cc001b",
         "digest": "sha256:03b3d228574922e50bc654aea24a213f68467937c5cc001b5786815152d6f4e2",
-        "inputSha256": "7e1914bb865a3ed9954c8bf3a73619ba9d730e5d3e8edbbd4b5595d661faba09",
+        "inputSha256": "e98fbe2f948befcd82e41138f0c3bbb8634894339f5a2fda262cb300bd0f162d",
         "delivery": {
           "type": "mirror",
           "source": "registry.access.redhat.com/ubi9/ubi:9.8",
@@ -4022,9 +4022,9 @@
       },
       {
         "id": "vault",
-        "target": "10.77.0.9:32443/atum/vault:build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
+        "target": "10.77.0.9:32443/atum/vault:build-4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5",
         "digest": "",
-        "inputSha256": "2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
+        "inputSha256": "4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5",
         "delivery": {
           "type": "build",
           "bakeTarget": "vault-curl-compat",
@@ -4039,9 +4039,9 @@
       },
       {
         "id": "vault-k8s",
-        "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5",
+        "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06",
         "digest": "sha256:cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06fac033c9b9cbf35d",
-        "inputSha256": "32153a21cc25dd30dc096f4d621bad260a5c3a01bc572c9a674fc2352d4253fa",
+        "inputSha256": "05128b105d0d37ed104f4d226793d489fda140b15a5b817c5991da806896217d",
         "delivery": {
           "type": "mirror",
           "source": "docker.io/hashicorp/vault-k8s:1.7.5",

@@ -362,8 +362,13 @@ image maps once to:
 
 One canonical desired image record owns policy and compatibility evidence.
 One lock record owns immutable resolution. One generated value projects the
-internal runtime target. No historical baseline, duplicate crosswalk, build
-profile copy, or transition record participates.
+internal runtime target. Direct mirrors use an upstream-tag-prefixed target tag
+derived from the resolved manifest digest or, where an official chart shares
+one tag across multiple repositories, their complete digest set. The prefix
+preserves charts that parse image tags as semantic versions or own a leading
+`v`. An upstream publisher retargeting a version tag therefore cannot collide
+with existing immutable Harbor content. No historical baseline, duplicate
+crosswalk, build profile copy, or transition record participates.
 
 Iron Bank image references are non-fetchable compatibility evidence only.
 Atum never creates a Registry1 client, mirrors an Iron Bank artifact, uses one

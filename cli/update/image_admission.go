@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"reflect"
 	"sort"
@@ -17,13 +18,17 @@ import (
 	"sync"
 
 	"atum/cli/config"
+	"atum/cli/fssecure"
+	atumoci "atum/cli/oci"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"golang.org/x/sync/errgroup"
 	"mvdan.cc/sh/v3/syntax"
+	ocistore "oras.land/oras-go/v2/content/oci"
 )
 
 const maxOfficialFilesystemBytes int64 = 8 << 30
@@ -149,6 +154,12 @@ type configuredOfficialIdentity struct {
 }
 
 var configuredOfficialImages = map[string]configuredOfficialIdentity{
+	"docker.io/library/busybox": {
+		id:         "busybox",
+		family:     "foundation",
+		provenance: "https://github.com/mirror/busybox",
+		license:    "GPL-2.0-only",
+	},
 	"docker.io/docker/buildkit-syft-scanner": {
 		id:         "sbom-scanner",
 		family:     "build-system",
@@ -224,11 +235,13 @@ var configuredOfficialImages = map[string]configuredOfficialIdentity{
 // runtime contract before admitting delivery.
 func admitFinalRenderedImages(
 	ctx context.Context,
+	root string,
 	parallelism int,
 	desired *config.Document,
 	artifacts []chartArtifact,
 	inspections []chartInspection,
 	previous map[string]config.Image,
+	mirrorReceipts map[string]config.ImageMirrorReceipt,
 	compatibilityReceipts map[string]config.Image,
 	renderContractsUnchanged bool,
 	progress func(completed, total int),
@@ -401,12 +414,18 @@ func admitFinalRenderedImages(
 			if cached != nil {
 				results[requestIndex].cached = cached
 			} else {
-				results[requestIndex].inspection, err = inspectOfficialCandidate(
-					groupContext,
-					source,
-					image,
-					request.uses,
-				)
+				mirrorReceipt, hasMirrorReceipt :=
+					mirrorReceipts[image.ID]
+				results[requestIndex].inspection, err =
+					inspectOfficialCandidateWithCache(
+						groupContext,
+						root,
+						source,
+						image,
+						mirrorReceipt,
+						hasMirrorReceipt,
+						request.uses,
+					)
 			}
 			if err != nil {
 				return fmt.Errorf(
@@ -831,6 +850,207 @@ func inspectOfficialCandidate(
 	if err != nil {
 		return officialImageInspection{}, fmt.Errorf("read official image %s: %w", source, err)
 	}
+	return inspectOfficialCandidateImage(source, imageRecord, uses, image, "")
+}
+
+func inspectOfficialCandidateWithCache(
+	ctx context.Context,
+	root string,
+	source string,
+	imageRecord config.Image,
+	receipt config.ImageMirrorReceipt,
+	hasReceipt bool,
+	uses []finalImageUse,
+) (officialImageInspection, error) {
+	if hasReceipt {
+		image, found, err := openReusableOfficialImageCache(
+			ctx, root, imageRecord.ID, source, receipt,
+		)
+		if err != nil {
+			return officialImageInspection{}, fmt.Errorf(
+				"open exact OCI cache for %s: %w",
+				imageRecord.ID,
+				err,
+			)
+		}
+		if found {
+			return inspectOfficialCandidateImage(
+				source,
+				imageRecord,
+				uses,
+				image,
+				receipt.Digest,
+			)
+		}
+	}
+	return inspectOfficialCandidate(ctx, source, imageRecord, uses)
+}
+
+func openReusableOfficialImageCache(
+	ctx context.Context,
+	root string,
+	imageID string,
+	source string,
+	receipt config.ImageMirrorReceipt,
+) (v1.Image, bool, error) {
+	if receipt.ID != imageID ||
+		receipt.Source != source ||
+		!isResolvedImageDigest(receipt.Digest) {
+		return nil, false, nil
+	}
+	return openCachedOfficialImage(
+		ctx,
+		root,
+		imageID,
+		receipt.Digest,
+	)
+}
+
+func openCachedOfficialImage(
+	ctx context.Context,
+	root string,
+	imageID string,
+	digest string,
+) (v1.Image, bool, error) {
+	relative, err := atumoci.OfficialMirrorCacheRelative(imageID, digest)
+	if err != nil {
+		return nil, false, err
+	}
+	absolute, err := fssecure.Resolve(root, relative, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if err := atumoci.ValidateLayoutTree(absolute); err != nil {
+		return nil, false, err
+	}
+	store, err := ocistore.NewWithContext(ctx, absolute)
+	if err != nil {
+		return nil, false, fmt.Errorf("open OCI store %s: %w", relative, err)
+	}
+	rootDescriptor, err := store.Resolve(ctx, digest)
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"resolve root %s from OCI layout %s: %w",
+			digest,
+			relative,
+			err,
+		)
+	}
+	if rootDescriptor.Digest.String() != digest {
+		return nil, false, fmt.Errorf(
+			"OCI layout %s resolves to %s, want %s",
+			relative,
+			rootDescriptor.Digest,
+			digest,
+		)
+	}
+	runtimeDescriptor, err := atumoci.LinuxAMD64Manifest(
+		ctx,
+		store,
+		rootDescriptor,
+	)
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"select linux/amd64 manifest %s from OCI layout %s: %w",
+			digest,
+			relative,
+			err,
+		)
+	}
+	cache, err := layout.FromPath(absolute)
+	if err != nil {
+		return nil, false, fmt.Errorf("open OCI layout %s: %w", relative, err)
+	}
+	hash, err := v1.NewHash(runtimeDescriptor.Digest.String())
+	if err != nil {
+		return nil, false, err
+	}
+	var image v1.Image
+	if runtimeDescriptor.Digest == rootDescriptor.Digest {
+		image, err = cache.Image(hash)
+	} else {
+		rootHash, hashErr := v1.NewHash(rootDescriptor.Digest.String())
+		if hashErr != nil {
+			return nil, false, hashErr
+		}
+		layoutIndex, indexErr := cache.ImageIndex()
+		if indexErr != nil {
+			return nil, false, fmt.Errorf(
+				"read root index from OCI layout %s: %w",
+				relative,
+				indexErr,
+			)
+		}
+		imageIndex, indexErr := layoutIndex.ImageIndex(rootHash)
+		if indexErr != nil {
+			return nil, false, fmt.Errorf(
+				"read image index %s from OCI layout %s: %w",
+				rootDescriptor.Digest,
+				relative,
+				indexErr,
+			)
+		}
+		image, err = imageIndex.Image(hash)
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"read manifest %s from OCI layout %s: %w",
+			runtimeDescriptor.Digest,
+			relative,
+			err,
+		)
+	}
+	resolved, err := image.Digest()
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"verify manifest %s from OCI layout %s: %w",
+			runtimeDescriptor.Digest,
+			relative,
+			err,
+		)
+	}
+	if resolved.String() != runtimeDescriptor.Digest.String() {
+		return nil, false, fmt.Errorf(
+			"OCI layout %s resolves to %s, want %s",
+			relative,
+			resolved,
+			runtimeDescriptor.Digest,
+		)
+	}
+	configuration, err := image.ConfigFile()
+	if err != nil {
+		return nil, false, fmt.Errorf(
+			"read config for %s from OCI layout %s: %w",
+			digest,
+			relative,
+			err,
+		)
+	}
+	if configuration.OS != linuxAMD64.OS ||
+		configuration.Architecture != linuxAMD64.Architecture {
+		return nil, false, fmt.Errorf(
+			"OCI layout %s resolves to %s/%s, want linux/amd64",
+			relative,
+			configuration.OS,
+			configuration.Architecture,
+		)
+	}
+	return image, true, nil
+}
+
+func inspectOfficialCandidateImage(
+	source string,
+	imageRecord config.Image,
+	uses []finalImageUse,
+	image v1.Image,
+	materialDigest string,
+) (officialImageInspection, error) {
+	if strings.HasPrefix(imageRepository(source), "registry1.dso.mil/") {
+		return officialImageInspection{}, errors.New("Registry1 candidates are forbidden")
+	}
 	configuration, err := image.ConfigFile()
 	if err != nil {
 		return officialImageInspection{}, fmt.Errorf("read official image config %s: %w", source, err)
@@ -852,11 +1072,20 @@ func inspectOfficialCandidate(
 			err,
 		)
 	}
+	if materialDigest == "" {
+		materialDigest = manifestDigest.String()
+	} else if !isResolvedImageDigest(materialDigest) {
+		return officialImageInspection{}, fmt.Errorf(
+			"official image %s has invalid material digest %s",
+			source,
+			materialDigest,
+		)
+	}
 	configDigest, err := image.ConfigName()
 	if err != nil {
 		return officialImageInspection{}, fmt.Errorf("resolve official config %s: %w", source, err)
 	}
-	material := imageRepository(source) + "@" + manifestDigest.String()
+	material := imageRepository(source) + "@" + materialDigest
 	normalizedUses := make([]finalImageUse, len(uses))
 	var obligations []filesystemObligation
 	var requiredEnvironment []string

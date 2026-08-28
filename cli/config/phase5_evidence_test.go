@@ -92,8 +92,10 @@ func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
 	for index, source := range sources {
 		id := "image-" + string(rune('a'+index))
 		inventory.Images[index] = id
+		digest := "sha256:" + strings.Repeat("b", 64)
 		image := Image{
 			ID:        id,
+			Version:   strings.TrimPrefix(imageReferenceTag(source), "v"),
 			Discovery: "kubespray",
 			Target: targetPrefix + "kubespray/" +
 				imageReferenceRepository(source) + ":" +
@@ -103,11 +105,22 @@ func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
 			Delivery: ImageDelivery{Default: DeliveryChoice{
 				Type:   "mirror",
 				Source: source,
-				Digest: "sha256:" + strings.Repeat("b", 64),
+				Digest: digest,
 			}},
 		}
 		projected[id] = image
 		projectedList = append(projectedList, image)
+	}
+	targetTags, err := ContentAddressedMirrorTags(projectedList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range projectedList {
+		image := &projectedList[index]
+		image.Target = targetPrefix + "kubespray/" +
+			imageReferenceRepository(image.Delivery.Default.Source) + ":" +
+			targetTags[image.ID]
+		projected[image.ID] = *image
 	}
 	var problems []string
 	validateKubesprayImageProjection(

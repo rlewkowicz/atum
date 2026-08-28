@@ -2,12 +2,10 @@ package delivery
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
@@ -29,16 +27,17 @@ func (service *Service) prepareMirrorOutput(
 	image selectedImage,
 	report func(int64),
 ) (mirrorOutput, error) {
-	digest, found := strings.CutPrefix(image.Delivery.Digest, "sha256:")
-	decoded, decodeErr := hex.DecodeString(digest)
-	if !found || decodeErr != nil || !fssecure.ValidName(image.Image.ID) || len(decoded) != 32 || hex.EncodeToString(decoded) != digest {
-		return mirrorOutput{}, fmt.Errorf("official image %s has an invalid cache identity", image.Image.ID)
+	relative, err := atumoci.OfficialMirrorCacheRelative(
+		image.Image.ID,
+		image.Delivery.Digest,
+	)
+	if err != nil {
+		return mirrorOutput{}, err
 	}
-	parentRelative := filepath.Join(".atum", "cache", "oci", "mirrors")
+	parentRelative := filepath.Dir(relative)
 	if _, err := fssecure.EnsureDirectory(project.Root, parentRelative, 0o700); err != nil {
 		return mirrorOutput{}, fmt.Errorf("create OCI mirror cache: %w", err)
 	}
-	relative := filepath.Join(parentRelative, image.Image.ID+"-"+digest)
 	absolute, err := fssecure.Resolve(project.Root, relative, true)
 	if err != nil {
 		return mirrorOutput{}, err
@@ -86,7 +85,7 @@ func (service *Service) prepareMirrorOutput(
 }
 
 func openMirrorOutput(ctx context.Context, directory, digest string) (mirrorOutput, error) {
-	if err := verifyOCILayoutTree(directory); err != nil {
+	if err := atumoci.ValidateLayoutTree(directory); err != nil {
 		return mirrorOutput{}, err
 	}
 	store, err := ocistore.NewWithContext(ctx, directory)

@@ -8,7 +8,7 @@ addons:
         values:
             image:
                 repository: 10.77.0.9:32443/atum/authservice
-                tag: 1.1.5
+                tag: 1.1.5-mirror-d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8
     gitlab:
         helmRepo:
             chartName: gitlab
@@ -20,65 +20,65 @@ addons:
                 certificates:
                     image:
                         repository: 10.77.0.9:32443/atum/certificates
-                        tag: v19.2.4
+                        tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                 gitlabBase:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-base
-                        tag: v19.2.4
+                        tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                 kubectl:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-kubectl
-                        tag: v19.2.4
+                        tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
             upstream:
                 gitlab:
                     gitaly:
                         image:
                             repository: 10.77.0.9:32443/atum/gitaly
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                     gitlab-exporter:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-exporter
-                            tag: 16.9.0
+                            tag: 16.9.0-mirror-67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e
                     gitlab-shell:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-shell
-                            tag: v14.56.1
+                            tag: v14.56.1-mirror-531dc40928bdffdf1ea61930b1478944351f48664aaf4935
                     migrations:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-toolbox
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                     praefect:
                         image:
                             repository: 10.77.0.9:32443/atum/gitaly
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                     sidekiq:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-sidekiq
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                     toolbox:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-toolbox
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                     webservice:
                         image:
                             repository: 10.77.0.9:32443/atum/gitlab-webservice
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                         workhorse:
                             image: 10.77.0.9:32443/atum/gitlab-workhorse
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                 registry:
                     image:
                         repository: 10.77.0.9:32443/atum/gitlab-container-registry
-                        tag: v4.40.2-gitlab
+                        tag: v4.40.2-gitlab-mirror-2962b4b72175d8ec43e508ab621718028574462f46c14744
                 shared-secrets:
                     selfsign:
                         image:
                             repository: 10.77.0.9:32443/atum/cfssl-self-sign
-                            tag: v19.2.4
+                            tag: v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd
                 upgradeCheck:
                     image:
                         repository: 10.77.0.9:32443/atum/ubi9
-                        tag: "9.8"
+                        tag: 9.8-mirror-03b3d228574922e50bc654aea24a213f68467937c5cc001b
     harbor:
         helmRepo:
             chartName: harbor
@@ -90,43 +90,43 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502
+                    tag: build-f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9
             redis-bb:
                 upstream:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/redis-8-10-0
-                        tag: 8.10.0
+                        tag: 8.10.0-mirror-52334768d4a6594d8969f51a1a6fee3ffa7545f6359a4877
             upstream:
                 core:
                     image:
                         repository: 10.77.0.9:32443/atum/harbor-harbor-core
-                        tag: v2.15.2
+                        tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                 exporter:
                     image:
                         repository: 10.77.0.9:32443/atum/harbor-harbor-exporter
-                        tag: v2.15.2
+                        tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                 jobservice:
                     image:
                         repository: 10.77.0.9:32443/atum/harbor-harbor-jobservice
-                        tag: v2.15.2
+                        tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                 portal:
                     image:
                         repository: 10.77.0.9:32443/atum/harbor-harbor-portal
-                        tag: v2.15.2
+                        tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                 registry:
                     controller:
                         image:
                             repository: 10.77.0.9:32443/atum/harbor-harbor-registryctl
-                            tag: v2.15.2
+                            tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                     registry:
                         image:
                             repository: 10.77.0.9:32443/atum/harbor-registry
-                            tag: v2.15.2
+                            tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
                 trivy:
                     image:
                         repository: 10.77.0.9:32443/atum/harbor-trivy-adapter
-                        tag: v2.15.2
+                        tag: v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08
     headlamp:
         helmRepo:
             chartName: headlamp
@@ -138,7 +138,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/headlamp
-                    tag: v0.44.0
+                    tag: v0.44.0-mirror-a3fc96b5e825ba1149216e7731eaf23bc0ed8cf254a92296
     keycloak:
         helmRepo:
             chartName: keycloak
@@ -150,11 +150,11 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502
+                    tag: build-f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
-                    tag: 26.7.2
+                    tag: 26.7.2-mirror-c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f6
     metricsServer:
         helmRepo:
             chartName: metrics-server
@@ -165,7 +165,7 @@ addons:
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/metrics-server
-                    tag: v0.8.1
+                    tag: v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce
     vault:
         helmRepo:
             chartName: vault
@@ -177,14 +177,14 @@ addons:
                 injector:
                     agentImage:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f
+                        tag: build-4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
-                        tag: 1.7.5
+                        tag: 1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06
                 server:
                     image:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f
+                        tag: build-4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5
 fluentbit:
     helmRepo:
         chartName: fluentbit
@@ -195,7 +195,7 @@ fluentbit:
         upstream:
             image:
                 repository: 10.77.0.9:32443/atum/fluent-bit
-                tag: 5.0.9
+                tag: 5.0.9-mirror-1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f6
 grafana:
     helmRepo:
         chartName: grafana
@@ -209,12 +209,12 @@ grafana:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6
+                tag: build-7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/k8s-sidecar
-                    tag: 2.8.1
+                    tag: 2.8.1-mirror-44065fae116464099acd5bfddb62dcb2cf53c8fa18948d21
 helmRepositories:
     - name: atum
       password: ""
@@ -243,7 +243,7 @@ istiod:
         upstream:
             global:
                 hub: 10.77.0.9:32443/atum
-                tag: 1.30.3
+                tag: 1.30.3-mirror-set-183cc0a514b8e94737334dcff29217b948a7a66002cae44a
 kiali:
     helmRepo:
         chartName: kiali
@@ -255,10 +255,10 @@ kiali:
             cr:
                 spec:
                     deployment:
-                        image_name: 10.77.0.9:32443/atum/kiali:v2.30.0
+                        image_name: 10.77.0.9:32443/atum/kiali:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d
             image:
                 repo: 10.77.0.9:32443/atum/kiali-operator
-                tag: v2.30.0
+                tag: v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d
 kyverno:
     helmRepo:
         chartName: kyverno
@@ -275,28 +275,28 @@ kyverno:
                     image:
                         defaultRegistry: 10.77.0.9:32443
                         repository: atum/kyverno-admission-controller
-                        tag: v1.18.2
+                        tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
                 initContainer:
                     image:
                         defaultRegistry: 10.77.0.9:32443
                         repository: atum/kyverno-preflight
-                        tag: v1.18.2
+                        tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
             backgroundController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
                     repository: atum/kyverno-background-controller
-                    tag: v1.18.2
+                    tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
             cleanupController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
                     repository: atum/kyverno-cleanup-controller
-                    tag: v1.18.2
+                    tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
             crds:
                 migration:
                     image:
                         defaultRegistry: 10.77.0.9:32443
                         repository: atum/kyverno-cli
-                        tag: v1.18.2
+                        tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
             global:
                 extraEnvVars:
                     - name: KUBE_FEATURE_WatchListClient
@@ -305,12 +305,12 @@ kyverno:
                 image:
                     defaultRegistry: 10.77.0.9:32443
                     repository: atum/kyverno-reports-controller
-                    tag: v1.18.2
+                    tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
             webhooksCleanup:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/kyverno-readiness-checker
-                    tag: v1.18.2
+                    tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
 kyvernoPolicies:
     helmRepo:
         chartName: kyverno-policies
@@ -328,18 +328,18 @@ kyvernoReporter:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/policy-reporter
-                tag: 3.9.0
+                tag: 3.9.0-mirror-f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7a
             plugin:
                 kyverno:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/policy-reporter-kyverno-plugin
-                        tag: 0.6.2
+                        tag: 0.6.2-mirror-082c10f8f02bb2c59612a29f08005852367bee07795d3e53
             ui:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/policy-reporter-ui
-                    tag: 2.7.1
+                    tag: 2.7.1-mirror-40feb3508eb626ec7d0303a6d4829f5462786518ac31cbf1
 monitoring:
     helmRepo:
         chartName: monitoring
@@ -353,50 +353,50 @@ monitoring:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/blackbox-exporter
-                tag: v0.28.0
+                tag: v0.28.0-mirror-43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f
         upstream:
             alertmanager:
                 alertmanagerSpec:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/alertmanager
-                        tag: v0.33.1
+                        tag: v0.33.1-mirror-a89f8d4520954079275441eecdb71444328bd90633dd4edd
             kube-state-metrics:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/kube-state-metrics
-                    tag: v2.19.1
+                    tag: v2.19.1-mirror-7661da8c99b733d43117e4cba12bd9865d335e5777191d0a
             prometheus:
                 prometheusSpec:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/prometheus
-                        tag: v3.13.2
+                        tag: v3.13.2-mirror-1147c92841726a6fef55fe6124491d6f85480f8de204f7d4
             prometheus-node-exporter:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/node-exporter
-                    tag: v1.12.1
+                    tag: v1.12.1-mirror-da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e2
             prometheusOperator:
                 admissionWebhooks:
                     patch:
                         image:
                             registry: 10.77.0.9:32443
                             repository: atum/kube-webhook-certgen
-                            tag: v1.6.9
+                            tag: v1.6.9-mirror-f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/prometheus-operator
-                    tag: v0.93.1
+                    tag: v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161
                 prometheusConfigReloader:
                     image:
                         registry: 10.77.0.9:32443
                         repository: atum/prometheus-config-reloader
-                        tag: v0.93.1
+                        tag: v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161
                 thanosImage:
                     registry: 10.77.0.9:32443
                     repository: atum/thanos
-                    tag: v0.42.4
+                    tag: v0.42.4-mirror-ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a
 offline: true
 packages:
     cert-manager:
@@ -415,24 +415,24 @@ packages:
             acmesolver:
                 image:
                     repository: 10.77.0.9:32443/atum/cert-manager-acmesolver
-                    tag: v1.21.1
+                    tag: v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e
             cainjector:
                 image:
                     repository: 10.77.0.9:32443/atum/cert-manager-cainjector
-                    tag: v1.21.1
+                    tag: v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e
             crds:
                 enabled: true
             image:
                 repository: 10.77.0.9:32443/atum/cert-manager-controller
-                tag: v1.21.1
+                tag: v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e
             startupapicheck:
                 image:
                     repository: 10.77.0.9:32443/atum/cert-manager-startupapicheck
-                    tag: v1.21.1
+                    tag: v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e
             webhook:
                 image:
                     repository: 10.77.0.9:32443/atum/cert-manager-webhook
-                    tag: v1.21.1
+                    tag: v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e
     cloudnative-pg:
         helmRepo:
             chartName: cloudnative-pg
@@ -443,7 +443,7 @@ packages:
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/cloudnative-pg
-                    tag: 1.30.0
+                    tag: 1.30.0-mirror-091d306935cfdf646debfe78010d59ebfb572150eb6eb922
     garage:
         helmRepo:
             chartName: garage
@@ -454,14 +454,14 @@ packages:
             garageInit:
                 image:
                     repository: 10.77.0.9:32443/atum/garage-init-helper
-                    tag: build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb
+                    tag: build-6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/garage
-                    tag: v2.3.0
+                    tag: v2.3.0-mirror-dac0c92add4f1a0b41035e94b41036a270ffbe88a37c7ac9
                 initImage:
                     repository: 10.77.0.9:32443/atum/busybox
-                    tag: 1.37.0
+                    tag: 1.37.0-mirror-7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0
     opensearch:
         helmRepo:
             chartName: opensearch
@@ -471,7 +471,7 @@ packages:
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch
-                tag: 3.8.0
+                tag: 3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d
     opensearch-dashboards:
         helmRepo:
             chartName: opensearch-dashboards
@@ -481,7 +481,7 @@ packages:
         values:
             image:
                 repository: 10.77.0.9:32443/atum/opensearch-dashboards
-                tag: 3.8.0
+                tag: 3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d
     postgresql:
         helmRepo:
             chartName: cluster
@@ -490,7 +490,7 @@ packages:
         sourceType: helmRepo
         values:
             cluster:
-                imageName: 10.77.0.9:32443/atum/postgresql-17:17
+                imageName: 10.77.0.9:32443/atum/postgresql-17:17-mirror-675bd4a902ec570cd9b39d5304136d96508b5b0e15fdd811
     redis:
         helmRepo:
             chartName: redis
@@ -507,7 +507,7 @@ packages:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/redis-8-8-0
-                    tag: 8.8.0
+                    tag: 8.8.0-mirror-5d2c689b4b55fc3fab4b0cc8aaa950f85b508c76c1e0f35a
 prometheusOperatorCRDs:
     helmRepo:
         chartName: prometheus-operator-crds
@@ -525,7 +525,7 @@ tempo:
             tempo:
                 registry: 10.77.0.9:32443
                 repository: atum/tempo
-                tag: 2.10.5
+                tag: 2.10.5-mirror-7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3
 wrapper:
     helmRepo:
         chartName: wrapper

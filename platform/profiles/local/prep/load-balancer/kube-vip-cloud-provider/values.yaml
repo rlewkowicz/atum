@@ -1,16 +1,16 @@
-replicasCount: 1
-image:
-  repository: 10.77.0.9:32443/atum/kube-vip-cloud-provider
-  tag: v0.0.12
-  pullPolicy: IfNotPresent
 cm:
-  data:
-    range-global: 10.77.0.22-10.77.0.39
+    data:
+        range-global: 10.77.0.22-10.77.0.39
 enableloadbalancerClass: false
+image:
+    pullPolicy: IfNotPresent
+    repository: 10.77.0.9:32443/atum/kube-vip-cloud-provider
+    tag: v0.0.12-mirror-33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55
+replicasCount: 1
 resources:
-  requests:
-    cpu: 25m
-    memory: 32Mi
-  limits:
-    cpu: 100m
-    memory: 128Mi
+    limits:
+        cpu: 100m
+        memory: 128Mi
+    requests:
+        cpu: 25m
+        memory: 32Mi

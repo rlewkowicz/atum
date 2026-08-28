@@ -69,6 +69,7 @@ func (service *Service) reconstructKubesprayReleaseArtifacts(
 	releases []config.ClusterRelease,
 	terminal resolvedGit,
 	parallelism int,
+	mirrorReceipts map[string]config.ImageMirrorReceipt,
 ) ([]config.KubesprayArtifactInventory, error) {
 	if desired == nil || len(releases) == 0 {
 		return nil, errors.New("Kubespray release ladder is empty")
@@ -123,6 +124,7 @@ func (service *Service) reconstructKubesprayReleaseArtifacts(
 				resolved,
 				release.Kubernetes,
 				perReleaseLimit,
+				mirrorReceipts,
 			)
 			if err != nil {
 				return err
@@ -174,6 +176,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 	resolved resolvedGit,
 	kubernetesVersion string,
 	parallelism int,
+	mirrorReceipts map[string]config.ImageMirrorReceipt,
 ) (config.KubesprayArtifactInventory, error) {
 	if desired == nil || resolved.Checkout == "" || resolved.Source.Commit == "" {
 		return config.KubesprayArtifactInventory{}, errors.New(
@@ -221,7 +224,38 @@ func (service *Service) reconstructKubesprayArtifacts(
 		index := index
 		group.Go(func() error {
 			source := sources[index]
+			reference, err := name.ParseReference(source)
+			if err != nil {
+				return fmt.Errorf("parse Kubespray image %s: %w", source, err)
+			}
+			repository := reference.Context().Name()
+			tag := reference.Identifier()
+			idDigest := config.SHA256([]byte(source))
+			component := sanitizeKubesprayImageID(filepath.Base(repository))
+			imageID := "kubespray-" + component + "-" + idDigest[:12]
 			digest := chartDigests[source]
+			resolvedFromCache := false
+			if receipt, found := mirrorReceipts[imageID]; found &&
+				(digest == "" || digest == receipt.Digest) {
+				_, reusable, cacheErr := openReusableOfficialImageCache(
+					groupContext,
+					service.root,
+					imageID,
+					source,
+					receipt,
+				)
+				if cacheErr != nil {
+					return fmt.Errorf(
+						"open exact Kubespray image cache %s: %w",
+						source,
+						cacheErr,
+					)
+				}
+				if reusable {
+					digest = receipt.Digest
+					resolvedFromCache = true
+				}
+			}
 			if digest == "" {
 				resolvedDigest, resolveErr := resolveImageDigest(groupContext, source)
 				if resolveErr != nil {
@@ -232,7 +266,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 					)
 				}
 				digest = resolvedDigest
-			} else {
+			} else if !resolvedFromCache {
 				resolved, resolveErr := resolveImageDigests(groupContext, source)
 				if resolveErr != nil {
 					return fmt.Errorf(
@@ -250,16 +284,8 @@ func (service *Service) reconstructKubesprayArtifacts(
 					)
 				}
 			}
-			reference, err := name.ParseReference(source)
-			if err != nil {
-				return fmt.Errorf("parse Kubespray image %s: %w", source, err)
-			}
-			repository := reference.Context().Name()
-			tag := reference.Identifier()
-			idDigest := config.SHA256([]byte(source))
-			component := sanitizeKubesprayImageID(filepath.Base(repository))
 			images[index] = config.Image{
-				ID:      "kubespray-" + component + "-" + idDigest[:12],
+				ID:      imageID,
 				Family:  "kubernetes",
 				Version: strings.TrimPrefix(tag, "v"),
 				Target: strings.TrimSuffix(

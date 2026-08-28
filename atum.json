@@ -105,7 +105,7 @@
           "url": "https://github.com/fluxcd/flux2/releases/download/v2.9.4/manifests.tar.gz",
           "file": "platform/clusters/atum/flux-system/gotk-components.yaml",
           "sourceSha256": "3683107415b8d97fc82b7a8825b6b2d0773d87d37101f391f9a7594c82e59c5b",
-          "sha256": "c25997b4cfbcbc72f70b2c30dbb1609e2773a0cfc462ffebf54c2f07029ebb4b"
+          "sha256": "e846ebd60eb784e755960fc1ca43c18b0fe82e4d02f8a6190aaa73550b486272"
         }
       ]
     },
@@ -1615,7 +1615,7 @@
         "id": "alertmanager",
         "family": "observability",
         "version": "0.33.1",
-        "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1",
+        "target": "10.77.0.9:32443/atum/alertmanager:v0.33.1-mirror-a89f8d4520954079275441eecdb71444328bd90633dd4edd",
         "scopes": [
           "bigbang"
         ],
@@ -1641,7 +1641,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-82271ae3912524e04ace0c19c94393b96266e1f3b7fd601c658725f8a420a581",
         "scopes": [
           "bigbang"
         ],
@@ -1671,7 +1671,7 @@
         "id": "authservice",
         "family": "identity",
         "version": "1.1.5",
-        "target": "10.77.0.9:32443/atum/authservice:1.1.5",
+        "target": "10.77.0.9:32443/atum/authservice:1.1.5-mirror-d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8",
         "scopes": [
           "bigbang"
         ],
@@ -1697,7 +1697,7 @@
         "id": "blackbox-exporter",
         "family": "observability",
         "version": "0.28.0",
-        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0",
+        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0-mirror-43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f",
         "scopes": [
           "bigbang"
         ],
@@ -1723,7 +1723,7 @@
         "id": "buildkit",
         "family": "build-system",
         "version": "0.25.2",
-        "target": "10.77.0.9:32443/atum/buildkit:v0.25.2",
+        "target": "10.77.0.9:32443/atum/buildkit:v0.25.2-mirror-72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bb",
         "scopes": [
           "build-system"
         ],
@@ -1745,7 +1745,7 @@
         "id": "busybox",
         "family": "foundation",
         "version": "1.37.0",
-        "target": "10.77.0.9:32443/atum/busybox:1.37.0",
+        "target": "10.77.0.9:32443/atum/busybox:1.37.0-mirror-7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0",
         "scopes": [
           "bigbang"
         ],
@@ -1757,6 +1757,7 @@
           "package/garage"
         ],
         "bigBangRefs": [
+          "docker.io/library/busybox:1.37.0",
           "registry1.dso.mil/ironbank/afdco/docker/busybox:1.37.0"
         ],
         "discovery": "rendered",
@@ -1772,7 +1773,7 @@
         "id": "cert-manager-acmesolver",
         "family": "cert-manager",
         "version": "1.21.1",
-        "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-acmesolver:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "scopes": [
           "prep"
         ],
@@ -1798,7 +1799,7 @@
         "id": "cert-manager-cainjector",
         "family": "cert-manager",
         "version": "1.21.1",
-        "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-cainjector:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "scopes": [
           "prep"
         ],
@@ -1824,7 +1825,7 @@
         "id": "cert-manager-controller",
         "family": "cert-manager",
         "version": "1.21.1",
-        "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-controller:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "scopes": [
           "prep"
         ],
@@ -1850,7 +1851,7 @@
         "id": "cert-manager-startupapicheck",
         "family": "cert-manager",
         "version": "1.21.1",
-        "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-startupapicheck:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "scopes": [
           "prep"
         ],
@@ -1876,7 +1877,7 @@
         "id": "cert-manager-webhook",
         "family": "cert-manager",
         "version": "1.21.1",
-        "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1",
+        "target": "10.77.0.9:32443/atum/cert-manager-webhook:v1.21.1-mirror-set-edb7b78cc961cadfeb7810b1cee4f4b8f956def56660888e",
         "scopes": [
           "prep"
         ],
@@ -1902,7 +1903,7 @@
         "id": "certificates",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/certificates:v19.2.4",
+        "target": "10.77.0.9:32443/atum/certificates:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -1928,7 +1929,7 @@
         "id": "cfssl-self-sign",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/cfssl-self-sign:v19.2.4",
+        "target": "10.77.0.9:32443/atum/cfssl-self-sign:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -1954,7 +1955,7 @@
         "id": "cloudnative-pg",
         "family": "data",
         "version": "1.30.0",
-        "target": "10.77.0.9:32443/atum/cloudnative-pg:1.30.0",
+        "target": "10.77.0.9:32443/atum/cloudnative-pg:1.30.0-mirror-091d306935cfdf646debfe78010d59ebfb572150eb6eb922",
         "scopes": [
           "bigbang"
         ],
@@ -1980,7 +1981,7 @@
         "id": "fluent-bit",
         "family": "observability",
         "version": "5.0.9",
-        "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9",
+        "target": "10.77.0.9:32443/atum/fluent-bit:5.0.9-mirror-1f1858b955f8fc0d5ec8878ce995c6953c0727a81a0877f6",
         "scopes": [
           "bigbang"
         ],
@@ -2006,7 +2007,7 @@
         "id": "garage",
         "family": "data",
         "version": "2.3.0",
-        "target": "10.77.0.9:32443/atum/garage:v2.3.0",
+        "target": "10.77.0.9:32443/atum/garage:v2.3.0-mirror-dac0c92add4f1a0b41035e94b41036a270ffbe88a37c7ac9",
         "scopes": [
           "bigbang"
         ],
@@ -2032,7 +2033,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6e11fdb722599abd4ee2658ec956bbf9e623cfe3290eb5a54bf69b27efde9ac1",
         "scopes": [
           "bigbang"
         ],
@@ -2271,7 +2272,7 @@
         "id": "gitaly",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitaly:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitaly:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2297,7 +2298,7 @@
         "id": "gitlab-base",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-base:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-base:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2323,7 +2324,7 @@
         "id": "gitlab-container-registry",
         "family": "gitlab",
         "version": "4.40.2-gitlab",
-        "target": "10.77.0.9:32443/atum/gitlab-container-registry:v4.40.2-gitlab",
+        "target": "10.77.0.9:32443/atum/gitlab-container-registry:v4.40.2-gitlab-mirror-2962b4b72175d8ec43e508ab621718028574462f46c14744",
         "scopes": [
           "bigbang"
         ],
@@ -2349,7 +2350,7 @@
         "id": "gitlab-exporter",
         "family": "gitlab",
         "version": "16.9.0",
-        "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0",
+        "target": "10.77.0.9:32443/atum/gitlab-exporter:16.9.0-mirror-67ffd6b985123de22ca8ad68aff9366db00d7c20c7bbd75e",
         "scopes": [
           "bigbang"
         ],
@@ -2375,7 +2376,7 @@
         "id": "gitlab-kubectl",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-kubectl:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-kubectl:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2401,7 +2402,7 @@
         "id": "gitlab-shell",
         "family": "gitlab",
         "version": "14.56.1",
-        "target": "10.77.0.9:32443/atum/gitlab-shell:v14.56.1",
+        "target": "10.77.0.9:32443/atum/gitlab-shell:v14.56.1-mirror-531dc40928bdffdf1ea61930b1478944351f48664aaf4935",
         "scopes": [
           "bigbang"
         ],
@@ -2427,7 +2428,7 @@
         "id": "gitlab-sidekiq",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-sidekiq:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-sidekiq:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2453,7 +2454,7 @@
         "id": "gitlab-toolbox",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-toolbox:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-toolbox:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2479,7 +2480,7 @@
         "id": "gitlab-webservice",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-webservice:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-webservice:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2505,7 +2506,7 @@
         "id": "gitlab-workhorse",
         "family": "gitlab",
         "version": "19.2.4",
-        "target": "10.77.0.9:32443/atum/gitlab-workhorse:v19.2.4",
+        "target": "10.77.0.9:32443/atum/gitlab-workhorse:v19.2.4-mirror-set-889c3d1ba67a2c55b723e4842f6a9b59588f7e25347dcbdd",
         "scopes": [
           "bigbang"
         ],
@@ -2531,7 +2532,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-7cf9b3e38281fbdee82791ef19f54dd70af729cbeac6eb8133dca60ea7837eee",
         "scopes": [
           "bigbang"
         ],
@@ -2638,7 +2639,7 @@
         "id": "harbor-harbor-core",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-core:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-core:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2664,7 +2665,7 @@
         "id": "harbor-harbor-exporter",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-exporter:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-exporter:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2690,7 +2691,7 @@
         "id": "harbor-harbor-jobservice",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-jobservice:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-jobservice:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2716,7 +2717,7 @@
         "id": "harbor-harbor-portal",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-portal:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-portal:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2742,7 +2743,7 @@
         "id": "harbor-harbor-registryctl",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-harbor-registryctl:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-harbor-registryctl:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2768,7 +2769,7 @@
         "id": "harbor-registry",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-registry:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2794,7 +2795,7 @@
         "id": "harbor-trivy-adapter",
         "family": "harbor",
         "version": "2.15.2",
-        "target": "10.77.0.9:32443/atum/harbor-trivy-adapter:v2.15.2",
+        "target": "10.77.0.9:32443/atum/harbor-trivy-adapter:v2.15.2-mirror-set-f2a3190354f87aef5828bbe36b7c311ac861b3f2b03b4e08",
         "scopes": [
           "bigbang"
         ],
@@ -2820,7 +2821,7 @@
         "id": "headlamp",
         "family": "cluster",
         "version": "0.44.0",
-        "target": "10.77.0.9:32443/atum/headlamp:v0.44.0",
+        "target": "10.77.0.9:32443/atum/headlamp:v0.44.0-mirror-a3fc96b5e825ba1149216e7731eaf23bc0ed8cf254a92296",
         "scopes": [
           "bigbang"
         ],
@@ -2846,7 +2847,7 @@
         "id": "helm-controller",
         "family": "flux",
         "version": "1.6.3",
-        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3",
+        "target": "10.77.0.9:32443/atum/helm-controller:v1.6.3-mirror-22c0a585d0d9b1f792b9d5638144b7810e273d28e310da37",
         "scopes": [
           "bigbang"
         ],
@@ -2872,7 +2873,7 @@
         "id": "k8s-sidecar",
         "family": "observability",
         "version": "2.8.1",
-        "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1",
+        "target": "10.77.0.9:32443/atum/k8s-sidecar:2.8.1-mirror-44065fae116464099acd5bfddb62dcb2cf53c8fa18948d21",
         "scopes": [
           "bigbang"
         ],
@@ -2898,7 +2899,7 @@
         "id": "keycloak",
         "family": "identity",
         "version": "26.7.2",
-        "target": "10.77.0.9:32443/atum/keycloak:26.7.2",
+        "target": "10.77.0.9:32443/atum/keycloak:26.7.2-mirror-c2a17fe407e892196d0b7cf9cef54e60952d6c372a9205f6",
         "scopes": [
           "bigbang"
         ],
@@ -2924,7 +2925,7 @@
         "id": "kiali",
         "family": "mesh",
         "version": "2.30.0",
-        "target": "10.77.0.9:32443/atum/kiali:v2.30.0",
+        "target": "10.77.0.9:32443/atum/kiali:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d",
         "scopes": [
           "bigbang"
         ],
@@ -2950,7 +2951,7 @@
         "id": "kiali-operator",
         "family": "mesh",
         "version": "2.30.0",
-        "target": "10.77.0.9:32443/atum/kiali-operator:v2.30.0",
+        "target": "10.77.0.9:32443/atum/kiali-operator:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d",
         "scopes": [
           "bigbang"
         ],
@@ -2976,7 +2977,7 @@
         "id": "kube-state-metrics",
         "family": "observability",
         "version": "2.19.1",
-        "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1",
+        "target": "10.77.0.9:32443/atum/kube-state-metrics:v2.19.1-mirror-7661da8c99b733d43117e4cba12bd9865d335e5777191d0a",
         "scopes": [
           "bigbang"
         ],
@@ -3002,7 +3003,7 @@
         "id": "kube-vip",
         "family": "kube-vip",
         "version": "1.2.3",
-        "target": "10.77.0.9:32443/atum/kube-vip:v1.2.3",
+        "target": "10.77.0.9:32443/atum/kube-vip:v1.2.3-mirror-7f1863c91be5e9b305af4c4c783de11894586dfa7c09aec9",
         "scopes": [
           "prep"
         ],
@@ -3012,7 +3013,9 @@
         "consumers": [
           "bootstrap/kube-vip"
         ],
-        "bigBangRefs": [],
+        "bigBangRefs": [
+          "ghcr.io/kube-vip/kube-vip:v1.2.3"
+        ],
         "discovery": "configuration",
         "delivery": {
           "default": {
@@ -3026,7 +3029,7 @@
         "id": "kube-vip-cloud-provider",
         "family": "kube-vip",
         "version": "0.0.12",
-        "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12",
+        "target": "10.77.0.9:32443/atum/kube-vip-cloud-provider:v0.0.12-mirror-33a19b0931c75c3ac9f6e867ef75efaa87ca6424ae62ea55",
         "scopes": [
           "prep"
         ],
@@ -3036,7 +3039,9 @@
         "consumers": [
           "bootstrap/kube-vip-cloud-provider"
         ],
-        "bigBangRefs": [],
+        "bigBangRefs": [
+          "ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.12"
+        ],
         "discovery": "configuration",
         "delivery": {
           "default": {
@@ -3050,7 +3055,7 @@
         "id": "kube-webhook-certgen",
         "family": "cluster",
         "version": "1.6.9",
-        "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9",
+        "target": "10.77.0.9:32443/atum/kube-webhook-certgen:v1.6.9-mirror-f0dd00beb0fa11f65e81a0fcc09dd343d71d4aaa8875a2bd",
         "scopes": [
           "bigbang"
         ],
@@ -3076,7 +3081,7 @@
         "id": "kubespray-apiserver-1d7c4ffd1961",
         "family": "kubernetes",
         "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "scopes": [
           "kubespray"
         ],
@@ -3100,7 +3105,7 @@
         "id": "kubespray-apiserver-85ba6a8d3824",
         "family": "kubernetes",
         "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "scopes": [
           "kubespray"
         ],
@@ -3124,7 +3129,7 @@
         "id": "kubespray-apiserver-ffd3bba1be1d",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "scopes": [
           "kubespray"
         ],
@@ -3148,7 +3153,7 @@
         "id": "kubespray-aws-alb-ingress-controller-29b987dd4951",
         "family": "kubernetes",
         "version": "1.1.9",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9-mirror-43d732b96fd96ec4b5a42878df648cf805d3677eba8277e6",
         "scopes": [
           "kubespray"
         ],
@@ -3172,7 +3177,7 @@
         "id": "kubespray-aws-ebs-csi-driver-61044fd4e148",
         "family": "kubernetes",
         "version": "0.5.0",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0-mirror-eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f",
         "scopes": [
           "kubespray"
         ],
@@ -3196,7 +3201,7 @@
         "id": "kubespray-cert-manager-cainjector-142b028ec4b1",
         "family": "kubernetes",
         "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "scopes": [
           "kubespray"
         ],
@@ -3220,7 +3225,7 @@
         "id": "kubespray-cert-manager-controller-aa76aaadadd6",
         "family": "kubernetes",
         "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "scopes": [
           "kubespray"
         ],
@@ -3244,7 +3249,7 @@
         "id": "kubespray-cert-manager-webhook-05059ded9a52",
         "family": "kubernetes",
         "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
         "scopes": [
           "kubespray"
         ],
@@ -3268,7 +3273,7 @@
         "id": "kubespray-certgen-e453d89b438f",
         "family": "kubernetes",
         "version": "0.2.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4-mirror-cf231218850d22ee160347a67483860e85606d6d3ad0649b",
         "scopes": [
           "kubespray"
         ],
@@ -3292,7 +3297,7 @@
         "id": "kubespray-cilium-5651485d8c29",
         "family": "kubernetes",
         "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "scopes": [
           "kubespray"
         ],
@@ -3316,7 +3321,7 @@
         "id": "kubespray-cilium-envoy-cec4be30caef",
         "family": "kubernetes",
         "version": "1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496-mirror-71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313b",
         "scopes": [
           "kubespray"
         ],
@@ -3340,7 +3345,7 @@
         "id": "kubespray-cinder-csi-plugin-fafe59d0f62e",
         "family": "kubernetes",
         "version": "1.30.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0-mirror-cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4e",
         "scopes": [
           "kubespray"
         ],
@@ -3364,7 +3369,7 @@
         "id": "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
         "family": "kubernetes",
         "version": "1.8.8",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8-mirror-93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183",
         "scopes": [
           "kubespray"
         ],
@@ -3388,7 +3393,7 @@
         "id": "kubespray-cni-1e7d398d64e9",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "scopes": [
           "kubespray"
         ],
@@ -3412,7 +3417,7 @@
         "id": "kubespray-cni-255e166abdb6",
         "family": "kubernetes",
         "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "scopes": [
           "kubespray"
         ],
@@ -3436,7 +3441,7 @@
         "id": "kubespray-cni-2a722760a7e1",
         "family": "kubernetes",
         "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "scopes": [
           "kubespray"
         ],
@@ -3460,7 +3465,7 @@
         "id": "kubespray-controller-27840469ef8d",
         "family": "kubernetes",
         "version": "0.13.9",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
         "scopes": [
           "kubespray"
         ],
@@ -3484,7 +3489,7 @@
         "id": "kubespray-controller-74a944e7ad97",
         "family": "kubernetes",
         "version": "1.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3-mirror-7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822",
         "scopes": [
           "kubespray"
         ],
@@ -3508,7 +3513,7 @@
         "id": "kubespray-coredns-19e9472ad36d",
         "family": "kubernetes",
         "version": "1.12.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0-mirror-2324f485c8db937628a18c293d946327f3a7229b9f77213e",
         "scopes": [
           "kubespray"
         ],
@@ -3532,7 +3537,7 @@
         "id": "kubespray-coredns-c0a1763e2e8b",
         "family": "kubernetes",
         "version": "1.12.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4-mirror-5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff008783",
         "scopes": [
           "kubespray"
         ],
@@ -3556,7 +3561,7 @@
         "id": "kubespray-coredns-eb936e6d1fb6",
         "family": "kubernetes",
         "version": "1.12.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1-mirror-4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ec",
         "scopes": [
           "kubespray"
         ],
@@ -3580,7 +3585,7 @@
         "id": "kubespray-csi-attacher-54214cd5c68a",
         "family": "kubernetes",
         "version": "4.4.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2-mirror-304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f9",
         "scopes": [
           "kubespray"
         ],
@@ -3604,7 +3609,7 @@
         "id": "kubespray-csi-attacher-c020451f8db4",
         "family": "kubernetes",
         "version": "3.3.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0-mirror-ac8d4216d1684f5469319f9d665f91c5582bf32d063d037e",
         "scopes": [
           "kubespray"
         ],
@@ -3628,7 +3633,7 @@
         "id": "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
         "family": "kubernetes",
         "version": "2.4.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0-mirror-0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07",
         "scopes": [
           "kubespray"
         ],
@@ -3652,7 +3657,7 @@
         "id": "kubespray-csi-provisioner-b1c0015e8797",
         "family": "kubernetes",
         "version": "3.0.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0-mirror-875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d4",
         "scopes": [
           "kubespray"
         ],
@@ -3676,7 +3681,7 @@
         "id": "kubespray-csi-provisioner-c95b16a748c1",
         "family": "kubernetes",
         "version": "3.6.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2-mirror-ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a",
         "scopes": [
           "kubespray"
         ],
@@ -3700,7 +3705,7 @@
         "id": "kubespray-csi-resizer-17c09eac50f2",
         "family": "kubernetes",
         "version": "1.9.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2-mirror-8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd",
         "scopes": [
           "kubespray"
         ],
@@ -3724,7 +3729,7 @@
         "id": "kubespray-csi-resizer-cbf66a4bf48d",
         "family": "kubernetes",
         "version": "1.3.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0-mirror-35ec0c736ec8266bd4a46f9e942315f148f3139beed99879",
         "scopes": [
           "kubespray"
         ],
@@ -3748,7 +3753,7 @@
         "id": "kubespray-csi-snapshotter-0eecf4b68dbb",
         "family": "kubernetes",
         "version": "6.3.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2-mirror-651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406d",
         "scopes": [
           "kubespray"
         ],
@@ -3772,7 +3777,7 @@
         "id": "kubespray-csi-snapshotter-9b1b230f4947",
         "family": "kubernetes",
         "version": "5.0.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0-mirror-640e0275af6df4ad84339d4c449ea52559c25ae11c92ea46",
         "scopes": [
           "kubespray"
         ],
@@ -3796,7 +3801,7 @@
         "id": "kubespray-dashboard-d40878c7d46f",
         "family": "kubernetes",
         "version": "2.7.0",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0-mirror-ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71",
         "scopes": [
           "kubespray"
         ],
@@ -3820,7 +3825,7 @@
         "id": "kubespray-etcd-303eba369353",
         "family": "kubernetes",
         "version": "3.5.26",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26-mirror-8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc",
         "scopes": [
           "kubespray"
         ],
@@ -3844,7 +3849,7 @@
         "id": "kubespray-etcd-3c5d6be819ca",
         "family": "kubernetes",
         "version": "3.5.25",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25-mirror-dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf",
         "scopes": [
           "kubespray"
         ],
@@ -3868,7 +3873,7 @@
         "id": "kubespray-etcd-ca5f72edf851",
         "family": "kubernetes",
         "version": "3.6.10",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10-mirror-8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43e",
         "scopes": [
           "kubespray"
         ],
@@ -3892,7 +3897,7 @@
         "id": "kubespray-flannel-05cceee7aa3e",
         "family": "kubernetes",
         "version": "0.28.4",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4-mirror-e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e",
         "scopes": [
           "kubespray"
         ],
@@ -3916,7 +3921,7 @@
         "id": "kubespray-flannel-4a66f2488d69",
         "family": "kubernetes",
         "version": "0.27.3",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3-mirror-0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd",
         "scopes": [
           "kubespray"
         ],
@@ -3940,7 +3945,7 @@
         "id": "kubespray-flannel-cni-plugin-628a10cfbf92",
         "family": "kubernetes",
         "version": "1.7.1-flannel1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1-mirror-003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a",
         "scopes": [
           "kubespray"
         ],
@@ -3964,7 +3969,7 @@
         "id": "kubespray-haproxy-c627c8545636",
         "family": "kubernetes",
         "version": "3.2.13-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine-mirror-4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5",
         "scopes": [
           "kubespray"
         ],
@@ -3988,7 +3993,7 @@
         "id": "kubespray-haproxy-e759b61b7326",
         "family": "kubernetes",
         "version": "3.2.4-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine-mirror-1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8",
         "scopes": [
           "kubespray"
         ],
@@ -4012,7 +4017,7 @@
         "id": "kubespray-hubble-relay-af135d8ceffb",
         "family": "kubernetes",
         "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "scopes": [
           "kubespray"
         ],
@@ -4036,7 +4041,7 @@
         "id": "kubespray-hubble-ui-aa9daec9d667",
         "family": "kubernetes",
         "version": "0.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
         "scopes": [
           "kubespray"
         ],
@@ -4060,7 +4065,7 @@
         "id": "kubespray-hubble-ui-backend-80373e4df8f7",
         "family": "kubernetes",
         "version": "0.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
         "scopes": [
           "kubespray"
         ],
@@ -4084,7 +4089,7 @@
         "id": "kubespray-k8s-dns-node-cache-eaa2f69f0965",
         "family": "kubernetes",
         "version": "1.25.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0-mirror-926add157b0563f30bdf49a6299f4401a1a4b007814fc41f",
         "scopes": [
           "kubespray"
         ],
@@ -4108,7 +4113,7 @@
         "id": "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
         "family": "kubernetes",
         "version": "1.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
         "scopes": [
           "kubespray"
         ],
@@ -4132,7 +4137,7 @@
         "id": "kubespray-k8s-netchecker-server-0648e3074092",
         "family": "kubernetes",
         "version": "1.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
         "scopes": [
           "kubespray"
         ],
@@ -4156,7 +4161,7 @@
         "id": "kubespray-kube-apiserver-35a4e8593b81",
         "family": "kubernetes",
         "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "scopes": [
           "kubespray"
         ],
@@ -4180,7 +4185,7 @@
         "id": "kubespray-kube-apiserver-7a7a5e018a18",
         "family": "kubernetes",
         "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "scopes": [
           "kubespray"
         ],
@@ -4204,7 +4209,7 @@
         "id": "kubespray-kube-apiserver-a41c80c0ea0e",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "scopes": [
           "kubespray"
         ],
@@ -4228,7 +4233,7 @@
         "id": "kubespray-kube-controller-manager-200d516fa1b9",
         "family": "kubernetes",
         "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "scopes": [
           "kubespray"
         ],
@@ -4252,7 +4257,7 @@
         "id": "kubespray-kube-controller-manager-6380ebf00c81",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "scopes": [
           "kubespray"
         ],
@@ -4276,7 +4281,7 @@
         "id": "kubespray-kube-controller-manager-cb79eac61c34",
         "family": "kubernetes",
         "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "scopes": [
           "kubespray"
         ],
@@ -4300,7 +4305,7 @@
         "id": "kubespray-kube-controllers-569b5b422819",
         "family": "kubernetes",
         "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "scopes": [
           "kubespray"
         ],
@@ -4324,7 +4329,7 @@
         "id": "kubespray-kube-controllers-ab24c787861c",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "scopes": [
           "kubespray"
         ],
@@ -4348,7 +4353,7 @@
         "id": "kubespray-kube-controllers-b9b25dbd1bb6",
         "family": "kubernetes",
         "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "scopes": [
           "kubespray"
         ],
@@ -4372,7 +4377,7 @@
         "id": "kubespray-kube-ovn-d5b7e3e6a128",
         "family": "kubernetes",
         "version": "1.12.21",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21-mirror-b24bf383511da382c928de8b69df518b3d4375684a477204",
         "scopes": [
           "kubespray"
         ],
@@ -4396,7 +4401,7 @@
         "id": "kubespray-kube-proxy-01d2fe37ba1b",
         "family": "kubernetes",
         "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "scopes": [
           "kubespray"
         ],
@@ -4420,7 +4425,7 @@
         "id": "kubespray-kube-proxy-2a95f8e3469a",
         "family": "kubernetes",
         "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "scopes": [
           "kubespray"
         ],
@@ -4444,7 +4449,7 @@
         "id": "kubespray-kube-proxy-f41a80af8ea3",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "scopes": [
           "kubespray"
         ],
@@ -4468,7 +4473,7 @@
         "id": "kubespray-kube-router-a15345e0ac99",
         "family": "kubernetes",
         "version": "2.1.1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1-mirror-6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c",
         "scopes": [
           "kubespray"
         ],
@@ -4492,7 +4497,7 @@
         "id": "kubespray-kube-scheduler-21faa420e1ed",
         "family": "kubernetes",
         "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
         "scopes": [
           "kubespray"
         ],
@@ -4516,7 +4521,7 @@
         "id": "kubespray-kube-scheduler-98ff489f17d0",
         "family": "kubernetes",
         "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
         "scopes": [
           "kubespray"
         ],
@@ -4540,7 +4545,7 @@
         "id": "kubespray-kube-scheduler-ec5cf060af83",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
         "scopes": [
           "kubespray"
         ],
@@ -4564,7 +4569,7 @@
         "id": "kubespray-kube-vip-d0dc4887640c",
         "family": "kubernetes",
         "version": "1.0.3",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3-mirror-682e231fd0759906b65ed56ac124cc8ae093b9506aac0006",
         "scopes": [
           "kubespray"
         ],
@@ -4588,7 +4593,7 @@
         "id": "kubespray-kube-vip-f8a2ed10eb61",
         "family": "kubernetes",
         "version": "0.8.9",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9-mirror-0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931ac",
         "scopes": [
           "kubespray"
         ],
@@ -4612,7 +4617,7 @@
         "id": "kubespray-livenessprobe-3f00aa1aa37d",
         "family": "kubernetes",
         "version": "2.11.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0-mirror-4a1e22167d03746e6748cdc41b6374262c666bc85999e901",
         "scopes": [
           "kubespray"
         ],
@@ -4636,7 +4641,7 @@
         "id": "kubespray-local-path-provisioner-bea410f5d32c",
         "family": "kubernetes",
         "version": "0.0.32",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32-mirror-64975a72cb31bda96fea61f4b59e6cca4545e531487a13fa",
         "scopes": [
           "kubespray"
         ],
@@ -4660,7 +4665,7 @@
         "id": "kubespray-local-volume-provisioner-647b2d0ec790",
         "family": "kubernetes",
         "version": "2.5.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0-mirror-19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3f",
         "scopes": [
           "kubespray"
         ],
@@ -4684,7 +4689,7 @@
         "id": "kubespray-metrics-scraper-411975044da7",
         "family": "kubernetes",
         "version": "1.0.8",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8-mirror-43227e8286fd379ee0415a5e2156a9439c4056807e3caa38",
         "scopes": [
           "kubespray"
         ],
@@ -4708,7 +4713,7 @@
         "id": "kubespray-metrics-server-78a748c4b508",
         "family": "kubernetes",
         "version": "0.8.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0-mirror-5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f",
         "scopes": [
           "kubespray"
         ],
@@ -4732,7 +4737,7 @@
         "id": "kubespray-metrics-server-96c8158a4a11",
         "family": "kubernetes",
         "version": "0.8.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce",
         "scopes": [
           "kubespray"
         ],
@@ -4756,7 +4761,7 @@
         "id": "kubespray-multus-cni-da567c68368a",
         "family": "kubernetes",
         "version": "4.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
+        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2-mirror-9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc9",
         "scopes": [
           "kubespray"
         ],
@@ -4780,7 +4785,7 @@
         "id": "kubespray-nginx-4fbf2a6c1299",
         "family": "kubernetes",
         "version": "1.28.0-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine-mirror-09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b74",
         "scopes": [
           "kubespray"
         ],
@@ -4804,7 +4809,7 @@
         "id": "kubespray-nginx-7167e4ebc08b",
         "family": "kubernetes",
         "version": "1.28.2-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine-mirror-0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c4",
         "scopes": [
           "kubespray"
         ],
@@ -4828,7 +4833,7 @@
         "id": "kubespray-node-117e4c2a0fbf",
         "family": "kubernetes",
         "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "scopes": [
           "kubespray"
         ],
@@ -4852,7 +4857,7 @@
         "id": "kubespray-node-77c1a7981006",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "scopes": [
           "kubespray"
         ],
@@ -4876,7 +4881,7 @@
         "id": "kubespray-node-f33bf95c654d",
         "family": "kubernetes",
         "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "scopes": [
           "kubespray"
         ],
@@ -4900,7 +4905,7 @@
         "id": "kubespray-operator-7c35bff2c3cc",
         "family": "kubernetes",
         "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "scopes": [
           "kubespray"
         ],
@@ -4924,7 +4929,7 @@
         "id": "kubespray-operator-generic-c6b4e2064d8e",
         "family": "kubernetes",
         "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
         "scopes": [
           "kubespray"
         ],
@@ -4948,7 +4953,7 @@
         "id": "kubespray-pause-6bafff9caf95",
         "family": "kubernetes",
         "version": "3.10.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1-mirror-e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd",
         "scopes": [
           "kubespray"
         ],
@@ -4972,7 +4977,7 @@
         "id": "kubespray-pause-6f731803067f",
         "family": "kubernetes",
         "version": "3.10",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10-mirror-7c38f24774e3cbd906d2d33c38354ccf787635581c122965",
         "scopes": [
           "kubespray"
         ],
@@ -4996,7 +5001,7 @@
         "id": "kubespray-registry-8a454201835a",
         "family": "kubernetes",
         "version": "2.8.1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1",
+        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1-mirror-85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507ad",
         "scopes": [
           "kubespray"
         ],
@@ -5020,7 +5025,7 @@
         "id": "kubespray-snapshot-controller-714b107c1ee8",
         "family": "kubernetes",
         "version": "7.0.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2-mirror-fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919",
         "scopes": [
           "kubespray"
         ],
@@ -5044,7 +5049,7 @@
         "id": "kubespray-speaker-665977c8efe1",
         "family": "kubernetes",
         "version": "0.13.9",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
         "scopes": [
           "kubespray"
         ],
@@ -5068,7 +5073,7 @@
         "id": "kubespray-typha-32be33bfb81f",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
         "scopes": [
           "kubespray"
         ],
@@ -5092,7 +5097,7 @@
         "id": "kubespray-typha-a2c9cbcbd89b",
         "family": "kubernetes",
         "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
         "scopes": [
           "kubespray"
         ],
@@ -5116,7 +5121,7 @@
         "id": "kubespray-typha-e994ea476f5f",
         "family": "kubernetes",
         "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
         "scopes": [
           "kubespray"
         ],
@@ -5140,7 +5145,7 @@
         "id": "kustomize-controller",
         "family": "flux",
         "version": "1.9.4",
-        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4",
+        "target": "10.77.0.9:32443/atum/kustomize-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
         "scopes": [
           "bigbang"
         ],
@@ -5166,7 +5171,7 @@
         "id": "kyverno-admission-controller",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-admission-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5192,7 +5197,7 @@
         "id": "kyverno-background-controller",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-background-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5218,7 +5223,7 @@
         "id": "kyverno-cleanup-controller",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cleanup-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5244,7 +5249,7 @@
         "id": "kyverno-cli",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-cli:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5270,7 +5275,7 @@
         "id": "kyverno-preflight",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-preflight:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5296,7 +5301,7 @@
         "id": "kyverno-readiness-checker",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-readiness-checker:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5322,7 +5327,7 @@
         "id": "kyverno-reports-controller",
         "family": "policy",
         "version": "1.18.2",
-        "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2",
+        "target": "10.77.0.9:32443/atum/kyverno-reports-controller:v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81",
         "scopes": [
           "bigbang"
         ],
@@ -5348,7 +5353,7 @@
         "id": "local-path-provisioner",
         "family": "prep",
         "version": "0.0.37",
-        "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37",
+        "target": "10.77.0.9:32443/atum/local-path-provisioner:v0.0.37-mirror-c3f2c60ee2490eb83ac00101d7e239fd8c20a5b8b4038e2d",
         "scopes": [
           "prep"
         ],
@@ -5358,7 +5363,9 @@
         "consumers": [
           "bootstrap/local-path-provisioner"
         ],
-        "bigBangRefs": [],
+        "bigBangRefs": [
+          "docker.io/rancher/local-path-provisioner:v0.0.37"
+        ],
         "discovery": "configuration",
         "delivery": {
           "default": {
@@ -5372,7 +5379,7 @@
         "id": "metrics-server",
         "family": "cluster",
         "version": "0.8.1",
-        "target": "10.77.0.9:32443/atum/metrics-server:v0.8.1",
+        "target": "10.77.0.9:32443/atum/metrics-server:v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce",
         "scopes": [
           "bigbang"
         ],
@@ -5398,7 +5405,7 @@
         "id": "node-exporter",
         "family": "observability",
         "version": "1.12.1",
-        "target": "10.77.0.9:32443/atum/node-exporter:v1.12.1",
+        "target": "10.77.0.9:32443/atum/node-exporter:v1.12.1-mirror-da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e2",
         "scopes": [
           "bigbang"
         ],
@@ -5424,7 +5431,7 @@
         "id": "notification-controller",
         "family": "flux",
         "version": "1.9.3",
-        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3",
+        "target": "10.77.0.9:32443/atum/notification-controller:v1.9.3-mirror-782897674cbaa7e6ec716cae22400fd2385f6ec68101daef",
         "scopes": [
           "bigbang"
         ],
@@ -5450,7 +5457,7 @@
         "id": "opensearch",
         "family": "search",
         "version": "3.8.0",
-        "target": "10.77.0.9:32443/atum/opensearch:3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch:3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d",
         "scopes": [
           "bigbang"
         ],
@@ -5476,7 +5483,7 @@
         "id": "opensearch-dashboards",
         "family": "search",
         "version": "3.8.0",
-        "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0",
+        "target": "10.77.0.9:32443/atum/opensearch-dashboards:3.8.0-mirror-set-024a54d314f239c59f3aa1c9ea432d893a8d60c47508aa8d",
         "scopes": [
           "bigbang"
         ],
@@ -5502,7 +5509,7 @@
         "id": "operator-builder",
         "family": "build-system",
         "version": "1.26.0",
-        "target": "10.77.0.9:32443/atum/operator-builder:1.26.0",
+        "target": "10.77.0.9:32443/atum/operator-builder:1.26.0-alpine-mirror-7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3",
         "scopes": [
           "build-system"
         ],
@@ -5526,7 +5533,7 @@
         "id": "pilot",
         "family": "mesh",
         "version": "1.30.3",
-        "target": "10.77.0.9:32443/atum/pilot:1.30.3",
+        "target": "10.77.0.9:32443/atum/pilot:1.30.3-mirror-set-183cc0a514b8e94737334dcff29217b948a7a66002cae44a",
         "scopes": [
           "bigbang"
         ],
@@ -5552,7 +5559,7 @@
         "id": "policy-reporter",
         "family": "policy",
         "version": "3.9.0",
-        "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0",
+        "target": "10.77.0.9:32443/atum/policy-reporter:3.9.0-mirror-f5652164f77d90217339a58b5ba04ff0fb31d55c3c36cd7a",
         "scopes": [
           "bigbang"
         ],
@@ -5578,7 +5585,7 @@
         "id": "policy-reporter-kyverno-plugin",
         "family": "policy",
         "version": "0.6.2",
-        "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2",
+        "target": "10.77.0.9:32443/atum/policy-reporter-kyverno-plugin:0.6.2-mirror-082c10f8f02bb2c59612a29f08005852367bee07795d3e53",
         "scopes": [
           "bigbang"
         ],
@@ -5604,7 +5611,7 @@
         "id": "policy-reporter-ui",
         "family": "policy",
         "version": "2.7.1",
-        "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.1",
+        "target": "10.77.0.9:32443/atum/policy-reporter-ui:2.7.1-mirror-40feb3508eb626ec7d0303a6d4829f5462786518ac31cbf1",
         "scopes": [
           "bigbang"
         ],
@@ -5630,7 +5637,7 @@
         "id": "postgresql-17",
         "family": "data",
         "version": "17",
-        "target": "10.77.0.9:32443/atum/postgresql-17:17",
+        "target": "10.77.0.9:32443/atum/postgresql-17:17-mirror-675bd4a902ec570cd9b39d5304136d96508b5b0e15fdd811",
         "scopes": [
           "bigbang"
         ],
@@ -5656,7 +5663,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-f2e99d3562fafd5b2f658a99550db5f856c982ba856dd0070f1ea786f626bcc9",
         "scopes": [
           "bigbang"
         ],
@@ -5846,7 +5853,7 @@
         "id": "prometheus",
         "family": "observability",
         "version": "3.13.2",
-        "target": "10.77.0.9:32443/atum/prometheus:v3.13.2",
+        "target": "10.77.0.9:32443/atum/prometheus:v3.13.2-mirror-1147c92841726a6fef55fe6124491d6f85480f8de204f7d4",
         "scopes": [
           "bigbang"
         ],
@@ -5872,7 +5879,7 @@
         "id": "prometheus-config-reloader",
         "family": "observability",
         "version": "0.93.1",
-        "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.93.1",
+        "target": "10.77.0.9:32443/atum/prometheus-config-reloader:v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161",
         "scopes": [
           "bigbang"
         ],
@@ -5898,7 +5905,7 @@
         "id": "prometheus-operator",
         "family": "observability",
         "version": "0.93.1",
-        "target": "10.77.0.9:32443/atum/prometheus-operator:v0.93.1",
+        "target": "10.77.0.9:32443/atum/prometheus-operator:v0.93.1-mirror-set-fe47491622e8508e64b51b2597a7ce3aa24c92548036e161",
         "scopes": [
           "bigbang"
         ],
@@ -5924,7 +5931,7 @@
         "id": "proxyv2",
         "family": "mesh",
         "version": "1.30.3",
-        "target": "10.77.0.9:32443/atum/proxyv2:1.30.3",
+        "target": "10.77.0.9:32443/atum/proxyv2:1.30.3-mirror-set-183cc0a514b8e94737334dcff29217b948a7a66002cae44a",
         "scopes": [
           "bigbang"
         ],
@@ -5950,7 +5957,7 @@
         "id": "redis-8-10-0",
         "family": "data",
         "version": "8.10.0",
-        "target": "10.77.0.9:32443/atum/redis-8-10-0:8.10.0",
+        "target": "10.77.0.9:32443/atum/redis-8-10-0:8.10.0-mirror-52334768d4a6594d8969f51a1a6fee3ffa7545f6359a4877",
         "scopes": [
           "bigbang"
         ],
@@ -5976,7 +5983,7 @@
         "id": "redis-8-8-0",
         "family": "data",
         "version": "8.8.0",
-        "target": "10.77.0.9:32443/atum/redis-8-8-0:8.8.0",
+        "target": "10.77.0.9:32443/atum/redis-8-8-0:8.8.0-mirror-5d2c689b4b55fc3fab4b0cc8aaa950f85b508c76c1e0f35a",
         "scopes": [
           "bigbang"
         ],
@@ -6002,7 +6009,7 @@
         "id": "sbom-scanner",
         "family": "build-system",
         "version": "1.11.0",
-        "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0",
+        "target": "10.77.0.9:32443/atum/sbom-scanner:1.11.0-mirror-13864237fb990943433f89d698590aad1de38d4a7e13d38e",
         "scopes": [
           "build-system"
         ],
@@ -6024,7 +6031,7 @@
         "id": "source-controller",
         "family": "flux",
         "version": "1.9.4",
-        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4",
+        "target": "10.77.0.9:32443/atum/source-controller:v1.9.4-mirror-set-3d35acd3d8a34934063134c839bffbeb2460c833eb72cadc",
         "scopes": [
           "bigbang"
         ],
@@ -6050,7 +6057,7 @@
         "id": "tempo",
         "family": "observability",
         "version": "2.10.5",
-        "target": "10.77.0.9:32443/atum/tempo:2.10.5",
+        "target": "10.77.0.9:32443/atum/tempo:2.10.5-mirror-7be8586c0f25398428bb63c07db0a88283f073aa44c5f4a3",
         "scopes": [
           "bigbang"
         ],
@@ -6076,7 +6083,7 @@
         "id": "thanos",
         "family": "observability",
         "version": "0.42.4",
-        "target": "10.77.0.9:32443/atum/thanos:v0.42.4",
+        "target": "10.77.0.9:32443/atum/thanos:v0.42.4-mirror-ce7e48cbbaec82cb3b4eb1c348f90de92976edcd4148dc9a",
         "scopes": [
           "bigbang"
         ],
@@ -6102,7 +6109,7 @@
         "id": "ubi9",
         "family": "foundation",
         "version": "9.8",
-        "target": "10.77.0.9:32443/atum/ubi9:9.8",
+        "target": "10.77.0.9:32443/atum/ubi9:9.8-mirror-03b3d228574922e50bc654aea24a213f68467937c5cc001b",
         "scopes": [
           "bigbang"
         ],
@@ -6128,7 +6135,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
+        "target": "10.77.0.9:32443/atum/vault:build-4bab8e37b10c2d1531d8e7bfb311927623660fd7664185fd3a8563957527b1d5",
         "scopes": [
           "bigbang"
         ],
@@ -6626,7 +6633,7 @@
         "id": "vault-k8s",
         "family": "secrets",
         "version": "1.7.5",
-        "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5",
+        "target": "10.77.0.9:32443/atum/vault-k8s:1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06",
         "scopes": [
           "bigbang"
         ],

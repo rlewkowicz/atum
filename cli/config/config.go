@@ -51,6 +51,14 @@ type Project struct {
 type UpdateInput struct {
 	Project               *Project
 	CompatibilityReceipts map[string]Image
+	MirrorReceipts        map[string]ImageMirrorReceipt
+}
+
+type ImageMirrorReceipt struct {
+	ID     string
+	Target string
+	Source string
+	Digest string
 }
 
 type LoadOptions struct {
@@ -873,6 +881,131 @@ func ContentAddressedBuildTag(inputSHA256 string) (string, error) {
 	return "build-" + inputSHA256, nil
 }
 
+const mirrorTagIdentityLength = 48
+
+// ContentAddressedMirrorTag returns the immutable Harbor tag owned by one
+// resolved public image manifest. The exact upstream tag remains the prefix
+// because some upstream charts parse image tags as semantic versions or own a
+// leading "v".
+func ContentAddressedMirrorTag(upstreamTag, digest string) (string, error) {
+	if !validDigest(digest) {
+		return "", errors.New("content-addressed mirror tag requires a valid digest")
+	}
+	return contentAddressedMirrorTag(
+		upstreamTag,
+		"mirror",
+		strings.TrimPrefix(digest, "sha256:"),
+	)
+}
+
+func contentAddressedMirrorTag(version, kind, identity string) (string, error) {
+	if version == "" || len(identity) < mirrorTagIdentityLength {
+		return "", errors.New("content-addressed mirror tag has an invalid identity")
+	}
+	tag := version + "-" + kind + "-" + identity[:mirrorTagIdentityLength]
+	if _, err := name.NewTag(
+		"registry.invalid/atum/image:"+tag,
+		name.WeakValidation,
+	); err != nil {
+		return "", fmt.Errorf("content-addressed mirror tag %q is invalid: %w", tag, err)
+	}
+	return tag, nil
+}
+
+// ContentAddressedMirrorTags returns immutable Harbor tags for all direct
+// mirrors. Images with the same Harbor hub and application version share one
+// tag derived from their complete repository/digest set because some official
+// charts expose one hub/tag pair for multiple image repositories.
+func ContentAddressedMirrorTags(images []Image) (map[string]string, error) {
+	type member struct {
+		id         string
+		repository string
+		digest     string
+	}
+	groups := make(map[string][]member)
+	seenIDs := make(map[string]struct{}, len(images))
+	for index := range images {
+		image := &images[index]
+		if image.Delivery.Default.Type != "mirror" {
+			continue
+		}
+		if _, duplicate := seenIDs[image.ID]; duplicate {
+			return nil, fmt.Errorf(
+				"content-addressed mirror id %q is duplicated",
+				image.ID,
+			)
+		}
+		seenIDs[image.ID] = struct{}{}
+		if !validDigest(image.Delivery.Default.Digest) {
+			return nil, fmt.Errorf(
+				"content-addressed mirror %s has an invalid digest",
+				image.ID,
+			)
+		}
+		repository := imageReferenceRepository(image.Target)
+		separator := strings.LastIndexByte(repository, '/')
+		upstreamTag := imageReferenceTag(image.Delivery.Default.Source)
+		if separator <= 0 || upstreamTag == "" {
+			return nil, fmt.Errorf(
+				"content-addressed mirror %s has an invalid target or source tag",
+				image.ID,
+			)
+		}
+		group := repository[:separator] + "\x00" + upstreamTag
+		groups[group] = append(groups[group], member{
+			id:         image.ID,
+			repository: repository,
+			digest:     image.Delivery.Default.Digest,
+		})
+	}
+	result := make(map[string]string, len(seenIDs))
+	for group, members := range groups {
+		sort.Slice(members, func(i, j int) bool {
+			if members[i].repository == members[j].repository {
+				return members[i].digest < members[j].digest
+			}
+			return members[i].repository < members[j].repository
+		})
+		tag := ""
+		if len(members) == 1 {
+			var err error
+			upstreamTag := strings.SplitN(group, "\x00", 2)[1]
+			tag, err = ContentAddressedMirrorTag(
+				upstreamTag,
+				members[0].digest,
+			)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			hash := sha256.New()
+			_, _ = fmt.Fprintf(hash, "atum.dev/mirror-target-set/v1\x00%s\x00", group)
+			for _, item := range members {
+				_, _ = fmt.Fprintf(
+					hash,
+					"%s\x00%s\x00",
+					item.repository,
+					item.digest,
+				)
+			}
+			upstreamTag := strings.SplitN(group, "\x00", 2)[1]
+			var err error
+			tag, err = contentAddressedMirrorTag(
+				upstreamTag,
+				"mirror-set",
+				hex.EncodeToString(hash.Sum(nil)),
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, item := range members {
+			result[item.id] = tag
+		}
+	}
+	return result, nil
+}
+
 func canonicalJSON(value any) ([]byte, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -971,8 +1104,16 @@ func load(
 		return nil, fmt.Errorf("decode %s: %w", LockFilename, err)
 	}
 	receipts := map[string]Image(nil)
+	mirrorReceipts := map[string]ImageMirrorReceipt(nil)
 	if discardDerivedImages {
 		receipts, err = compatibilityReceipts(
+			desired.Delivery.Policy,
+			desired.Delivery.Images,
+		)
+		if err != nil {
+			return nil, err
+		}
+		mirrorReceipts, err = exactMirrorReceipts(
 			desired.Delivery.Policy,
 			desired.Delivery.Images,
 		)
@@ -1004,6 +1145,7 @@ func load(
 	return &UpdateInput{
 		Project:               project,
 		CompatibilityReceipts: receipts,
+		MirrorReceipts:        mirrorReceipts,
 	}, nil
 }
 
@@ -1056,6 +1198,72 @@ func compatibilityReceipts(
 			)
 		}
 		receipts[image.ID] = receipt
+	}
+	return receipts, nil
+}
+
+// exactMirrorReceipts retain only the immutable projection and cache addresses
+// needed to turn updater-owned Harbor references back into official render
+// inputs and reuse their exact OCI material. They do not preserve a derived
+// image as desired input or authorize any of its rendered metadata.
+func exactMirrorReceipts(
+	policy DeliveryPolicy,
+	images []Image,
+) (map[string]ImageMirrorReceipt, error) {
+	identityCounts := make(map[string]int, len(images))
+	targetCounts := make(map[string]int, len(images))
+	for _, image := range images {
+		identityCounts[image.ID]++
+		targetCounts[image.Target]++
+	}
+	candidates := make([]Image, 0, len(images))
+	for _, image := range images {
+		choice := image.Delivery.Default
+		if identityCounts[image.ID] != 1 ||
+			targetCounts[image.Target] != 1 ||
+			!validResourceID(image.ID) ||
+			choice.Type != "mirror" ||
+			!validDigest(choice.Digest) ||
+			!strings.HasPrefix(
+				image.Target,
+				policy.RuntimeRegistryPrefix,
+			) ||
+			imageReferenceTag(image.Target) == "" ||
+			strings.Contains(choice.Source, "@") ||
+			imageReferenceTag(choice.Source) == "" {
+			continue
+		}
+		material := imageRepository(choice.Source) + "@" + choice.Digest
+		if err := ValidateOfficialImageEvidence(
+			policy,
+			choice.Source,
+			material,
+		); err != nil {
+			continue
+		}
+		candidates = append(candidates, image)
+	}
+	targetTags, err := ContentAddressedMirrorTags(candidates)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"resolve exact mirror receipt targets: %w",
+			err,
+		)
+	}
+	receipts := make(map[string]ImageMirrorReceipt, len(candidates))
+	for _, image := range candidates {
+		expectedTag, exists := targetTags[image.ID]
+		if !exists ||
+			imageReferenceTag(image.Target) != expectedTag {
+			continue
+		}
+		choice := image.Delivery.Default
+		receipts[image.ID] = ImageMirrorReceipt{
+			ID:     image.ID,
+			Target: image.Target,
+			Source: choice.Source,
+			Digest: choice.Digest,
+		}
 	}
 	return receipts, nil
 }
@@ -1625,6 +1833,16 @@ func (p *Project) validate(
 
 	imageIDs := make(map[string]*Image, len(p.Desired.Delivery.Images))
 	imageTargets := make(map[string]string, len(p.Desired.Delivery.Images))
+	mirrorTargetTags := make(map[string]string)
+	if !allowStale {
+		var err error
+		mirrorTargetTags, err = ContentAddressedMirrorTags(
+			p.Desired.Delivery.Images,
+		)
+		if err != nil {
+			add("delivery mirror targets cannot be resolved: %v", err)
+		}
+	}
 	versionArtifacts := make(map[string]struct{}, 1+len(p.Desired.Platform.Packages)+len(p.Desired.Platform.Charts))
 	versionArtifacts["bigbang"] = struct{}{}
 	for i := range p.Desired.Platform.Packages {
@@ -1693,6 +1911,12 @@ func (p *Project) validate(
 			}
 			if image.Delivery.Default.Source == "" || !validDigest(image.Delivery.Default.Digest) {
 				add("delivery mirror %s requires source and sha256 digest", image.ID)
+			}
+			if !allowStale {
+				if expectedTag, exists := mirrorTargetTags[image.ID]; exists &&
+					imageReferenceTag(image.Target) != expectedTag {
+					add("delivery mirror %s target tag is not derived from its content set", image.ID)
+				}
 			}
 			for _, prefix := range p.Desired.Delivery.Policy.ForbiddenArtifactPrefixes {
 				if strings.HasPrefix(image.Delivery.Default.Source, prefix) {
@@ -2077,7 +2301,7 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 				if tagErr != nil {
 					add("locked build %s target tag cannot be resolved: %v", image.ID, tagErr)
 				} else if imageReferenceTag(want.Target) != expectedTag {
-					add("delivery build %s target tag is not derived from its input hash", image.ID)
+					add("delivery build %s target tag is not content-addressed", image.ID)
 				}
 			}
 		}
@@ -2653,8 +2877,8 @@ func validateBootstrapImageBindings(problems *[]string, charts []Chart, images m
 			if !allowStale {
 				tag := imageReferenceTag(image.Delivery.Default.Source)
 				version := strings.TrimPrefix(strings.TrimSuffix(tag, binding.TagSuffix), "v")
-				if tag == "" || imageReferenceTag(image.Target) != tag || image.Version != version {
-					*problems = append(*problems, fmt.Sprintf("bootstrap image %s source, target, and version are inconsistent", imageID))
+				if tag == "" || image.Version != version {
+					*problems = append(*problems, fmt.Sprintf("bootstrap image %s source and version are inconsistent", imageID))
 				}
 			}
 		}
@@ -3130,6 +3354,18 @@ func validateKubesprayImageProjection(
 	if allowStale && len(inventories) == 0 {
 		return
 	}
+	mirrorTargetTags := make(map[string]string)
+	if !allowStale {
+		var err error
+		mirrorTargetTags, err = ContentAddressedMirrorTags(images)
+		if err != nil {
+			*problems = append(
+				*problems,
+				fmt.Sprintf("Kubespray mirror targets cannot be resolved: %v", err),
+			)
+			return
+		}
+	}
 	imageIDs := make(map[string]struct{})
 	for _, inventory := range inventories {
 		for _, id := range inventory.Images {
@@ -3161,10 +3397,12 @@ func validateKubesprayImageProjection(
 		source := image.Delivery.Default.Source
 		tag := imageReferenceTag(source)
 		repository := imageRepository(source)
+		targetTag := mirrorTargetTags[id]
 		expectedTarget := strings.TrimSuffix(targetPrefix, "/") +
-			"/kubespray/" + repository + ":" + tag
+			"/kubespray/" + repository + ":" + targetTag
+		targetMatches := allowStale || image.Target == expectedTarget
 		if !found || tag == "" || repository == "" ||
-			image.Target != expectedTarget ||
+			!targetMatches ||
 			len(image.Scopes) != 1 || image.Scopes[0] != "kubespray" ||
 			!image.Runtime || image.Delivery.Default.Type != "mirror" ||
 			!validDigest(image.Delivery.Default.Digest) {
