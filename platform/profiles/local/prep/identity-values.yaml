@@ -17,7 +17,6 @@ stringData:
                     callback_uri: https://alertmanager.atum.test/oauth2/callback
                     client_id: atum-alertmanager
                     client_secret: ${ATUM_ALERTMANAGER_CLIENT_SECRET}
-                    logout_path: /
                     match:
                         header: :authority
                         prefix: alertmanager.atum.test
@@ -26,7 +25,6 @@ stringData:
                     callback_uri: https://opensearch.atum.test/oauth2/callback
                     client_id: atum-opensearch
                     client_secret: ${ATUM_OPENSEARCH_CLIENT_SECRET}
-                    logout_path: /
                     match:
                         header: :authority
                         prefix: opensearch.atum.test
@@ -34,7 +32,6 @@ stringData:
                     callback_uri: https://prometheus.atum.test/oauth2/callback
                     client_id: atum-prometheus
                     client_secret: ${ATUM_PROMETHEUS_CLIENT_SECRET}
-                    logout_path: /
                     match:
                         header: :authority
                         prefix: prometheus.atum.test
@@ -58,7 +55,7 @@ stringData:
                 upstream:
                     caBundleSecretName: atum-sso-ca
                     core:
-                        configureUserSettings: '{"auth_mode":"oidc_auth","oidc_admin_group":"atum-admins","oidc_auto_onboard":true,"oidc_client_id":"atum-harbor","oidc_client_secret":"${ATUM_HARBOR_CLIENT_SECRET}","oidc_endpoint":"https://keycloak.atum.test/auth/realms/master","oidc_extra_redirect_parms":{},"oidc_group_filter":"","oidc_groups_claim":"groups","oidc_logout_endpoint_enabled":true,"oidc_name":"Atum","oidc_scope":"openid profile email groups","oidc_user_claim":"preferred_username","oidc_verify_cert":true}'
+                        configureUserSettings: '{"auth_mode":"oidc_auth","oidc_admin_group":"atum-admins","oidc_auto_onboard":true,"oidc_client_id":"atum-harbor","oidc_client_secret":"${ATUM_HARBOR_CLIENT_SECRET}","oidc_endpoint":"https://keycloak.atum.test/auth/realms/master","oidc_extra_redirect_parms":{},"oidc_group_filter":"","oidc_groups_claim":"groups","oidc_name":"Atum","oidc_scope":"openid profile email groups","oidc_user_claim":"preferred_username","oidc_verify_cert":true}'
         headlamp:
             sso:
                 client_id: atum-headlamp

@@ -120,20 +120,19 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 		},
 	}}
 	harborSettings, err := json.Marshal(map[string]any{
-		"auth_mode":                    "oidc_auth",
-		"oidc_name":                    "Atum",
-		"oidc_endpoint":                contract.Issuer(),
-		"oidc_client_id":               harbor.ID,
-		"oidc_client_secret":           secret(harbor),
-		"oidc_scope":                   scopes,
-		"oidc_verify_cert":             true,
-		"oidc_auto_onboard":            true,
-		"oidc_user_claim":              "preferred_username",
-		"oidc_groups_claim":            contract.GroupClaim(),
-		"oidc_admin_group":             admin.Group,
-		"oidc_group_filter":            "",
-		"oidc_extra_redirect_parms":    map[string]string{},
-		"oidc_logout_endpoint_enabled": true,
+		"auth_mode":                 "oidc_auth",
+		"oidc_name":                 "Atum",
+		"oidc_endpoint":             contract.Issuer(),
+		"oidc_client_id":            harbor.ID,
+		"oidc_client_secret":        secret(harbor),
+		"oidc_scope":                scopes,
+		"oidc_verify_cert":          true,
+		"oidc_auto_onboard":         true,
+		"oidc_user_claim":           "preferred_username",
+		"oidc_groups_claim":         contract.GroupClaim(),
+		"oidc_admin_group":          admin.Group,
+		"oidc_group_filter":         "",
+		"oidc_extra_redirect_parms": map[string]string{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode Harbor identity settings: %w", err)
@@ -148,7 +147,6 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 			"callback_uri":  projected.Callbacks[0],
 			"client_id":     projected.ID,
 			"client_secret": secret(projected),
-			"logout_path":   "/",
 			"match": map[string]any{
 				"header": ":authority",
 				"prefix": projected.Host,

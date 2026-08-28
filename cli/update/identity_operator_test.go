@@ -1,6 +1,7 @@
 package update
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +48,45 @@ func TestOperatorConfigurationProjectsIdentityKindAndCanonicalClaims(t *testing.
 			t.Fatalf("canonical scope projection = %v / %v",
 				configuration.Spec.Keycloak.Scopes, configuration.Spec.Vault.Role.Scopes)
 		}
+	}
+}
+
+func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := identity.Load(root, "platform/profiles/local/identity/contract.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := identityValues(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addons := values["addons"].(map[string]any)
+	authservice := addons["authservice"].(map[string]any)
+	for name, value := range authservice["chains"].(map[string]any) {
+		if value == nil {
+			continue
+		}
+		chain := value.(map[string]any)
+		if path, overridden := chain["logout_path"]; overridden {
+			t.Fatalf("authservice chain %s overrides upstream logout path with %#v", name, path)
+		}
+	}
+	harbor := addons["harbor"].(map[string]any)
+	harborValues := harbor["values"].(map[string]any)
+	upstream := harborValues["upstream"].(map[string]any)
+	core := upstream["core"].(map[string]any)
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(core["configureUserSettings"].(string)), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if value, unsupported := settings["oidc_logout_endpoint_enabled"]; unsupported {
+		t.Fatalf("Harbor settings include unsupported oidc_logout_endpoint_enabled=%#v", value)
 	}
 }
 
