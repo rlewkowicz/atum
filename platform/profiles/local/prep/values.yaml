@@ -4,6 +4,12 @@ networkPolicies:
   # kubernetes Service, not the HAProxy VIP. This is the smallest CIDR
   # containing all three local endpoints: .11, .12, and .13.
   controlPlaneCidr: 10.77.0.8/29
+  ingress:
+    definitions:
+      kubeAPI:
+        from:
+          - ipBlock:
+              cidr: 10.77.0.8/29
 kyvernoPolicies:
   values:
     policies:
@@ -64,6 +70,15 @@ kyvernoPolicies:
                   - helper-pod-*
 istiod:
   values:
+    networkPolicies:
+      ingress:
+        to:
+          "istiod:[443,15017]":
+            from:
+              cidr:
+                "0.0.0.0/0": false
+              definition:
+                kubeAPI: true
     upstream:
       pilot:
         autoscaleEnabled: false

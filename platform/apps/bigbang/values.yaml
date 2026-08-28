@@ -256,6 +256,8 @@ packages:
             kubernetes.io/metadata.name: gitlab
         replica:
           replicaCount: 0
+          autoscaling:
+            enabled: false
 
   garage:
     enabled: true
