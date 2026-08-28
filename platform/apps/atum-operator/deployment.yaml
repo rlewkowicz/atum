@@ -18,7 +18,7 @@ spec:
                 app.kubernetes.io/name: atum-operator
         spec:
             containers:
-                - image: 10.77.0.9:32443/atum/atum-operator:build-42542742fab12baecfb32a7d53bda6183036cd93efaaacbf1bfcb4b7932a31d1
+                - image: 10.77.0.9:32443/atum/atum-operator:build-b7939311f11b0940f7af2da909e5788ac120c031927a1af4e8d23c1e206d05e2
                   imagePullPolicy: IfNotPresent
                   livenessProbe:
                     httpGet:

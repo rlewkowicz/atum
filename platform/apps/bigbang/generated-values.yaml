@@ -4,6 +4,25 @@ addons:
             chartName: authservice
             repoName: atum
             tag: 1.1.5-bb.7
+        postRenderers:
+            - kustomize:
+                patches:
+                    - patch: |
+                        apiVersion: apps/v1
+                        kind: Deployment
+                        metadata:
+                          name: authservice
+                        spec:
+                          template:
+                            spec:
+                              initContainers:
+                                - name: update-ca-bundle
+                                  image: "10.77.0.9:32443/atum/ubi9:9.8-mirror-03b3d228574922e50bc654aea24a213f68467937c5cc001b"
+                      target:
+                        group: apps
+                        kind: Deployment
+                        name: authservice
+                        version: v1
         sourceType: helmRepo
         values:
             image:
@@ -90,7 +109,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-b0a0a06710fdcec5c59d743227e538366e24f2b3464b030aa2446db7ac731a39
+                    tag: build-e73a5f310596ff6427bdec85ad12d83cfa615266d967f86b43c6558f57631c44
             redis-bb:
                 upstream:
                     image:
@@ -150,7 +169,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-b0a0a06710fdcec5c59d743227e538366e24f2b3464b030aa2446db7ac731a39
+                    tag: build-e73a5f310596ff6427bdec85ad12d83cfa615266d967f86b43c6558f57631c44
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
@@ -177,14 +196,14 @@ addons:
                 injector:
                     agentImage:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-32b4286fcb85b20a54e49d1685725a60d772a4d6a8d8c8e284894ade16c1dfa1
+                        tag: build-eede0d88814e682937273b4ca43532f56d073464f1264dab8659db740e73d0f9
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
                         tag: 1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06
                 server:
                     image:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-32b4286fcb85b20a54e49d1685725a60d772a4d6a8d8c8e284894ade16c1dfa1
+                        tag: build-eede0d88814e682937273b4ca43532f56d073464f1264dab8659db740e73d0f9
 fluentbit:
     helmRepo:
         chartName: fluentbit
@@ -209,7 +228,7 @@ grafana:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: build-1e046f18012d5ad32c173f242ed448b2eb2eb11e2e00b9252089f40e054f77c1
+                tag: build-72e7b09beadd307f1760d58cfc3ffaeb2d7eb946f8151aab5d94ea705f140e5d
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
@@ -455,7 +474,7 @@ packages:
             garageInit:
                 image:
                     repository: 10.77.0.9:32443/atum/garage-init-helper
-                    tag: build-d1dc3dcf9f2efcb0a12093e26a5a07abb3827b767c8a1e05fe1aaeff2fc4cbcc
+                    tag: build-6fcb4604890646cbde554e2d5e7501ee7f40c7427acc21ffe85db4bbf9b2c9f8
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/garage

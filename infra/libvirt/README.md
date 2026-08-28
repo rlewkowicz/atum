@@ -70,7 +70,13 @@ successful local apply verifies wildcard and passthrough DNS, the `.20` and
 application URLs. Standalone remote Terraform modules never prompt for
 workstation access.
 
-Kubespray installs Cilium only. The overlay enables kube-proxy replacement, native routing with auto direct node routes, BPF masquerading, dynamic BPF map sizing, and Cilium bandwidth manager. NodeLocal DNS is disabled so Big Bang network policies allow DNS through the CoreDNS Service instead of a link-local node cache. The local overlay pins the Cilium operator and CoreDNS to one replica for the current singleton platform shape while keeping the replica knobs explicit for HA overlays. This local network is a single L2 segment so direct node routes work without a tunnel fallback.
+Kubespray installs Cilium with kube-proxy and the upstream VXLAN datapath.
+NodeLocal DNS is disabled so Big Bang network policies allow DNS through the
+CoreDNS Service instead of a link-local node cache. The local overlay pins the
+Cilium operator and CoreDNS to one replica for the current singleton platform
+shape while keeping the replica knobs explicit for HA overlays. Cilium's
+node-aware CIDR matching remains enabled because Big Bang's ordinary Kubernetes
+NetworkPolicies use `ipBlock` peers for self-hosted API-server traffic.
 
 Node cloud-init applies the kernel modules, sysctls, file and locked-memory limits, systemd service limits, and virtio disk queue tuning during first boot before Kubespray runs.
 It installs and enables containerd for the Kubernetes nodes; the matching Kubespray inventory selects containerd rather than Docker as the CRI.

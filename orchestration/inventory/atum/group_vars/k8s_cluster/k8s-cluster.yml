@@ -4,7 +4,6 @@ kubectl_localhost: true
 container_manager: containerd
 kube_owner: root
 kube_network_plugin: cilium
-kube_proxy_remove: true
 enable_nodelocaldns: false
 dns_mode: coredns
 # Terraform owns the local dnsmasq endpoint and publishes its address. Kubespray
@@ -36,18 +35,7 @@ cilium_memory_requests: 256Mi
 cilium_cpu_requests: 200m
 cilium_operator_replicas: 1
 cilium_install_extra_flags: "--wait --wait-duration 10m"
-cilium_kube_proxy_replacement: true
-cilium_dns_proxy_enable_transparent_mode: false
-cilium_tunnel_mode: ""
-cilium_auto_direct_node_routes: true
-cilium_native_routing_cidr: "{{ kube_pods_subnet }}"
-cilium_enable_bpf_masquerade: true
-cilium_enable_host_legacy_routing: false
-cilium_bpf_map_dynamic_size_ratio: "0.01"
-cilium_enable_bandwidth_manager: true
-cilium_enable_bandwidth_manager_bbr: false
 cilium_cni_exclusive: false
-cilium_monitor_aggregation: maximum
 cilium_enable_hubble: false
 cilium_enable_hubble_ui: false
 cilium_hubble_install: false
@@ -66,15 +54,6 @@ cilium_extra_values:
   envoy:
     prometheus:
       enabled: false
-  routingMode: native
-  tunnelProtocol: ""
-  socketLB:
-    enabled: true
-    hostNamespaceOnly: true
-  bpf:
-    distributedLRU:
-      enabled: true
-  bpfClockProbe: true
 dns_min_replicas: 1
 coredns_replicas: 1
 

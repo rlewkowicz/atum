@@ -94,13 +94,15 @@ type releaseValues struct {
 	targetNamespace string
 	valuesFrom      []releaseValueSource
 	inline          map[string]any
+	postRenderers   []any
 }
 
 type releaseValueInstance struct {
-	identity  string
-	name      string
-	namespace string
-	values    map[string]any
+	identity      string
+	name          string
+	namespace     string
+	values        map[string]any
+	postRenderers []any
 }
 
 type releaseValueRenderedResource struct {
@@ -269,6 +271,17 @@ func (collector *releaseValueCollector) observeHelmRelease(key resourceKey, obje
 	if inline, ok := spec["values"].(map[string]any); ok {
 		resolved.inline = cloneMap(inline)
 	}
+	if raw, exists := spec["postRenderers"]; exists {
+		entries, ok := raw.([]any)
+		if !ok {
+			return fmt.Errorf(
+				"HelmRelease %s/%s has invalid postRenderers",
+				key.namespace,
+				key.name,
+			)
+		}
+		resolved.postRenderers = cloneValue(entries).([]any)
+	}
 	entries, _ := spec["valuesFrom"].([]any)
 	resolved.valuesFrom = make([]releaseValueSource, 0, len(entries))
 	for _, raw := range entries {
@@ -401,11 +414,16 @@ func (collector *releaseValueCollector) valuesForArtifacts(bindings []artifactBi
 			if err != nil {
 				return nil, err
 			}
+			var postRenderers []any
+			if len(matches[i].postRenderers) != 0 {
+				postRenderers = cloneValue(matches[i].postRenderers).([]any)
+			}
 			instances[i] = releaseValueInstance{
-				identity:  matches[i].key.namespace + "/" + matches[i].key.name,
-				name:      matches[i].releaseName,
-				namespace: matches[i].targetNamespace,
-				values:    values,
+				identity:      matches[i].key.namespace + "/" + matches[i].key.name,
+				name:          matches[i].releaseName,
+				namespace:     matches[i].targetNamespace,
+				values:        values,
+				postRenderers: postRenderers,
 			}
 		}
 		result[binding.id] = instances

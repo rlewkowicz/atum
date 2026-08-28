@@ -184,6 +184,18 @@ func TestFluxRenderValuesSubstituteOnlyUpdaterInspectionCopy(t *testing.T) {
 	if rendered["domain"] != "atum.test" {
 		t.Fatalf("rendered domain = %#v", rendered["domain"])
 	}
+	if _, persisted := values["sso"]; persisted {
+		t.Fatalf("persisted values gained updater-only SSO CA: %#v", values)
+	}
+	certificateAuthority := mapAt(
+		rendered,
+		"sso",
+		"certificateAuthority",
+	)
+	certificate, _ := certificateAuthority["cert"].(string)
+	if !strings.Contains(certificate, "BEGIN CERTIFICATE") {
+		t.Fatalf("rendered SSO CA = %#v", certificateAuthority)
+	}
 	identityValues := rendered["identity"].([]any)
 	if identityValues[0] != "https://vault.atum.test" ||
 		identityValues[1] != renderOnlyIdentityCredential ||

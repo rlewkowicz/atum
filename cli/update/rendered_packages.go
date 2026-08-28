@@ -38,6 +38,7 @@ func discoverBigBangPackages(
 		filepath.Join(checkout, "chart"),
 		kubernetesVersion,
 		publicValues,
+		nil,
 		collector,
 		releaseOptions("bigbang", "bigbang"),
 	); err != nil {

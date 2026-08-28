@@ -49,7 +49,7 @@ target "atum-operator" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.operator"
   target     = "atum-operator"
-  tags       = ["10.77.0.9:32443/atum/atum-operator:build-42542742fab12baecfb32a7d53bda6183036cd93efaaacbf1bfcb4b7932a31d1"]
+  tags       = ["10.77.0.9:32443/atum/atum-operator:build-b7939311f11b0940f7af2da909e5788ac120c031927a1af4e8d23c1e206d05e2"]
   contexts = {
     atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135"
     atum_source = "../.."
@@ -67,7 +67,7 @@ target "garage-init-helper" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "garage-init-helper"
-  tags       = ["10.77.0.9:32443/atum/garage-init-helper:build-d1dc3dcf9f2efcb0a12093e26a5a07abb3827b767c8a1e05fe1aaeff2fc4cbcc"]
+  tags       = ["10.77.0.9:32443/atum/garage-init-helper:build-6fcb4604890646cbde554e2d5e7501ee7f40c7427acc21ffe85db4bbf9b2c9f8"]
   args = {
     ATUM_IMAGE_LICENSE = "Debian"
     ATUM_IMAGE_SOURCE = "https://www.debian.org/;https://snapshot.debian.org/"
@@ -81,13 +81,13 @@ target "grafana-plugins" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "grafana-plugins"
-  tags       = ["10.77.0.9:32443/atum/grafana-plugins:build-1e046f18012d5ad32c173f242ed448b2eb2eb11e2e00b9252089f40e054f77c1"]
+  tags       = ["10.77.0.9:32443/atum/grafana-plugins:build-72e7b09beadd307f1760d58cfc3ffaeb2d7eb946f8151aab5d94ea705f140e5d"]
   contexts = {
     atum_grafana_upstream = "docker-image://docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455"
   }
   args = {
     ATUM_IMAGE_LICENSE = "AGPL-3.0-only AND Apache-2.0"
-    ATUM_IMAGE_REVISION = "c19f9aa194bc684d12eb69660e0d38dc43f4b55d09c24d524a95b1b665e4088a"
+    ATUM_IMAGE_REVISION = "773e4daf0ccd3e2d1e1efa6153666366139623b6322b4e074941393c03064fa8"
     ATUM_IMAGE_SOURCE = "https://github.com/grafana/grafana;https://github.com/grafana/piechart-panel;https://github.com/grafana/grafana-polystat-panel;https://github.com/RedisGrafana/grafana-redis-datasource"
     ATUM_IMAGE_VERSION = "13.0.1"
   }
@@ -99,7 +99,7 @@ target "postgresql-18-compat" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "postgresql-compat"
-  tags       = ["10.77.0.9:32443/atum/postgresql-18:build-b0a0a06710fdcec5c59d743227e538366e24f2b3464b030aa2446db7ac731a39"]
+  tags       = ["10.77.0.9:32443/atum/postgresql-18:build-e73a5f310596ff6427bdec85ad12d83cfa615266d967f86b43c6558f57631c44"]
   contexts = {
     atum_postgresql_upstream = "docker-image://docker.io/library/postgres@sha256:4cc13dede823cab4e05290c7fb3350fb4e599ecabd9b07e6706b5d5e8f5bc929"
   }
@@ -116,7 +116,7 @@ target "vault-curl-compat" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.delivery"
   target     = "vault-curl-compat"
-  tags       = ["10.77.0.9:32443/atum/vault:build-32b4286fcb85b20a54e49d1685725a60d772a4d6a8d8c8e284894ade16c1dfa1"]
+  tags       = ["10.77.0.9:32443/atum/vault:build-eede0d88814e682937273b4ca43532f56d073464f1264dab8659db740e73d0f9"]
   contexts = {
     atum_curl_upstream = "docker-image://docker.io/curlimages/curl@sha256:43ebaa53d3806db6b1ce4353b6b26ae638ec1c167ee351524b05690f988bb20d"
     atum_vault_upstream = "docker-image://docker.io/hashicorp/vault@sha256:6c77f568e6b6310d5bc68befb5711b9215c574de7da489e7c24332581176888b"

@@ -249,6 +249,7 @@ func inspectArtifacts(
 		artifacts[bigBangIndex].Path,
 		kubernetesVersion,
 		artifacts[bigBangIndex].Values,
+		nil,
 		collector,
 		releaseOptions("bigbang", "bigbang"),
 	)

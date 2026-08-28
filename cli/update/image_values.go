@@ -173,7 +173,126 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	if err := projectRedisModuleCompatibility(generated, images); err != nil {
 		return err
 	}
+	if err := projectAuthserviceCABundleCompatibility(
+		generated,
+		desired,
+		images,
+	); err != nil {
+		return err
+	}
 	return projectKyvernoWatchListCompatibility(generated, desired, images)
+}
+
+const (
+	authserviceCABundlePackageVersion     = "1.1.5-bb.7"
+	authserviceCABundleApplicationVersion = "1.1.5"
+	authserviceCABundleUtilityVersion     = "9.8"
+)
+
+// projectAuthserviceCABundleCompatibility preserves the selected package's
+// documented custom-CA path without rebuilding Authservice. The package uses
+// its application image for a shell-based CA concatenation init container;
+// the official upstream application image is intentionally distroless. Big
+// Bang's package postRenderer API changes only that named init container to an
+// official UBI utility image with the rendered shell and filesystem contract.
+func projectAuthserviceCABundleCompatibility(
+	generated map[string]any,
+	desired config.Document,
+	images selectedImageIndex,
+) error {
+	packageVersion := ""
+	for _, selected := range desired.Platform.Packages {
+		if selected.ID != "authservice" {
+			continue
+		}
+		if packageVersion != "" {
+			return errors.New(
+				"selected platform contains duplicate Authservice packages",
+			)
+		}
+		packageVersion = selected.Source.Version
+	}
+	if packageVersion == "" {
+		return errors.New("selected platform has no Authservice package")
+	}
+	authservice, err := selectedArtifactImage(
+		images,
+		"package/authservice",
+		"registry1.dso.mil/ironbank/istio-ecosystem/authservice",
+	)
+	if err != nil {
+		return err
+	}
+	if packageVersion != authserviceCABundlePackageVersion ||
+		authservice.Version != authserviceCABundleApplicationVersion ||
+		imageRepository(authservice.Delivery.Default.Source) !=
+			"ghcr.io/istio-ecosystem/authservice/authservice" {
+		return fmt.Errorf(
+			"Authservice CA init compatibility requires review outside package %s, application %s, official source ghcr.io/istio-ecosystem/authservice/authservice (selected %s, %s, %s)",
+			authserviceCABundlePackageVersion,
+			authserviceCABundleApplicationVersion,
+			packageVersion,
+			authservice.Version,
+			authservice.Delivery.Default.Source,
+		)
+	}
+
+	var utility *config.Image
+	for index := range desired.Delivery.Images {
+		image := &desired.Delivery.Images[index]
+		if imageRepository(image.Delivery.Default.Source) !=
+			"registry.access.redhat.com/ubi9/ubi" {
+			continue
+		}
+		if utility != nil {
+			return errors.New(
+				"selected platform contains multiple official UBI 9 utility images",
+			)
+		}
+		utility = image
+	}
+	if utility == nil {
+		return errors.New(
+			"selected platform has no official UBI 9 image for the Authservice CA init contract",
+		)
+	}
+	if utility.Version != authserviceCABundleUtilityVersion ||
+		utility.Delivery.Default.Type != "mirror" ||
+		utility.Target == "" {
+		return fmt.Errorf(
+			"Authservice CA init compatibility requires mirrored official UBI %s (selected version=%s type=%s target=%q)",
+			authserviceCABundleUtilityVersion,
+			utility.Version,
+			utility.Delivery.Default.Type,
+			utility.Target,
+		)
+	}
+	patch := fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authservice
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: update-ca-bundle
+          image: %q
+`, utility.Target)
+	return setNestedValue(
+		generated,
+		"addons.authservice.postRenderers",
+		[]any{map[string]any{
+			"kustomize": map[string]any{
+				"patches": []any{map[string]any{
+					"target": map[string]any{
+						"group": "apps", "version": "v1",
+						"kind": "Deployment", "name": "authservice",
+					},
+					"patch": patch,
+				}},
+			},
+		}},
+	)
 }
 
 func projectMonitoringBlackboxImage(

@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -110,6 +111,7 @@ const (
 	statefulGitLabActiveRecordPrimaryKey       = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_PRIMARY_KEY"
 	statefulGitLabActiveRecordDeterministicKey = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_DETERMINISTIC_KEY"
 	statefulGitLabActiveRecordSaltKey          = "ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_SALT"
+	statefulGitLabOIDCSigningKey               = "ATUM_STATEFUL_GITLAB_OPENID_CONNECT_SIGNING_KEY"
 	statefulOpenSearchAdminPasswordKey         = "ATUM_STATEFUL_OPENSEARCH_ADMIN_PASSWORD"
 	statefulOpenSearchAdminHashKey             = "ATUM_STATEFUL_OPENSEARCH_ADMIN_HASH"
 	statefulOpenSearchDashboardsPasswordKey    = "ATUM_STATEFUL_OPENSEARCH_DASHBOARDS_PASSWORD"
@@ -253,6 +255,18 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		return nil, err
 	}
 	defer clear(gitlabSalt)
+	gitlabOIDCSigningPEM, err := deriveGitLabOIDCSigningKey(derive)
+	if err != nil {
+		return nil, fmt.Errorf("derive GitLab OpenID Connect signing key: %w", err)
+	}
+	defer clear(gitlabOIDCSigningPEM)
+	gitlabOIDCSigningYAML, err := encodeYAMLDoubleQuotedContent(
+		gitlabOIDCSigningPEM,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("encode GitLab OpenID Connect signing key: %w", err)
+	}
+	defer clear(gitlabOIDCSigningYAML)
 	openSearchAdmin, err := derive("opensearch-admin-password", 32)
 	if err != nil {
 		return nil, err
@@ -325,6 +339,7 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		statefulGitLabActiveRecordPrimaryKey:       encodeRawURL(gitlabPrimary),
 		statefulGitLabActiveRecordDeterministicKey: encodeRawURL(gitlabDeterministic),
 		statefulGitLabActiveRecordSaltKey:          encodeRawURL(gitlabSalt),
+		statefulGitLabOIDCSigningKey:               append([]byte(nil), gitlabOIDCSigningYAML...),
 		statefulOpenSearchAdminPasswordKey:         append([]byte(nil), openSearchAdminPassword...),
 		statefulOpenSearchAdminHashKey:             append([]byte(nil), openSearchAdminHash...),
 		statefulOpenSearchDashboardsPasswordKey:    append([]byte(nil), openSearchDashboardsPassword...),
@@ -344,6 +359,7 @@ func (document Document) DeriveStatefulProjection() (*StatefulProjection, error)
 		statefulGitLabActiveRecordPrimaryKey,
 		statefulGitLabActiveRecordDeterministicKey,
 		statefulGitLabActiveRecordSaltKey,
+		statefulGitLabOIDCSigningKey,
 		statefulOpenSearchAdminPasswordKey, statefulOpenSearchAdminHashKey,
 		statefulOpenSearchDashboardsPasswordKey, statefulOpenSearchDashboardsHashKey,
 		statefulOpenSearchDashboardsCookieKey,
@@ -371,6 +387,164 @@ func encodeHex(value []byte, prefix string) []byte {
 	copy(encoded, prefix)
 	hex.Encode(encoded[len(prefix):], value)
 	return encoded
+}
+
+func deriveGitLabOIDCSigningKey(
+	derive func(string, int) ([]byte, error),
+) ([]byte, error) {
+	pMaterial, err := derive("gitlab-openid-connect-signing-key-p", 128)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(pMaterial)
+	qMaterial, err := derive("gitlab-openid-connect-signing-key-q", 128)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(qMaterial)
+
+	p, err := deterministicRSAPrime(pMaterial)
+	if err != nil {
+		return nil, err
+	}
+	q, err := deterministicRSAPrime(qMaterial)
+	if err != nil {
+		clearBigInt(p)
+		return nil, err
+	}
+	if p.Cmp(q) == 0 {
+		clearBigInt(p)
+		clearBigInt(q)
+		return nil, errors.New("derived RSA primes are equal")
+	}
+
+	one := big.NewInt(1)
+	pMinusOne := new(big.Int).Sub(p, one)
+	qMinusOne := new(big.Int).Sub(q, one)
+	phi := new(big.Int).Mul(pMinusOne, qMinusOne)
+	exponent := big.NewInt(65537)
+	d := new(big.Int).ModInverse(exponent, phi)
+	if d == nil {
+		clearBigInt(p)
+		clearBigInt(q)
+		clearBigInt(pMinusOne)
+		clearBigInt(qMinusOne)
+		clearBigInt(phi)
+		return nil, errors.New("derived RSA exponent is not invertible")
+	}
+	key := &rsa.PrivateKey{
+		PublicKey: rsa.PublicKey{
+			N: new(big.Int).Mul(p, q),
+			E: int(exponent.Int64()),
+		},
+		D:      d,
+		Primes: []*big.Int{p, q},
+	}
+	clearBigInt(pMinusOne)
+	clearBigInt(qMinusOne)
+	clearBigInt(phi)
+	if err := key.Validate(); err != nil {
+		clearRSAKey(key)
+		return nil, err
+	}
+	der := x509.MarshalPKCS1PrivateKey(key)
+	clearRSAKey(key)
+	defer clear(der)
+	encoded := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: der,
+	})
+	if len(encoded) == 0 {
+		return nil, errors.New("encode derived RSA private key")
+	}
+	return encoded, nil
+}
+
+func deterministicRSAPrime(material []byte) (*big.Int, error) {
+	if len(material) != 128 {
+		return nil, fmt.Errorf(
+			"RSA prime material must be exactly 128 bytes, got %d",
+			len(material),
+		)
+	}
+	candidate := new(big.Int).SetBytes(material)
+	defer clearBigInt(candidate)
+	candidate.SetBit(candidate, 1023, 1)
+	candidate.SetBit(candidate, 1022, 1)
+	candidate.SetBit(candidate, 0, 1)
+
+	one := big.NewInt(1)
+	two := big.NewInt(2)
+	exponent := big.NewInt(65537)
+	previous := new(big.Int)
+	remainder := new(big.Int)
+	defer clearBigInt(previous)
+	defer clearBigInt(remainder)
+	for candidate.BitLen() == 1024 {
+		previous.Sub(candidate, one)
+		remainder.Mod(previous, exponent)
+		if remainder.Sign() != 0 && candidate.ProbablyPrime(64) {
+			return new(big.Int).Set(candidate), nil
+		}
+		candidate.Add(candidate, two)
+	}
+	return nil, errors.New("derived RSA prime search exhausted 1024-bit range")
+}
+
+func encodeYAMLDoubleQuotedContent(value []byte) ([]byte, error) {
+	encoded := make([]byte, 0, len(value)+64)
+	for _, character := range value {
+		switch character {
+		case '\n':
+			encoded = append(encoded, '\\', 'n')
+		case '\r':
+			encoded = append(encoded, '\\', 'r')
+		case '\t':
+			encoded = append(encoded, '\\', 't')
+		case '\\', '"':
+			encoded = append(encoded, '\\', character)
+		default:
+			if character < 0x20 || character > 0x7e {
+				clear(encoded)
+				return nil, fmt.Errorf(
+					"unsupported byte 0x%02x in YAML string content",
+					character,
+				)
+			}
+			encoded = append(encoded, character)
+		}
+	}
+	return encoded, nil
+}
+
+func clearBigInt(value *big.Int) {
+	if value == nil {
+		return
+	}
+	clear(value.Bits())
+	value.SetInt64(0)
+}
+
+func clearRSAKey(key *rsa.PrivateKey) {
+	if key == nil {
+		return
+	}
+	clearBigInt(key.N)
+	clearBigInt(key.D)
+	for _, prime := range key.Primes {
+		clearBigInt(prime)
+	}
+	clearBigInt(key.Precomputed.Dp)
+	clearBigInt(key.Precomputed.Dq)
+	clearBigInt(key.Precomputed.Qinv)
+	for index := range key.Precomputed.CRTValues {
+		clearBigInt(key.Precomputed.CRTValues[index].Exp)
+		clearBigInt(key.Precomputed.CRTValues[index].Coeff)
+		clearBigInt(key.Precomputed.CRTValues[index].R)
+	}
+	key.E = 0
+	key.Primes = nil
+	key.Precomputed = rsa.PrecomputedValues{}
 }
 
 // InitOptions controls creation of exactly one secrets representation.

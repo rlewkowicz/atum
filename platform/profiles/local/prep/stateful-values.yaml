@@ -50,6 +50,7 @@ stringData:
             active_record_encryption_deterministic_key:
               - ${ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_DETERMINISTIC_KEY}
             active_record_encryption_key_derivation_salt: ${ATUM_STATEFUL_GITLAB_ACTIVE_RECORD_SALT}
+            openid_connect_signing_key: "${ATUM_STATEFUL_GITLAB_OPENID_CONNECT_SIGNING_KEY}"
     packages:
       redis:
         values:

@@ -1641,7 +1641,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-42542742fab12baecfb32a7d53bda6183036cd93efaaacbf1bfcb4b7932a31d1",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-b7939311f11b0940f7af2da909e5788ac120c031927a1af4e8d23c1e206d05e2",
         "scopes": [
           "bigbang"
         ],
@@ -2033,7 +2033,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-d1dc3dcf9f2efcb0a12093e26a5a07abb3827b767c8a1e05fe1aaeff2fc4cbcc",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6fcb4604890646cbde554e2d5e7501ee7f40c7427acc21ffe85db4bbf9b2c9f8",
         "scopes": [
           "bigbang"
         ],
@@ -2532,7 +2532,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-1e046f18012d5ad32c173f242ed448b2eb2eb11e2e00b9252089f40e054f77c1",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-72e7b09beadd307f1760d58cfc3ffaeb2d7eb946f8151aab5d94ea705f140e5d",
         "scopes": [
           "bigbang"
         ],
@@ -2551,8 +2551,8 @@
           "observations": [
             {
               "artifact": "package/grafana",
-              "renderedLocation": "bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana",
-              "runtimeContractSha256": "c19f9aa194bc684d12eb69660e0d38dc43f4b55d09c24d524a95b1b665e4088a",
+              "renderedLocation": "bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana",
+              "runtimeContractSha256": "773e4daf0ccd3e2d1e1efa6153666366139623b6322b4e074941393c03064fa8",
               "command": [],
               "arguments": [],
               "runAsUser": "65532",
@@ -2567,10 +2567,10 @@
               "requiredEnvironment": []
             }
           ],
-          "incompatibility": "package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource",
+          "incompatibility": "package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource",
           "officialSource": "docker.io/grafana/grafana:13.0.1",
           "officialMaterial": "docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455",
-          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana@c19f9aa194bc684d12eb69660e0d38dc43f4b55d09c24d524a95b1b665e4088a].",
+          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana@773e4daf0ccd3e2d1e1efa6153666366139623b6322b4e074941393c03064fa8].",
           "officialConfig": {
             "sha256": "sha256:da9910ab9d4c6917b7786e7188b612e1f5ae799886697379248d4003c4701137",
             "entrypoint": [
@@ -5663,7 +5663,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-b0a0a06710fdcec5c59d743227e538366e24f2b3464b030aa2446db7ac731a39",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-e73a5f310596ff6427bdec85ad12d83cfa615266d967f86b43c6558f57631c44",
         "scopes": [
           "bigbang"
         ],
@@ -5683,7 +5683,7 @@
           "observations": [
             {
               "artifact": "package/harbor",
-              "renderedLocation": "bigbang/harbor/harbor/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql",
+              "renderedLocation": "bigbang/harbor/post-rendered/resources.yaml#2/spec/template/spec/containers/postgresql",
               "runtimeContractSha256": "06ee7c9460336d34dae022fab2858916fd92e191b8cf0bc7cf0785815b2dc49d",
               "command": [],
               "arguments": [],
@@ -5740,10 +5740,10 @@
               ]
             }
           ],
-          "incompatibility": "package/harbor/bigbang/harbor/harbor/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR",
+          "incompatibility": "package/harbor/bigbang/harbor/post-rendered/resources.yaml#2/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR",
           "officialSource": "docker.io/library/postgres:18.4",
           "officialMaterial": "docker.io/library/postgres@sha256:4cc13dede823cab4e05290c7fb3350fb4e599ecabd9b07e6706b5d5e8f5bc929",
-          "removalCondition": "Remove when official repository index.docker.io/library/postgres publishes an immutable image for docker.io/library/postgres:18.4 that satisfies [package/harbor/bigbang/harbor/harbor/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR] for rendered contracts [package/harbor/bigbang/harbor/harbor/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql@06ee7c9460336d34dae022fab2858916fd92e191b8cf0bc7cf0785815b2dc49d; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql@a1a118ac41dc06d1a38d3c46cb59dcf6b00b17b165475a1f1ce018f9e0d0732e].",
+          "removalCondition": "Remove when official repository index.docker.io/library/postgres publishes an immutable image for docker.io/library/postgres:18.4 that satisfies [package/harbor/bigbang/harbor/post-rendered/resources.yaml#2/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql: official entrypoint does not implement final environment contract POSTGRESQL_VOLUME_DIR] for rendered contracts [package/harbor/bigbang/harbor/post-rendered/resources.yaml#2/spec/template/spec/containers/postgresql@06ee7c9460336d34dae022fab2858916fd92e191b8cf0bc7cf0785815b2dc49d; package/keycloak/bigbang/keycloak/keycloak/charts/postgresql/templates/primary/statefulset.yaml#0/spec/template/spec/containers/postgresql@a1a118ac41dc06d1a38d3c46cb59dcf6b00b17b165475a1f1ce018f9e0d0732e].",
           "officialConfig": {
             "sha256": "sha256:4b87d5343a0e499eea33b6c19ec152a3ed4a0d1a453eadd26ff415a406821a6e",
             "entrypoint": [
@@ -6135,7 +6135,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-32b4286fcb85b20a54e49d1685725a60d772a4d6a8d8c8e284894ade16c1dfa1",
+        "target": "10.77.0.9:32443/atum/vault:build-eede0d88814e682937273b4ca43532f56d073464f1264dab8659db740e73d0f9",
         "scopes": [
           "bigbang"
         ],

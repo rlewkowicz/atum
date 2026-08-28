@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -160,42 +159,6 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	if network["controlPlaneCidr"] != "10.77.0.8/29" {
 		t.Fatalf("API destination = %v", network["controlPlaneCidr"])
 	}
-	definition := mapAt(network, "ingress", "definitions", "controlPlaneWebhooks")
-	if got := sourceCIDRs(definition["from"]); !reflect.DeepEqual(got, []string{
-		"10.77.0.11/32", "10.77.0.12/32", "10.77.0.13/32",
-	}) {
-		t.Fatalf("webhook sources = %v", got)
-	}
-	for _, path := range [][]string{
-		{"istiod", "values", "networkPolicies", "ingress", "to", "istiod:[443,15017]", "from", "definition"},
-		{"addons", "vault", "values", "networkPolicies", "ingress", "to", "vault-agent-injector:8080", "from", "definition"},
-		{"monitoring", "values", "networkPolicies", "ingress", "to", "kube-prometheus-stack-prometheus-operator:10250", "from", "definition"},
-	} {
-		if mapAt(local, path...)["controlPlaneWebhooks"] != true {
-			t.Fatalf("%s does not consume the exact webhook source definition", strings.Join(path, "."))
-		}
-	}
-	monitoringCIDR := mapAt(
-		local, "monitoring", "values", "networkPolicies", "ingress", "to",
-		"kube-prometheus-stack-prometheus-operator:10250", "from", "cidr",
-	)
-	if monitoringCIDR["10.77.0.8/29"] != false {
-		t.Fatal("Monitoring does not disable the generated API destination source")
-	}
-	publicGatewaySources := mapAt(
-		local, "istioGateway", "values", "gateways", "public",
-		"networkPolicies", "ingress", "to",
-		"public-ingressgateway:[8080,8443]", "from", "k8s",
-	)
-	if publicGatewaySources["*"] != true {
-		t.Fatal("public gateway does not admit Cilium-identified in-cluster clients")
-	}
-	if len(mapAt(
-		local, "istioGateway", "values", "gateways", "passthrough",
-		"networkPolicies",
-	)) != 0 {
-		t.Fatal("in-cluster public endpoint access broadens the passthrough gateway")
-	}
 	for _, policy := range []string{
 		"add-default-securitycontext",
 		"require-non-root-user",
@@ -214,6 +177,8 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	for _, absent := range []string{
 		"vpcCidr:", "10.77.0.0/24",
 		"allow-egress-from-.*-wait-job-to-anywhere-any-port",
+		"controlPlaneWebhooks",
+		"public-ingressgateway:[8080,8443]",
 	} {
 		if strings.Contains(localText, absent) {
 			t.Fatalf("removed authored patch or broad range %q remains", absent)
@@ -864,15 +829,4 @@ func policyExcludesResource(
 		}
 	}
 	return false
-}
-
-func sourceCIDRs(value any) []string {
-	sources, _ := value.([]any)
-	result := make([]string, 0, len(sources))
-	for _, source := range sources {
-		item, _ := source.(map[string]any)
-		cidr, _ := mapAt(item, "ipBlock")["cidr"].(string)
-		result = append(result, cidr)
-	}
-	return result
 }

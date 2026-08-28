@@ -3,12 +3,15 @@ package secrets
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -187,6 +190,39 @@ func TestStatefulProjectionIsStableFormattedAndClearable(t *testing.T) {
 		if len(first.values[key]) != 32 {
 			t.Fatalf("%s length = %d", key, len(first.values[key]))
 		}
+	}
+	quotedSigningKey := make(
+		[]byte,
+		0,
+		len(first.values[statefulGitLabOIDCSigningKey])+2,
+	)
+	quotedSigningKey = append(quotedSigningKey, '"')
+	quotedSigningKey = append(
+		quotedSigningKey,
+		first.values[statefulGitLabOIDCSigningKey]...,
+	)
+	quotedSigningKey = append(quotedSigningKey, '"')
+	signingKeyPEM, err := strconv.Unquote(string(quotedSigningKey))
+	clear(quotedSigningKey)
+	if err != nil {
+		t.Fatalf("decode GitLab OpenID Connect signing key: %v", err)
+	}
+	block, rest := pem.Decode([]byte(signingKeyPEM))
+	if block == nil || block.Type != "RSA PRIVATE KEY" || len(rest) != 0 {
+		t.Fatal("GitLab OpenID Connect signing key is not one RSA PEM block")
+	}
+	signingKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse GitLab OpenID Connect signing key: %v", err)
+	}
+	if err := signingKey.Validate(); err != nil {
+		t.Fatalf("validate GitLab OpenID Connect signing key: %v", err)
+	}
+	if signingKey.N.BitLen() != 2048 {
+		t.Fatalf(
+			"GitLab OpenID Connect signing key bits = %d",
+			signingKey.N.BitLen(),
+		)
 	}
 	for _, pair := range [][2]string{
 		{statefulOpenSearchAdminPasswordKey, statefulOpenSearchAdminHashKey},

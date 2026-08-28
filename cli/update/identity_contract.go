@@ -376,6 +376,20 @@ func renderFluxSubstitutedValues(
 	if err := substituteRenderPlaceholders(rendered, replacements, nil); err != nil {
 		return nil, err
 	}
+	// The Big Bang HelmRelease receives the controller-created atum-sso-ca
+	// Secret through an optional valuesFrom targetPath. That Secret does not
+	// exist in the static updater tree, so model only its non-empty runtime
+	// shape in memory to expose every CA-gated child-chart resource.
+	if err := setNestedValue(
+		rendered,
+		"sso.certificateAuthority.cert",
+		"-----BEGIN CERTIFICATE-----\nYXR1bS1yZW5kZXItb25seQ==\n-----END CERTIFICATE-----",
+	); err != nil {
+		return nil, fmt.Errorf(
+			"model Flux SSO certificate authority valuesFrom: %w",
+			err,
+		)
+	}
 	return rendered, nil
 }
 

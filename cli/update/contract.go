@@ -146,7 +146,14 @@ func readChartMetadata(path string) (chartInspection, error) {
 }
 
 func inspectChart(path, kubernetesVersion string, values map[string]any) (chartInspection, error) {
-	return renderChart(path, kubernetesVersion, values, nil, releaseOptions("atum-contract", "atum-contract"))
+	return renderChart(
+		path,
+		kubernetesVersion,
+		values,
+		nil,
+		nil,
+		releaseOptions("atum-contract", "atum-contract"),
+	)
 }
 
 func inspectChartInstances(
@@ -164,6 +171,7 @@ func inspectChartInstances(
 			path,
 			kubernetesVersion,
 			instances[i].values,
+			instances[i].postRenderers,
 			nil,
 			releaseOptions(instances[i].name, instances[i].namespace),
 		)
@@ -223,6 +231,7 @@ func renderChart(
 	path string,
 	kubernetesVersion string,
 	values map[string]any,
+	postRenderers []any,
 	collector *releaseValueCollector,
 	options common.ReleaseOptions,
 ) (chartInspection, error) {
@@ -233,13 +242,21 @@ func renderChart(
 	if err != nil {
 		return chartInspection{}, err
 	}
-	return inspectLoadedChart(loaded, kubernetesVersion, values, collector, options)
+	return inspectLoadedChart(
+		loaded,
+		kubernetesVersion,
+		values,
+		postRenderers,
+		collector,
+		options,
+	)
 }
 
 func inspectLoadedChart(
 	loaded *chart.Chart,
 	kubernetesVersion string,
 	values map[string]any,
+	postRenderers []any,
 	collector *releaseValueCollector,
 	options common.ReleaseOptions,
 ) (chartInspection, error) {
@@ -267,6 +284,14 @@ func inspectLoadedChart(
 	rendered, err := engine.Render(loaded, renderValues)
 	if err != nil {
 		return chartInspection{}, fmt.Errorf("render Helm chart %s: %w", loaded.Name(), err)
+	}
+	rendered, err = applyHelmPostRenderers(rendered, postRenderers)
+	if err != nil {
+		return chartInspection{}, fmt.Errorf(
+			"post-render Helm chart %s: %w",
+			loaded.Name(),
+			err,
+		)
 	}
 	images, invocations, contractSHA, security, formerWait, err := inspectRenderedResources(
 		rendered, nil, annotated, collector, options.Namespace,

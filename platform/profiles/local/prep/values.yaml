@@ -4,16 +4,6 @@ networkPolicies:
   # kubernetes Service, not the HAProxy VIP. This is the smallest CIDR
   # containing all three local endpoints: .11, .12, and .13.
   controlPlaneCidr: 10.77.0.8/29
-  ingress:
-    definitions:
-      controlPlaneWebhooks:
-        from:
-          - ipBlock:
-              cidr: 10.77.0.11/32
-          - ipBlock:
-              cidr: 10.77.0.12/32
-          - ipBlock:
-              cidr: 10.77.0.13/32
 kyvernoPolicies:
   values:
     policies:
@@ -74,18 +64,6 @@ kyvernoPolicies:
                   - helper-pod-*
 istiod:
   values:
-    networkPolicies:
-      ingress:
-        to:
-          istiod:[443,15017]:
-            from:
-              # Cilium's node-aware CIDR mode excludes control-plane node
-              # identities from a world CIDR. Use Big Bang's canonical
-              # controlPlaneWebhooks definition for webhook traffic.
-              cidr:
-                0.0.0.0/0: false
-              definition:
-                controlPlaneWebhooks: true
     upstream:
       pilot:
         autoscaleEnabled: false
@@ -123,15 +101,6 @@ tempo:
       replicas: 1
 monitoring:
   values:
-    networkPolicies:
-      ingress:
-        to:
-          kube-prometheus-stack-prometheus-operator:10250:
-            from:
-              cidr:
-                10.77.0.8/29: false
-              definition:
-                controlPlaneWebhooks: true
     upstream:
       alertmanager:
         alertmanagerSpec:
@@ -201,23 +170,6 @@ addons:
             readOnly: true
   vault:
     values:
-      networkPolicies:
-        egress:
-          definitions:
-            # Big Bang 3.31.1's deprecated vpcCidr migration otherwise
-            # broadens kubeAPI egress when vpcCidr is intentionally absent.
-            kubeAPI:
-              to:
-                - ipBlock:
-                    cidr: 10.77.0.8/29
-        ingress:
-          to:
-            vault-agent-injector:8080:
-              from:
-                cidr:
-                  0.0.0.0/0: false
-                definition:
-                  controlPlaneWebhooks: true
       upstream:
         server:
           ha:
@@ -226,17 +178,6 @@ istioGateway:
   values:
     gateways:
       public:
-        networkPolicies:
-          ingress:
-            to:
-              "public-ingressgateway:[8080,8443]":
-                from:
-                  # Cilium preserves the source pod identity after translating
-                  # the public LoadBalancer VIP to this gateway. Big Bang's
-                  # RFC1918 ipBlocks therefore admit external clients but not
-                  # in-cluster clients of the same public HTTPS endpoints.
-                  k8s:
-                    "*": true
         upstream:
           service:
             type: LoadBalancer
