@@ -24,6 +24,7 @@ type terraformInventoryOutputs struct {
 	NodeMainIPs       terraformOutputValue[[]string] `json:"node_main_ips"`
 	NodeInternalIPs   terraformOutputValue[[]string] `json:"node_internal_ips"`
 	LoadBalancerIPv4  terraformOutputValue[string]   `json:"load_balancer_ipv4"`
+	DNSServer         terraformOutputValue[string]   `json:"dns_server"`
 	BastionLabel      *terraformOutputValue[string]  `json:"bastion_label"`
 	BastionMainIP     *terraformOutputValue[string]  `json:"bastion_main_ip"`
 	BastionInternalIP *terraformOutputValue[string]  `json:"bastion_internal_ip"`
@@ -31,6 +32,7 @@ type terraformInventoryOutputs struct {
 
 type clusterInventory struct {
 	LoadBalancerAddress string
+	DNSServer           string
 	AnsibleUser         string
 	Bastion             *clusterInventoryBastion
 	Hosts               []clusterInventoryHost
@@ -108,6 +110,13 @@ func parseTerraformInventory(data []byte) (clusterInventory, error) {
 	mainIPs := outputs.NodeMainIPs.Value
 	internalIPs := outputs.NodeInternalIPs.Value
 	loadBalancerAddress, err := inventoryIPv4("load_balancer_ipv4", outputs.LoadBalancerIPv4.Value)
+	if err != nil {
+		return clusterInventory{}, err
+	}
+	dnsServer, err := inventoryIPv4("dns_server", outputs.DNSServer.Value)
+	if err != nil {
+		return clusterInventory{}, err
+	}
 	if len(labels) == 0 {
 		return clusterInventory{}, errors.New("terraform output node_labels must contain at least one node")
 	}
@@ -116,9 +125,6 @@ func parseTerraformInventory(data []byte) (clusterInventory, error) {
 	}
 	if len(mainIPs) > 0 && len(mainIPs) != len(labels) {
 		return clusterInventory{}, fmt.Errorf("terraform output node_main_ips length %d does not match node_labels length %d", len(mainIPs), len(labels))
-	}
-	if err != nil {
-		return clusterInventory{}, err
 	}
 
 	bastion, err := parseTerraformBastion(outputs)
@@ -167,6 +173,7 @@ func parseTerraformInventory(data []byte) (clusterInventory, error) {
 
 	return clusterInventory{
 		LoadBalancerAddress: loadBalancerAddress,
+		DNSServer:           dnsServer,
 		Bastion:             bastion,
 		Hosts:               hosts,
 	}, nil
@@ -242,6 +249,7 @@ func renderInventoryYAML(inventory clusterInventory) []byte {
 	builder.WriteString("---\nall:\n")
 	builder.WriteString("  vars:\n")
 	writeYAMLScalar(&builder, 4, "atum_load_balancer_address", inventory.LoadBalancerAddress)
+	writeYAMLScalar(&builder, 4, "atum_dns_server", inventory.DNSServer)
 	if inventory.AnsibleUser != "" {
 		writeYAMLScalar(&builder, 4, "ansible_user", inventory.AnsibleUser)
 	}

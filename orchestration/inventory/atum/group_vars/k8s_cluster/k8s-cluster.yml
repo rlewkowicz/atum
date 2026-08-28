@@ -7,9 +7,11 @@ kube_network_plugin: cilium
 kube_proxy_remove: true
 enable_nodelocaldns: false
 dns_mode: coredns
+# Terraform owns the local dnsmasq endpoint and publishes its address. Kubespray
+# remains the sole owner of CoreDNS and forwards pod queries through that
+# endpoint so the Terraform-owned platform zone and public DNS both resolve.
 upstream_dns_servers:
-  - 1.1.1.1
-  - 8.8.8.8
+  - "{{ atum_dns_server }}"
 
 # Kubespray owns the mounted authentication file and kubeadm flags. Atum hands
 # it one complete projection from the active identity contract, including the
