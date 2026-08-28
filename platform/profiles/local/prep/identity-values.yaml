@@ -140,21 +140,6 @@ stringData:
             client_id: atum-kiali
             client_secret: ${ATUM_KIALI_CLIENT_SECRET}
             enabled: true
-        values:
-            upstream:
-                cr:
-                    spec:
-                        auth:
-                            openid:
-                                client_id: atum-kiali
-                                client_secret: ${ATUM_KIALI_CLIENT_SECRET}
-                                disable_rbac: true
-                                issuer_uri: https://keycloak.atum.test/auth/realms/master
-                                scopes:
-                                    - openid
-                                    - profile
-                                    - email
-                                    - groups
     kyvernoReporter:
         sso:
             client_id: atum-policy-reporter

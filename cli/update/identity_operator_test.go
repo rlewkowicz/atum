@@ -90,6 +90,33 @@ func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
 	}
 }
 
+func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := identity.Load(root, "platform/profiles/local/identity/contract.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := identityValues(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kiali := values["kiali"].(map[string]any)
+	if len(kiali) != 1 {
+		t.Fatalf("Kiali identity values bypass Big Bang's SSO contract: %#v", kiali)
+	}
+	sso := kiali["sso"].(map[string]any)
+	if sso["enabled"] != true ||
+		sso["client_id"] != "atum-kiali" ||
+		sso["client_secret"] != "${ATUM_KIALI_CLIENT_SECRET}" {
+		t.Fatalf("Kiali SSO values = %#v", sso)
+	}
+}
+
 func TestFluxRenderValuesSubstituteOnlyUpdaterInspectionCopy(t *testing.T) {
 	t.Parallel()
 

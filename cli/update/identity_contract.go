@@ -191,13 +191,6 @@ func identityValues(contract *identity.Contract) (map[string]any, error) {
 			"sso": map[string]any{
 				"enabled": true, "client_id": kiali.ID, "client_secret": secret(kiali),
 			},
-			"values": map[string]any{"upstream": map[string]any{"cr": map[string]any{
-				"spec": map[string]any{"auth": map[string]any{"openid": map[string]any{
-					"client_id": kiali.ID, "client_secret": secret(kiali),
-					"issuer_uri": contract.Issuer(), "disable_rbac": true,
-					"scopes": scopeList,
-				}}},
-			}}},
 		},
 		"grafana": map[string]any{"sso": map[string]any{
 			"enabled": true,
