@@ -262,7 +262,7 @@ target "_attested" {
 		args := map[string]string{
 			"ATUM_IMAGE_LICENSE": target.image.License,
 			"ATUM_IMAGE_SOURCE":  target.image.Provenance,
-			"ATUM_IMAGE_VERSION": imageTag(target.image.Target),
+			"ATUM_IMAGE_VERSION": target.image.Version,
 		}
 		if name == "grafana-plugins" {
 			args["ATUM_IMAGE_REVISION"] =

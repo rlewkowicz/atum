@@ -70,6 +70,7 @@ func TestOperatorBuildGraphUsesOneLocalAndOnePinnedOfficialContext(t *testing.T)
 				{
 					ID:        "atum-operator",
 					Discovery: "first-party",
+					Version:   "0.1.0",
 					Target:    "10.77.0.9:32443/atum/atum-operator:0.1.0",
 					Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
 						Type: "build", BakeTarget: "atum-operator",
@@ -86,6 +87,7 @@ func TestOperatorBuildGraphUsesOneLocalAndOnePinnedOfficialContext(t *testing.T)
 	for _, wanted := range []string{
 		`atum_source = "../.."`,
 		`atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@` + digest + `"`,
+		`ATUM_IMAGE_VERSION = "0.1.0"`,
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Errorf("graph does not contain %q", wanted)

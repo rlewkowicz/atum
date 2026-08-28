@@ -103,6 +103,44 @@ func renderedImageTargetReplacements(
 	return compactReplacements(replacements)
 }
 
+func projectContentAddressedBuildTargets(
+	desired *config.Document,
+	profile string,
+	graphSHA256 string,
+) ([]imageReplacement, error) {
+	replacements := make([]imageReplacement, 0, 4)
+	for index := range desired.Delivery.Images {
+		image := &desired.Delivery.Images[index]
+		if image.Delivery.Default.Type != "build" {
+			continue
+		}
+		delivery, err := config.ResolveDelivery(*image, profile, graphSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("resolve content-addressed delivery %s: %w", image.ID, err)
+		}
+		inputSHA256, err := desired.ImageInputSHA256(*image, delivery, graphSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("resolve content-addressed input %s: %w", image.ID, err)
+		}
+		tag, err := config.ContentAddressedBuildTag(inputSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("resolve content-addressed tag %s: %w", image.ID, err)
+		}
+		target, err := replaceImageTag(image.Target, tag)
+		if err != nil {
+			return nil, fmt.Errorf("project content-addressed target %s: %w", image.ID, err)
+		}
+		if target != image.Target {
+			replacements = append(replacements, imageReplacement{
+				Old: image.Target,
+				New: target,
+			})
+			image.Target = target
+		}
+	}
+	return compactReplacements(replacements)
+}
+
 func reconcileBootstrapImageVersions(
 	desired *config.Document,
 	lock *config.Lock,

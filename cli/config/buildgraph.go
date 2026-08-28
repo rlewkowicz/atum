@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -39,12 +40,38 @@ func validateBuildGraph(problems *[]string, project *Project, files map[string][
 		*problems = append(*problems, fmt.Sprintf("build graph Debian base %q does not match policy buildBase", base))
 	}
 	graph.validate(problems, project.Desired.Delivery.Policy, deliveryTargetNames(project.Desired.Delivery.Images))
+	desiredTargets := make(map[string]struct{}, len(project.Desired.Delivery.Images))
 	for _, image := range project.Desired.Delivery.Images {
 		target := image.Delivery.Default.BakeTarget
 		if target != "" {
-			if _, exists := graph.targets[target]; !exists {
+			desiredTargets[target] = struct{}{}
+			graphTarget, exists := graph.targets[target]
+			if !exists {
 				*problems = append(*problems, fmt.Sprintf(
 					"delivery image %s references missing Bake target %s", image.ID, target,
+				))
+			} else if len(graphTarget.tags) != 1 || graphTarget.tags[0] != image.Target {
+				*problems = append(*problems, fmt.Sprintf(
+					"delivery image %s Bake target %s must publish exactly target %s",
+					image.ID, target, image.Target,
+				))
+			}
+		}
+	}
+	if !allowStale {
+		graphTargets := make([]string, 0, len(graph.targets))
+		for name := range graph.targets {
+			graphTargets = append(graphTargets, name)
+		}
+		sort.Strings(graphTargets)
+		for _, name := range graphTargets {
+			if len(graph.targets[name].tags) == 0 {
+				continue
+			}
+			if _, exists := desiredTargets[name]; !exists {
+				*problems = append(*problems, fmt.Sprintf(
+					"delivery build graph publishes unexpected target %s",
+					name,
 				))
 			}
 		}
@@ -146,11 +173,17 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 		return "", fmt.Errorf("unsupported delivery profile %q", profile)
 	}
 	hash := sha256.New()
-	_, _ = fmt.Fprintf(hash, "delivery-graph-v3\x00%s\x00", profile)
+	_, _ = fmt.Fprintf(hash, "delivery-graph-v4\x00%s\x00", profile)
 	for _, relative := range []string{"platform/build/.dockerignore", buildGraphPath} {
 		data, mode, err := graphFile(project, relative, files)
 		if err != nil {
 			return "", err
+		}
+		if relative == buildGraphPath {
+			data, _, err = normalizeBuildGraphTargetTags(data)
+			if err != nil {
+				return "", err
+			}
 		}
 		_ = mode
 		digest := sha256.Sum256(data)
@@ -251,6 +284,39 @@ func deliveryGraphSHA256(project *Project, profile string, files map[string][]by
 		_, _ = fmt.Fprintln(hash, input)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func normalizeBuildGraphTargetTags(data []byte) ([]byte, int, error) {
+	const (
+		prefix      = `  tags       = ["`
+		suffix      = `"]`
+		replacement = `  tags       = ["<build-input-sha256>"]`
+	)
+	result := make([]byte, 0, len(data))
+	replaced := 0
+	for len(data) != 0 {
+		line := data
+		if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
+			line = data[:newline+1]
+			data = data[newline+1:]
+		} else {
+			data = nil
+		}
+		body := bytes.TrimSuffix(line, []byte{'\n'})
+		if bytes.HasPrefix(body, []byte(prefix)) {
+			if !bytes.HasSuffix(body, []byte(suffix)) {
+				return nil, 0, errors.New("delivery build graph has a non-canonical target tag")
+			}
+			result = append(result, replacement...)
+			if len(line) != len(body) {
+				result = append(result, '\n')
+			}
+			replaced++
+			continue
+		}
+		result = append(result, line...)
+	}
+	return result, replaced, nil
 }
 
 func deliveryTargetNames(images []Image) []string {

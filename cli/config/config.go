@@ -825,13 +825,25 @@ func (d Document) ImageInputSHA256(image Image, delivery LockedDelivery, graphSH
 	material := struct {
 		ID               string         `json:"id"`
 		Version          string         `json:"version"`
-		Target           string         `json:"target"`
+		Target           string         `json:"target,omitempty"`
 		ResolvedDelivery LockedDelivery `json:"resolvedDelivery"`
 	}{
 		ID:               image.ID,
 		Version:          image.Version,
 		Target:           image.Target,
 		ResolvedDelivery: delivery,
+	}
+	switch delivery.Type {
+	case "mirror":
+	case "build":
+		if !validHexSHA256(graphSHA256) {
+			return "", errors.New("build input requires a valid graph hash")
+		}
+		// A build target is the output name derived from this input hash, not
+		// build material. Excluding it makes that derivation acyclic.
+		material.Target = ""
+	default:
+		return "", fmt.Errorf("unsupported delivery type %q", delivery.Type)
 	}
 	encoded, err := CanonicalJSON(material)
 	if err != nil {
@@ -841,17 +853,22 @@ func (d Document) ImageInputSHA256(image Image, delivery LockedDelivery, graphSH
 	case "mirror":
 		return SHA256(encoded), nil
 	case "build":
-		if !validHexSHA256(graphSHA256) {
-			return "", errors.New("build input requires a valid graph hash")
-		}
 		hash := sha256.New()
 		_, _ = hash.Write([]byte(graphSHA256))
 		_, _ = hash.Write([]byte{0})
 		_, _ = hash.Write(encoded)
 		return hex.EncodeToString(hash.Sum(nil)), nil
-	default:
-		return "", fmt.Errorf("unsupported delivery type %q", delivery.Type)
 	}
+	panic("validated delivery type was not handled")
+}
+
+// ContentAddressedBuildTag returns the immutable Harbor tag owned by one
+// complete reproducible build input.
+func ContentAddressedBuildTag(inputSHA256 string) (string, error) {
+	if !validHexSHA256(inputSHA256) {
+		return "", errors.New("content-addressed build tag requires a valid input hash")
+	}
+	return "build-" + inputSHA256, nil
 }
 
 func canonicalJSON(value any) ([]byte, error) {
@@ -2053,6 +2070,13 @@ func validateLock(problems *[]string, p *Project, allowStale bool, files map[str
 				add("locked image %s input cannot be resolved: %v", image.ID, err)
 			} else if image.InputSHA256 != expectedInput {
 				add("locked image %s input hash is %s, want %s", image.ID, image.InputSHA256, expectedInput)
+			} else if image.Delivery.Type == "build" {
+				expectedTag, tagErr := ContentAddressedBuildTag(expectedInput)
+				if tagErr != nil {
+					add("locked build %s target tag cannot be resolved: %v", image.ID, tagErr)
+				} else if imageReferenceTag(want.Target) != expectedTag {
+					add("delivery build %s target tag is not derived from its input hash", image.ID)
+				}
 			}
 		}
 		if image.Delivery.Type == "mirror" && image.Digest != image.Delivery.Digest {

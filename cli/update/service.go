@@ -379,9 +379,6 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	if err := projectOperatorImage(tree, desired.Delivery.Images); err != nil {
-		return Result{}, err
-	}
 
 	_, err = reconcileBootstrapImageVersions(&desired, &lock, bootstrapCharts)
 	if err != nil {
@@ -678,15 +675,15 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	); err != nil {
 		return Result{}, err
 	}
+	service.logger.InfoContext(ctx, "finalizing public linux/amd64 image digests")
+	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
+		return Result{}, err
+	}
 	buildGraph, err := renderBuildGraph(desired)
 	if err != nil {
 		return Result{}, fmt.Errorf("render canonical delivery build graph: %w", err)
 	}
 	if err := tree.Set(buildGraphFile, buildGraph); err != nil {
-		return Result{}, err
-	}
-	service.logger.InfoContext(ctx, "finalizing public linux/amd64 image digests")
-	if _, err := refreshMirrorDigests(ctx, parallelism, &project.Desired, &desired, &lock); err != nil {
 		return Result{}, err
 	}
 	candidateProject := *project
@@ -695,6 +692,74 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	graphSHA, err := config.DeliveryGraphSHA256WithFiles(&candidateProject, lock.Delivery.Profile, tree.filesView())
 	if err != nil {
 		return Result{}, fmt.Errorf("resolve candidate delivery graph: %w", err)
+	}
+	contentReplacements, err := projectContentAddressedBuildTargets(
+		&desired,
+		lock.Delivery.Profile,
+		graphSHA,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := replaceImageReferences(candidateGenerated, contentReplacements); err != nil {
+		return Result{}, err
+	}
+	if err := projectSelectedImageValues(candidateGenerated, desired); err != nil {
+		return Result{}, err
+	}
+	for _, values := range bootstrapValues {
+		if err := replaceImageReferences(values, contentReplacements); err != nil {
+			return Result{}, err
+		}
+	}
+	if err := projectOperatorImage(tree, desired.Delivery.Images); err != nil {
+		return Result{}, err
+	}
+	buildGraph, err = renderBuildGraph(desired)
+	if err != nil {
+		return Result{}, fmt.Errorf("render content-addressed delivery build graph: %w", err)
+	}
+	if err := tree.Set(buildGraphFile, buildGraph); err != nil {
+		return Result{}, err
+	}
+	candidateProject.Desired = desired
+	contentGraphSHA, err := config.DeliveryGraphSHA256WithFiles(
+		&candidateProject,
+		lock.Delivery.Profile,
+		tree.filesView(),
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("resolve content-addressed delivery graph: %w", err)
+	}
+	if contentGraphSHA != graphSHA {
+		return Result{}, fmt.Errorf(
+			"content-addressed build targets changed delivery graph identity from %s to %s",
+			graphSHA,
+			contentGraphSHA,
+		)
+	}
+	if len(finalArtifacts) == 0 || finalArtifacts[len(finalArtifacts)-1].ID != "flux" {
+		return Result{}, errors.New("final rendered artifact set has no Flux boundary")
+	}
+	if _, _, err := inspectAppliedArtifacts(
+		ctx,
+		parallelism,
+		selectedKubernetes.Version,
+		service.root,
+		desired,
+		operational,
+		candidateGenerated,
+		profileRenderValues,
+		supportSourceValues(supportSources),
+		bootstrapValues,
+		finalArtifacts[:len(finalArtifacts)-1],
+		tree.filesView(),
+		nil,
+	); err != nil {
+		return Result{}, fmt.Errorf(
+			"verify content-addressed applied image projection: %w",
+			err,
+		)
 	}
 	lock.Delivery.GraphSHA256 = graphSHA
 	if err := resolveImageLock(&desired, &lock); err != nil {
