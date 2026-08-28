@@ -1,7 +1,7 @@
 {
   "$schema": "./atum.lock.schema.json",
   "schemaVersion": "atum.dev/lock/v1",
-  "desiredSha256": "468f36059ab87987482054ce11fc756942e1c6d47531c2496f6086203e7c7480",
+  "desiredSha256": "fe2e72e52b924c8c1a404d03e53a08195237d5251b60f3ee9b3509c2815d7fa3",
   "resolved": {
     "clusterReleases": [
       {
@@ -1776,10 +1776,17 @@
         "name": "monitoring",
         "version": "88.3.0-bb.0",
         "upstreamSha256": "8125487121fb8579a8df0569515e9ca05480c131912959332020b06d2d7d360c",
-        "archiveSha256": "12f5a58546d8dca15b761e2cb9b684ecb4e8454cf436ca3c1015b62320f64c94",
-        "size": 904955,
-        "file": ".atum/cache/packaged-charts/12f5a58546d8dca15b761e2cb9b684ecb4e8454cf436ca3c1015b62320f64c94.tgz",
-        "target": "10.77.0.9:32443/charts/monitoring:88.3.0-bb.0"
+        "archiveSha256": "968734cea95fdd30e009847ce4595193679882e3ea2ab8430b8317cded6cc345",
+        "size": 904956,
+        "file": ".atum/cache/packaged-charts/968734cea95fdd30e009847ce4595193679882e3ea2ab8430b8317cded6cc345.tgz",
+        "target": "10.77.0.9:32443/charts/monitoring:88.3.0-bb.0",
+        "normalizations": [
+          {
+            "path": "monitoring.blackboxExporter.serviceMonitor.targets",
+            "from": "null",
+            "to": "list"
+          }
+        ]
       },
       {
         "id": "package/postgresql",
@@ -2017,8 +2024,8 @@
     "schemaVersion": "atum.dev/image-lock/v3",
     "profile": "platform",
     "platform": "linux/amd64",
-    "inventorySha256": "3d5cd7ec529e8de1389814246107c13a07b0c20480bf3b069ef1e49fca7c3c38",
-    "graphSha256": "55f8b1ea66227d9dffe55c28dfe884293e7b109564dc60979df896bd9d7b1410",
+    "inventorySha256": "5b7e7510db91c043a2f05db54077db83623fae8b3fc1e737cb3425fe489c3aef",
+    "graphSha256": "34f7bb2b0bbdfe8b07438a5b0ae5b9a5cf64988b305913b931ce82a5a47b3c39",
     "images": [
       {
         "id": "alertmanager",
@@ -2034,9 +2041,9 @@
       },
       {
         "id": "atum-operator",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-f6884e538d93a8b9bb07e3a482e2d43a1b7b984705ff2004cf2a5af674b0f39d",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
         "digest": "",
-        "inputSha256": "f6884e538d93a8b9bb07e3a482e2d43a1b7b984705ff2004cf2a5af674b0f39d",
+        "inputSha256": "d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
         "delivery": {
           "type": "build",
           "bakeTarget": "atum-operator",
@@ -2059,6 +2066,18 @@
           "type": "mirror",
           "source": "ghcr.io/istio-ecosystem/authservice/authservice:1.1.5",
           "digest": "sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82",
+          "sourceProfile": "platform"
+        }
+      },
+      {
+        "id": "blackbox-exporter",
+        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0",
+        "digest": "sha256:43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f477b45c4e38dac68",
+        "inputSha256": "11e6c115f1743219912cf2d80e081111a562f507df54a23e0a650e5ec4ad5249",
+        "delivery": {
+          "type": "mirror",
+          "source": "quay.io/prometheus/blackbox-exporter:v0.28.0",
+          "digest": "sha256:43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f477b45c4e38dac68",
           "sourceProfile": "platform"
         }
       },
@@ -2208,9 +2227,9 @@
       },
       {
         "id": "garage-init-helper",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
         "digest": "",
-        "inputSha256": "e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a",
+        "inputSha256": "85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
         "delivery": {
           "type": "build",
           "bakeTarget": "garage-init-helper",
@@ -2344,9 +2363,9 @@
       },
       {
         "id": "grafana-plugins",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
         "digest": "",
-        "inputSha256": "985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690",
+        "inputSha256": "53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
         "delivery": {
           "type": "build",
           "bakeTarget": "grafana-plugins",
@@ -3840,9 +3859,9 @@
       },
       {
         "id": "postgresql-18",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
         "digest": "",
-        "inputSha256": "8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154",
+        "inputSha256": "264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
         "delivery": {
           "type": "build",
           "bakeTarget": "postgresql-18-compat",
@@ -3988,9 +4007,9 @@
       },
       {
         "id": "vault",
-        "target": "10.77.0.9:32443/atum/vault:build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e",
+        "target": "10.77.0.9:32443/atum/vault:build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
         "digest": "",
-        "inputSha256": "69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e",
+        "inputSha256": "2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
         "delivery": {
           "type": "build",
           "bakeTarget": "vault-curl-compat",

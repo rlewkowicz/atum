@@ -6,6 +6,61 @@ import (
 	"atum/cli/config"
 )
 
+func TestOfficialBlackboxExporterImageAndValuesAreProjected(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ironBank = "registry1.dso.mil/ironbank/opensource/prometheus/blackbox_exporter"
+		target   = "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0"
+	)
+	spec, err := officialImageFor(
+		ironBank+":v0.28.0",
+		"package/monitoring",
+		"1.35.4",
+		nil,
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.id != "blackbox-exporter" ||
+		spec.source != "quay.io/prometheus/blackbox-exporter:v0.28.0" ||
+		spec.license != "Apache-2.0" {
+		t.Fatalf("official blackbox exporter mapping = %#v", spec)
+	}
+
+	images := selectedImageIndex{
+		{
+			artifact:   "package/monitoring",
+			repository: ironBank,
+		}: {{
+			ID:          spec.id,
+			Version:     "0.28.0",
+			Target:      target,
+			BigBangRefs: []string{ironBank + ":v0.28.0"},
+			Consumers:   []string{"package/monitoring"},
+			Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
+				Type:   "mirror",
+				Source: spec.source,
+			}},
+		}},
+	}
+	generated := make(map[string]any)
+	if err := projectMonitoringBlackboxImage(generated, images); err != nil {
+		t.Fatal(err)
+	}
+	blackbox := mapAt(generated, "monitoring", "values", "blackboxExporter")
+	image := mapAt(blackbox, "image")
+	if stringAt(image, "registry") != "10.77.0.9:32443" ||
+		stringAt(image, "repository") != "atum/blackbox-exporter" ||
+		stringAt(image, "tag") != "v0.28.0" {
+		t.Fatalf("projected blackbox exporter image = %#v", image)
+	}
+	if stringAt(mapAt(blackbox, "global"), "imageRegistry") != "10.77.0.9:32443" {
+		t.Fatalf("projected blackbox exporter global registry = %#v", blackbox["global"])
+	}
+}
+
 func TestOfficialRedisModulePathsAreProjected(t *testing.T) {
 	t.Parallel()
 

@@ -72,6 +72,20 @@ func TestNormalizePlaceholderValueMapPreservesHelmOverrideSemantics(t *testing.T
 	}
 }
 
+func TestDecodeReleaseValuesRejectsEmbeddedHelmYAMLError(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeReleaseValues(`
+Error: 'error converting YAML to JSON: yaml: line 12: did not find expected comma'
+networkPolicies:
+  enabled: true
+`)
+	if err == nil ||
+		!strings.Contains(err.Error(), "upstream Helm template embedded an invalid values document") {
+		t.Fatalf("embedded Helm YAML error = %v", err)
+	}
+}
+
 func TestNormalizePlaceholderValueMapRejectsNonEmptyCollectionMismatch(t *testing.T) {
 	t.Parallel()
 

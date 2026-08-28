@@ -189,6 +189,14 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	profileRenderValues, err = renderFluxSubstitutedValues(
+		desired,
+		identityContract,
+		profileRenderValues,
+	)
+	if err != nil {
+		return Result{}, err
+	}
 	service.logger.InfoContext(ctx, "resolving stable upstream Git releases")
 	progress.Update(ctx, progress.Platform, "update-releases", "Upstream releases",
 		"resolving stable release candidates", 0, 3)

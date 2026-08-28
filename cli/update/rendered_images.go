@@ -487,6 +487,10 @@ func officialImageFor(
 	case path == "opensource/prometheus/node-exporter":
 		spec.id, spec.family, spec.license = "node-exporter", "observability", "Apache-2.0"
 		spec.source = "quay.io/prometheus/node-exporter:" + tag
+	case path == "opensource/prometheus/blackbox_exporter":
+		spec.id, spec.targetName, spec.family, spec.license =
+			"blackbox-exporter", "blackbox-exporter", "observability", "Apache-2.0"
+		spec.source = "quay.io/prometheus/blackbox-exporter:" + tag
 	case path == "opensource/prometheus/alertmanager" ||
 		path == "opensource/prometheus/prometheus":
 		name := strings.TrimPrefix(path, "opensource/prometheus/")

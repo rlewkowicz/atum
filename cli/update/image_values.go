@@ -166,10 +166,46 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	if err := projectChartGlobalImageRegistries(generated, images); err != nil {
 		return err
 	}
+	if err := projectMonitoringBlackboxImage(generated, images); err != nil {
+		return err
+	}
 	if err := projectRedisModuleCompatibility(generated, images); err != nil {
 		return err
 	}
 	return projectKyvernoWatchListCompatibility(generated, desired, images)
+}
+
+func projectMonitoringBlackboxImage(
+	generated map[string]any,
+	images selectedImageIndex,
+) error {
+	const repository = "registry1.dso.mil/ironbank/opensource/prometheus/blackbox_exporter"
+	image, err := selectedArtifactImage(images, "package/monitoring", repository)
+	if err != nil {
+		return err
+	}
+	if err := projectImageValue(
+		generated,
+		splitImage(
+			"package/monitoring",
+			repository,
+			"monitoring.values.blackboxExporter.image",
+		),
+		image,
+	); err != nil {
+		return err
+	}
+	registry, _, found := strings.Cut(imageRepository(image.Target), "/")
+	if !found {
+		return fmt.Errorf("delivery target %s has no registry", image.Target)
+	}
+	// The selected exporter subchart gives global.imageRegistry precedence over
+	// image.registry, so both public values must identify Harbor.
+	return setNestedValue(
+		generated,
+		"monitoring.values.blackboxExporter.global.imageRegistry",
+		registry,
+	)
 }
 
 const redisModuleConfiguration = `loadmodule /usr/local/lib/redis/modules/redisearch.so

@@ -90,7 +90,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154
+                    tag: build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502
             redis-bb:
                 upstream:
                     image:
@@ -150,7 +150,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154
+                    tag: build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
@@ -177,14 +177,14 @@ addons:
                 injector:
                     agentImage:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e
+                        tag: build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
                         tag: 1.7.5
                 server:
                     image:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e
+                        tag: build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f
 fluentbit:
     helmRepo:
         chartName: fluentbit
@@ -209,7 +209,7 @@ grafana:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: build-985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690
+                tag: build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
@@ -347,6 +347,13 @@ monitoring:
         tag: 88.3.0-bb.0
     sourceType: helmRepo
     values:
+        blackboxExporter:
+            global:
+                imageRegistry: 10.77.0.9:32443
+            image:
+                registry: 10.77.0.9:32443
+                repository: atum/blackbox-exporter
+                tag: v0.28.0
         upstream:
             alertmanager:
                 alertmanagerSpec:
@@ -447,7 +454,7 @@ packages:
             garageInit:
                 image:
                     repository: 10.77.0.9:32443/atum/garage-init-helper
-                    tag: build-e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a
+                    tag: build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/garage

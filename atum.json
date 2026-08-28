@@ -1626,7 +1626,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-f6884e538d93a8b9bb07e3a482e2d43a1b7b984705ff2004cf2a5af674b0f39d",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-d7425e0c808049776c0d4999092298577b5f7050deb90aa784d3a74f4377e2dc",
         "scopes": [
           "bigbang"
         ],
@@ -1675,6 +1675,32 @@
             "type": "mirror",
             "source": "ghcr.io/istio-ecosystem/authservice/authservice:1.1.5",
             "digest": "sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82"
+          }
+        }
+      },
+      {
+        "id": "blackbox-exporter",
+        "family": "observability",
+        "version": "0.28.0",
+        "target": "10.77.0.9:32443/atum/blackbox-exporter:v0.28.0",
+        "scopes": [
+          "bigbang"
+        ],
+        "runtime": true,
+        "license": "Apache-2.0",
+        "provenance": "quay.io/prometheus/blackbox-exporter",
+        "consumers": [
+          "package/monitoring"
+        ],
+        "bigBangRefs": [
+          "registry1.dso.mil/ironbank/opensource/prometheus/blackbox_exporter:v0.28.0"
+        ],
+        "discovery": "rendered",
+        "delivery": {
+          "default": {
+            "type": "mirror",
+            "source": "quay.io/prometheus/blackbox-exporter:v0.28.0",
+            "digest": "sha256:43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f477b45c4e38dac68"
           }
         }
       },
@@ -1991,7 +2017,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-e40a8e88b621ba0d530729388c327d479bccc2f74525bd57c0e1ba036279566a",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-85ef5a1f9c922428a8051006c645f3fb02a06a361dc0aa9d75c589e1ec1902bb",
         "scopes": [
           "bigbang"
         ],
@@ -2490,7 +2516,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-985c4e8cc57969dcdca762e470ca2232ae733edc20bd911aefa2c36115e47690",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-53475f2c16672545492135c08f254e06d975a53772e8eb162d48ff80bcf360e6",
         "scopes": [
           "bigbang"
         ],
@@ -2510,7 +2536,7 @@
             {
               "artifact": "package/grafana",
               "renderedLocation": "bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana",
-              "runtimeContractSha256": "7ddda3018f83e4d28ecdb0a8176a351be35306535eb171bb2d026134885fed33",
+              "runtimeContractSha256": "c19f9aa194bc684d12eb69660e0d38dc43f4b55d09c24d524a95b1b665e4088a",
               "command": [],
               "arguments": [],
               "runAsUser": "65532",
@@ -2528,7 +2554,7 @@
           "incompatibility": "package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource",
           "officialSource": "docker.io/grafana/grafana:13.0.1",
           "officialMaterial": "docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455",
-          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana@7ddda3018f83e4d28ecdb0a8176a351be35306535eb171bb2d026134885fed33].",
+          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/grafana/charts/upstream/templates/deployment.yaml#0/spec/template/spec/containers/grafana@c19f9aa194bc684d12eb69660e0d38dc43f4b55d09c24d524a95b1b665e4088a].",
           "officialConfig": {
             "sha256": "sha256:da9910ab9d4c6917b7786e7188b612e1f5ae799886697379248d4003c4701137",
             "entrypoint": [
@@ -5615,7 +5641,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-8cb4713919ab9f5683cc2904d81267d2bf45e14026473bbdb095e811a7dab154",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-264acf9028fc840d83e05b754be68b328f1d371bc6b04cc5fb0e0d9bc2f8b502",
         "scopes": [
           "bigbang"
         ],
@@ -6087,7 +6113,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-69011978ed52c751d01084bf9bd16cf7003c5956d399086c37037313d982217e",
+        "target": "10.77.0.9:32443/atum/vault:build-2bb6dc01298819b7706f846a86be7cc4d6f35da3922db0fbb70ce84cacf2374f",
         "scopes": [
           "bigbang"
         ],
@@ -6107,7 +6133,7 @@
             {
               "artifact": "package/vault",
               "renderedLocation": "bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault",
-              "runtimeContractSha256": "0d16d2fcd3b096d52052d450ceff7237a69ecad992a0e8263fb2378c81aff52f",
+              "runtimeContractSha256": "6f6349a3064e93e54fdcdb74719a1ff7c779a468d337268855b24711677d378f",
               "command": [
                 "/bin/sh",
                 "-ec"
@@ -6199,7 +6225,7 @@
           "incompatibility": "package/vault/bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault: lifecycle postStart shell mounted script requires official executable curl",
           "officialSource": "docker.io/hashicorp/vault:1.21.4",
           "officialMaterial": "docker.io/hashicorp/vault@sha256:6c77f568e6b6310d5bc68befb5711b9215c574de7da489e7c24332581176888b",
-          "removalCondition": "Remove when official repository index.docker.io/hashicorp/vault publishes an immutable image for docker.io/hashicorp/vault:1.21.4 that satisfies [package/vault/bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault: lifecycle postStart shell mounted script requires official executable curl] for rendered contracts [package/vault/bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault@0d16d2fcd3b096d52052d450ceff7237a69ecad992a0e8263fb2378c81aff52f].",
+          "removalCondition": "Remove when official repository index.docker.io/hashicorp/vault publishes an immutable image for docker.io/hashicorp/vault:1.21.4 that satisfies [package/vault/bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault: lifecycle postStart shell mounted script requires official executable curl] for rendered contracts [package/vault/bigbang/vault/vault/charts/upstream/templates/server-statefulset.yaml#0/spec/template/spec/containers/vault@6f6349a3064e93e54fdcdb74719a1ff7c779a468d337268855b24711677d378f].",
           "officialConfig": {
             "sha256": "sha256:9b1d8cd2a2c4d1879b1acf3030fb266db3cb5ed54f554645f8fc577fffdf8442",
             "entrypoint": [

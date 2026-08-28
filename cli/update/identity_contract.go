@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -20,6 +21,10 @@ import (
 )
 
 const identityTemplateRoot = "platform/templates/identity"
+
+const renderOnlyIdentityCredential = "atum-render-only-credential-0000000000000000"
+
+var atumRenderPlaceholderPattern = regexp.MustCompile(`\$\{(ATUM_[A-Z0-9_]+)\}`)
 
 type identityRenderContext struct {
 	Values                string
@@ -335,6 +340,119 @@ func mergeIdentityValues(base, identityValues map[string]any) (map[string]any, e
 	result := cloneMap(base)
 	mergeMaps(result, identityValues)
 	return result, nil
+}
+
+// renderFluxSubstitutedValues models the local profile Kustomization's
+// postBuild substitutions for updater-only Helm inspection. Persisted values
+// retain their Flux placeholders; non-secret sentinels let the exact selected
+// charts validate and expose every conditionally enabled runtime image.
+func renderFluxSubstitutedValues(
+	desired config.Document,
+	contract *identity.Contract,
+	values map[string]any,
+) (map[string]any, error) {
+	target, found := desired.ActiveTarget()
+	if !found {
+		return nil, errors.New("active platform target is unavailable")
+	}
+	if target.LocalAccess == nil {
+		return nil, fmt.Errorf(
+			"platform profile %s has no local Flux substitutions",
+			target.PlatformProfile,
+		)
+	}
+	replacements := map[string]string{
+		"ATUM_PLATFORM_DOMAIN":             target.LocalAccess.Domain,
+		"ATUM_IDENTITY_BOOTSTRAP_PASSWORD": renderOnlyIdentityCredential,
+	}
+	if contract != nil {
+		for _, client := range contract.Clients() {
+			replacements[identitySecretKey(client.ID)] = renderOnlyIdentityCredential
+		}
+	}
+	rendered := cloneMap(values)
+	if err := substituteRenderPlaceholders(rendered, replacements, nil); err != nil {
+		return nil, err
+	}
+	return rendered, nil
+}
+
+func substituteRenderPlaceholders(
+	value any,
+	replacements map[string]string,
+	path []string,
+) error {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			childPath := append(path, key)
+			if text, ok := child.(string); ok {
+				rendered, missing := substituteRenderText(text, replacements)
+				typed[key] = rendered
+				if missing != "" {
+					return fmt.Errorf(
+						"Flux render value %s uses unavailable substitution %s",
+						strings.Join(childPath, "."),
+						missing,
+					)
+				}
+				continue
+			}
+			if err := substituteRenderPlaceholders(
+				child,
+				replacements,
+				childPath,
+			); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for index, child := range typed {
+			childPath := append(path, fmt.Sprintf("[%d]", index))
+			if text, ok := child.(string); ok {
+				rendered, missing := substituteRenderText(text, replacements)
+				typed[index] = rendered
+				if missing != "" {
+					return fmt.Errorf(
+						"Flux render value %s uses unavailable substitution %s",
+						strings.Join(childPath, "."),
+						missing,
+					)
+				}
+				continue
+			}
+			if err := substituteRenderPlaceholders(
+				child,
+				replacements,
+				childPath,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func substituteRenderText(
+	value string,
+	replacements map[string]string,
+) (string, string) {
+	var missing string
+	rendered := atumRenderPlaceholderPattern.ReplaceAllStringFunc(
+		value,
+		func(placeholder string) string {
+			name := placeholder[2 : len(placeholder)-1]
+			replacement, found := replacements[name]
+			if !found {
+				if missing == "" {
+					missing = name
+				}
+				return placeholder
+			}
+			return replacement
+		},
+	)
+	return rendered, missing
 }
 
 func configurePlatformValuesFrom(release map[string]any) error {

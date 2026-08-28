@@ -559,6 +559,13 @@ func decodeReleaseValues(content string) (map[string]any, error) {
 	if values == nil {
 		values = make(map[string]any)
 	}
+	if renderedError, found := values["Error"].(string); found &&
+		strings.HasPrefix(renderedError, "error converting YAML to JSON:") {
+		return nil, fmt.Errorf(
+			"upstream Helm template embedded an invalid values document: %s",
+			renderedError,
+		)
+	}
 	return values, nil
 }
 
