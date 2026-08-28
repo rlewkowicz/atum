@@ -49,7 +49,7 @@ target "atum-operator" {
   inherits   = ["_attested"]
   dockerfile = "docker/Dockerfile.operator"
   target     = "atum-operator"
-  tags       = ["10.77.0.9:32443/atum/atum-operator:0.1.0"]
+  tags       = ["10.77.0.9:32443/atum/atum-operator:0.1.1"]
   contexts = {
     atum_go_upstream = "docker-image://docker.io/library/golang:1.26.0-alpine@sha256:7c6a62c80c3f15fb49aae282d7a296149889ebe39b2318f3a299f2759c1ce135"
     atum_source = "../.."
@@ -57,7 +57,7 @@ target "atum-operator" {
   args = {
     ATUM_IMAGE_LICENSE = "Apache-2.0"
     ATUM_IMAGE_SOURCE = "https://github.com/rlewkowicz/atum"
-    ATUM_IMAGE_VERSION = "0.1.0"
+    ATUM_IMAGE_VERSION = "0.1.1"
   }
   cache-from = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/atum-operator:cache"]
   cache-to   = ["type=registry,ref=${ATUM_CACHE_REGISTRY}/atum-operator:cache,mode=max,image-manifest=true,oci-mediatypes=true"]

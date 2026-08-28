@@ -1625,8 +1625,8 @@
       {
         "id": "atum-operator",
         "family": "platform-control",
-        "version": "0.1.0",
-        "target": "10.77.0.9:32443/atum/atum-operator:0.1.0",
+        "version": "0.1.1",
+        "target": "10.77.0.9:32443/atum/atum-operator:0.1.1",
         "scopes": [
           "bigbang"
         ],

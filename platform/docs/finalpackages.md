@@ -107,7 +107,7 @@ as a workload coordinator.
 | ID | Version | License | Official provenance | Final internal target | Decision | Official immutable input |
 | --- | --- | --- | --- | --- | --- | --- |
 | alertmanager | 0.33.1 | Apache-2.0 | quay.io/prometheus/alertmanager | 10.77.0.9:32443/atum/alertmanager:v0.33.1 | direct immutable mirror | quay.io/prometheus/alertmanager:v0.33.1 @ sha256:a89f8d4520954079275441eecdb71444328bd90633dd4eddfc33b9ed657f349b |
-| atum-operator | 0.1.0 | Apache-2.0 | https://github.com/rlewkowicz/atum | 10.77.0.9:32443/atum/atum-operator:0.1.0 | reproducible first-party build: atum-operator | platform/build/docker/Dockerfile.operator<br>cmd/atum-operator<br>operator<br>go.mod<br>go.sum |
+| atum-operator | 0.1.1 | Apache-2.0 | https://github.com/rlewkowicz/atum | 10.77.0.9:32443/atum/atum-operator:0.1.1 | reproducible first-party build: atum-operator | platform/build/docker/Dockerfile.operator<br>cmd/atum-operator<br>operator<br>go.mod<br>go.sum |
 | authservice | 1.1.5 | Apache-2.0 | ghcr.io/istio-ecosystem/authservice/authservice | 10.77.0.9:32443/atum/authservice:1.1.5 | direct immutable mirror | ghcr.io/istio-ecosystem/authservice/authservice:1.1.5 @ sha256:d4d0c4d3a9af67063679c84f9044e7cc58f445185dce3cf8aab0c18a63b0fa82 |
 | buildkit | 0.25.2 | Apache-2.0 | https://github.com/moby/buildkit | 10.77.0.9:32443/atum/buildkit:v0.25.2 | direct immutable mirror | docker.io/moby/buildkit:v0.25.2 @ sha256:72bda77240181301a0d5ee57d39fa58e4aabd7eff26f81bbf108088caf810f05 |
 | busybox | 1.37.0 | GPL-2.0-only | docker.io/library/busybox | 10.77.0.9:32443/atum/busybox:1.37.0 | direct immutable mirror | docker.io/library/busybox:1.37.0 @ sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0 |

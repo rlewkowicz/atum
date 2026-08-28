@@ -20,6 +20,8 @@ func resetRenderedImageInventory(desired *config.Document) {
 }
 
 func ensureOperatorImages(desired *config.Document) {
+	const operatorVersion = "0.1.1"
+
 	byID := make(map[string]int, len(desired.Delivery.Images))
 	for index := range desired.Delivery.Images {
 		byID[desired.Delivery.Images[index].ID] = index
@@ -36,8 +38,8 @@ func ensureOperatorImages(desired *config.Document) {
 			}},
 		},
 		{
-			ID: "atum-operator", Family: "platform-control", Version: "0.1.0",
-			Target: prefix + "atum-operator:0.1.0", Scopes: []string{"bigbang"},
+			ID: "atum-operator", Family: "platform-control", Version: operatorVersion,
+			Target: prefix + "atum-operator:" + operatorVersion, Scopes: []string{"bigbang"},
 			Runtime: true, License: "Apache-2.0", Provenance: "https://github.com/rlewkowicz/atum",
 			Consumers: []string{"platform/apps/atum-operator"}, BigBangRefs: []string{},
 			Discovery: "first-party", Delivery: config.ImageDelivery{Default: config.DeliveryChoice{
