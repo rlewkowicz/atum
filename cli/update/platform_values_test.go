@@ -54,6 +54,14 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	) {
 		t.Fatal("Flux OpenSearch dependency graph is cyclic or incomplete")
 	}
+	healthChecks := mapSlice(mapAt(bigBangValues, "spec")["healthChecks"])
+	if len(healthChecks) != 2 ||
+		healthChecks[0]["name"] != "bigbang" ||
+		healthChecks[0]["namespace"] != "bigbang" ||
+		healthChecks[1]["name"] != "cert-manager" ||
+		healthChecks[1]["namespace"] != "cert-manager" {
+		t.Fatal("Big Bang readiness gate does not target its real HelmRelease namespaces")
+	}
 	resources, _ := clusterRoot["resources"].([]any)
 	if !stringReference(resources, "platform-certificates.yaml") ||
 		!stringReference(resources, "platform-profile-access.yaml") {

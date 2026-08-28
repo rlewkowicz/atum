@@ -1232,7 +1232,7 @@ var bigBangReadiness = readinessKustomization{
 			apiVersion: "helm.toolkit.fluxcd.io/v2",
 			kind:       "HelmRelease",
 			name:       "cert-manager",
-			namespace:  "bigbang",
+			namespace:  "cert-manager",
 		},
 	},
 }
