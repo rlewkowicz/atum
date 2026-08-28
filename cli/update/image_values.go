@@ -17,6 +17,7 @@ const (
 	imageRepositoryAsImageTag
 	imageRepositoryAsRepoTag
 	imageDefaultRegistryRepositoryTag
+	imageRepositoryAsNameVersion
 )
 
 type imageValueProjection struct {
@@ -103,7 +104,7 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 		splitImage("package/keycloak", "registry1.dso.mil/ironbank/opensource/postgres/postgresql", "addons.keycloak.values.postgresql.image"),
 
 		repoTag("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali-operator", "kiali.values.upstream.image"),
-		fullReference("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali", "kiali.values.upstream.cr.spec.deployment.image_name"),
+		imageNameVersion("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali", "kiali.values.upstream.cr.spec.deployment"),
 
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno/kyvernopre", "kyverno.values.upstream.admissionController.initContainer.image"),
 		defaultRegistryImage("package/kyverno", "registry1.dso.mil/ironbank/opensource/kyverno", "kyverno.values.upstream.admissionController.container.image"),
@@ -330,6 +331,10 @@ func defaultRegistryImage(artifact, repository, path string) imageValueProjectio
 	return imageValueProjection{artifact: artifact, repository: repository, path: path, shape: imageDefaultRegistryRepositoryTag}
 }
 
+func imageNameVersion(artifact, repository, path string) imageValueProjection {
+	return imageValueProjection{artifact: artifact, repository: repository, path: path, shape: imageRepositoryAsNameVersion}
+}
+
 func selectedArtifactImage(
 	images selectedImageIndex,
 	artifact string,
@@ -411,6 +416,11 @@ func projectImageValue(
 			return err
 		}
 		return setNestedValue(generated, projection.path+".tag", tag)
+	case imageRepositoryAsNameVersion:
+		if err := setNestedValue(generated, projection.path+".image_name", repository); err != nil {
+			return err
+		}
+		return setNestedValue(generated, projection.path+".image_version", tag)
 	default:
 		return errors.New("unsupported selected image value projection")
 	}

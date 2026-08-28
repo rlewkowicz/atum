@@ -255,7 +255,8 @@ kiali:
             cr:
                 spec:
                     deployment:
-                        image_name: 10.77.0.9:32443/atum/kiali:v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d
+                        image_name: 10.77.0.9:32443/atum/kiali
+                        image_version: v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d
             image:
                 repo: 10.77.0.9:32443/atum/kiali-operator
                 tag: v2.30.0-mirror-set-7b80287c210323d0ec69a9fad961ae4396a4fd72180c210d

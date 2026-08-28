@@ -92,3 +92,27 @@ func TestOfficialRedisModulePathsAreProjected(t *testing.T) {
 		t.Fatalf("projected Redis configuration = %#v, want %#v", got, redisModuleConfiguration)
 	}
 }
+
+func TestKialiImageNameAndVersionAreProjectedSeparately(t *testing.T) {
+	t.Parallel()
+
+	const (
+		target     = "10.77.0.9:32443/atum/kiali:v2.30.0-mirror-set-deadbeef"
+		deployment = "kiali.values.upstream.cr.spec.deployment"
+	)
+	generated := make(map[string]any)
+	if err := projectImageValue(
+		generated,
+		imageNameVersion("package/kiali", "registry1.dso.mil/ironbank/opensource/kiali/kiali", deployment),
+		config.Image{Target: target},
+	); err != nil {
+		t.Fatal(err)
+	}
+	kialiDeployment := mapAt(generated, "kiali", "values", "upstream", "cr", "spec", "deployment")
+	if got := stringAt(kialiDeployment, "image_name"); got != "10.77.0.9:32443/atum/kiali" {
+		t.Fatalf("Kiali image_name = %q", got)
+	}
+	if got := stringAt(kialiDeployment, "image_version"); got != "v2.30.0-mirror-set-deadbeef" {
+		t.Fatalf("Kiali image_version = %q", got)
+	}
+}
