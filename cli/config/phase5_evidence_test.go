@@ -1,7 +1,6 @@
 package config
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -64,51 +63,35 @@ func TestOfficialImageEvidenceRequiresOnePermittedImmutableRepository(t *testing
 	}
 }
 
-func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
+func TestSelectedKubesprayImagesExactlyJoinHarborProjection(t *testing.T) {
 	t.Parallel()
-	official := []string{
+	sources := []string{
 		"quay.io/calico/node:v3.31.4",
-		"docker.io/flannel/flannel:v0.27.4",
-		"quay.io/metallb/controller:v0.15.3",
-		"quay.io/cilium/hubble-relay:v1.19.1",
-		"quay.io/cilium/operator:v1.19.1",
+		"registry.k8s.io/kube-apiserver:v1.35.4",
 	}
-	wantOfficial := append([]string(nil), official...)
-	sources := append(
-		append([]string(nil), official...),
-		"quay.io/cilium/operator-generic:v1.19.1",
-	)
 	inventory := KubesprayArtifactInventory{
-		KubernetesVersion: "1.35.2",
-		OfficialImages:    official,
-		RuntimeImages: []string{
-			"quay.io/cilium/operator-generic:v1.19.1",
-		},
-		Images: make([]string, len(sources)),
+		KubernetesVersion: "1.35.4",
+		Images:            make([]string, len(sources)),
 	}
 	projected := make(map[string]Image, len(sources))
 	projectedList := make([]Image, 0, len(sources))
 	const targetPrefix = "harbor.internal/atum/"
 	for index, source := range sources {
-		id := "image-" + string(rune('a'+index))
+		id, err := KubesprayImageID(source)
+		if err != nil {
+			t.Fatal(err)
+		}
 		inventory.Images[index] = id
-		digest := "sha256:" + strings.Repeat("b", 64)
 		image := Image{
-			ID:        id,
-			Version:   strings.TrimPrefix(imageReferenceTag(source), "v"),
+			ID: id, Version: strings.TrimPrefix(imageReferenceTag(source), "v"),
 			Discovery: "kubespray",
-			Target: targetPrefix + "kubespray/" +
-				imageReferenceRepository(source) + ":" +
-				imageReferenceTag(source),
-			Scopes:  []string{"kubespray"},
-			Runtime: true,
+			Scopes:    []string{"kubespray"},
+			Runtime:   true,
 			Delivery: ImageDelivery{Default: DeliveryChoice{
-				Type:   "mirror",
-				Source: source,
-				Digest: digest,
+				Type: "mirror", Source: source,
+				Digest: "sha256:" + strings.Repeat("b", 64),
 			}},
 		}
-		projected[id] = image
 		projectedList = append(projectedList, image)
 	}
 	targetTags, err := MirrorTargetTags(projectedList)
@@ -131,113 +114,95 @@ func TestKubesprayOfficialImagesExactlyJoinHarborProjection(t *testing.T) {
 		false,
 	)
 	if len(problems) != 0 {
-		t.Fatalf("persisted full upstream projection was rejected: %v", problems)
+		t.Fatalf("selected projection was rejected: %v", problems)
 	}
-	if err := validateKubesprayOfficialImageProjection(
-		inventory,
-		projected,
+	if err := validateKubespraySelectedImageProjection(
+		inventory, projected,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(inventory.OfficialImages, wantOfficial) {
-		t.Fatalf(
-			"official script order changed: got %#v want %#v",
-			inventory.OfficialImages,
-			wantOfficial,
-		)
-	}
-
-	missingGeneric := inventory
-	missingGeneric.Images = append(
-		[]string(nil),
-		inventory.Images[:len(inventory.Images)-1]...,
-	)
-	if err := validateKubesprayOfficialImageProjection(
-		missingGeneric,
-		projected,
+	delete(projected, inventory.Images[0])
+	if err := validateKubespraySelectedImageProjection(
+		inventory, projected,
 	); err == nil {
-		t.Fatal("missing source-derived Cilium generic mirror passed projection validation")
-	}
-
-	futureOfficialGeneric := inventory
-	futureOfficialGeneric.OfficialImages = append(
-		append([]string(nil), inventory.OfficialImages...),
-		"quay.io/cilium/operator-generic:v1.19.1",
-	)
-	if err := validateKubesprayOfficialImageProjection(
-		futureOfficialGeneric,
-		projected,
-	); err != nil {
-		t.Fatalf(
-			"one generic projection did not satisfy a future official generic entry: %v",
-			err,
-		)
-	}
-
-	missing := inventory
-	missing.Images = append([]string(nil), inventory.Images[1:]...)
-	if err := validateKubesprayOfficialImageProjection(
-		missing,
-		projected,
-	); err == nil {
-		t.Fatal("missing official mirror passed projection validation")
-	}
-
-	substitutedImages := cloneProjectedImages(projected)
-	substitutedImages[inventory.Images[0]] = Image{
-		ID:        inventory.Images[0],
-		Discovery: "kubespray",
-		Delivery: ImageDelivery{Default: DeliveryChoice{
-			Type:   "mirror",
-			Source: "quay.io/example/substitute:v1",
-			Digest: "sha256:" + strings.Repeat("c", 64),
-		}},
-	}
-	if err := validateKubesprayOfficialImageProjection(
-		inventory,
-		substitutedImages,
-	); err == nil {
-		t.Fatal("substituted official mirror passed projection validation")
-	}
-
-	extra := inventory
-	extra.Images = append(append([]string(nil), inventory.Images...), "decoy")
-	extraImages := cloneProjectedImages(projected)
-	extraImages["decoy"] = Image{
-		ID:        "decoy",
-		Discovery: "kubespray",
-		Delivery: ImageDelivery{Default: DeliveryChoice{
-			Type:   "mirror",
-			Source: "quay.io/example/decoy:v1",
-			Digest: "sha256:" + strings.Repeat("d", 64),
-		}},
-	}
-	if err := validateKubesprayOfficialImageProjection(
-		extra,
-		extraImages,
-	); err == nil {
-		t.Fatal("unrelated non-script mirror passed projection validation")
-	}
-
-	duplicated := inventory
-	duplicated.Images = append(
-		append([]string(nil), inventory.Images...),
-		"duplicate",
-	)
-	duplicatedImages := cloneProjectedImages(projected)
-	duplicatedImages["duplicate"] = projected[inventory.Images[0]]
-	if err := validateKubesprayOfficialImageProjection(
-		duplicated,
-		duplicatedImages,
-	); err == nil {
-		t.Fatal("duplicated projected source passed projection validation")
+		t.Fatal("missing selected image passed projection validation")
 	}
 }
 
-func cloneProjectedImages(images map[string]Image) map[string]Image {
-	cloned := make(map[string]Image, len(images))
-	for id, image := range images {
-		cloned[id] = image
+func TestKubesprayFileContractRejectsUnsupportedAndMismatchedPaths(t *testing.T) {
+	t.Parallel()
+	const (
+		kubernetesVersion = "1.35.4"
+		kubesprayCommit   = "1c9add48975060f45396b34d8e022c30d7f80dab"
+	)
+	sha256 := strings.Repeat("a", 64)
+	inventory := KubesprayArtifactInventory{
+		SchemaVersion:           KubesprayArtifactSchema,
+		KubernetesVersion:       kubernetesVersion,
+		KubesprayCommit:         kubesprayCommit,
+		InventoryScope:          KubespraySelectedRuntimeInventory,
+		SelectionInputSHA256:    strings.Repeat("b", 64),
+		SelectedInventorySHA256: "",
+		Files: []KubesprayFile{{
+			ID:             "kubeadm",
+			Source:         "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
+			RepositoryPath: "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
+			CacheFile:      ".atum/cache/kubespray-offline/sha256/" + sha256,
+			SHA256:         sha256,
+			Size:           1,
+		}},
+		Images: []string{"kubespray-kube-apiserver-aabbccddeeff"},
 	}
-	return cloned
+	release := ClusterRelease{
+		Kubernetes: kubernetesVersion,
+		Kubespray:  GitSource{Commit: kubesprayCommit},
+	}
+	assertRejected := func(candidate KubesprayArtifactInventory) {
+		t.Helper()
+		digest, err := KubesprayInventorySHA256(candidate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidate.SelectedInventorySHA256 = digest
+		var problems []string
+		validateKubesprayArtifactInventory(
+			&problems,
+			candidate,
+			release,
+			false,
+		)
+		if len(problems) == 0 ||
+			problems[0] != "Kubespray file inventory has an invalid artifact record" {
+			t.Fatalf("invalid persisted file problems = %#v", problems)
+		}
+	}
+
+	unsupported := inventory
+	unsupported.Files = append([]KubesprayFile(nil), inventory.Files...)
+	unsupported.Files[0].Source = "https://artifacts.example.test/kubeadm"
+	assertRejected(unsupported)
+
+	mismatched := inventory
+	mismatched.Files = append([]KubesprayFile(nil), inventory.Files...)
+	mismatched.Files[0].RepositoryPath = "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl"
+	assertRejected(mismatched)
+
+	nonCanonical := inventory
+	nonCanonical.Files = append([]KubesprayFile(nil), inventory.Files...)
+	nonCanonical.Files[0].Source =
+		"https://dl.k8s.io/release/../release/v1.35.4/bin/linux/amd64/kubeadm"
+	assertRejected(nonCanonical)
+
+	for _, source := range []string{
+		"https://user@dl.k8s.io/release/kubeadm",
+		"https://dl.k8s.io/release/kubeadm?mutable=true",
+		"https://dl.k8s.io/release/kubeadm#fragment",
+		"https://dl.k8s.io/release/../release/kubeadm",
+		"https://dl.k8s.io/release//kubeadm",
+		"https://dl.k8s.io/release/kubeadm/",
+	} {
+		if _, err := KubesprayFileRepositoryPath(source); err == nil {
+			t.Fatalf("ambiguous source %q passed the file contract", source)
+		}
+	}
 }

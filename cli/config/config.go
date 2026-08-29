@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -384,39 +385,32 @@ type Delivery struct {
 	Images    []Image                      `json:"images"`
 }
 
-// KubesprayArtifactInventory retains the exact output of the selected
-// Kubespray release's official contrib/offline workflow plus the exact runtime
-// image coordinates declared by its selected charts. The updater is its sole
-// writer; delivery projects their union into the common image graph and
-// Kubespray consumes registry settings derived from those same targets.
+// KubesprayArtifactInventory retains only the files and images selected by the
+// pinned Kubespray downloads map for the canonical local topology. The updater
+// is its sole writer.
 type KubesprayArtifactInventory struct {
-	SchemaVersion        string          `json:"schemaVersion"`
-	KubernetesVersion    string          `json:"kubernetesVersion"`
-	KubesprayCommit      string          `json:"kubesprayCommit"`
-	OfficialScript       string          `json:"officialScript"`
-	OfficialScriptSHA256 string          `json:"officialScriptSha256"`
-	InventoryScope       string          `json:"inventoryScope"`
-	InventorySHA256      string          `json:"inventorySha256"`
-	OfficialImages       []string        `json:"officialImages"`
-	RuntimeImages        []string        `json:"runtimeImages"`
-	Files                []KubesprayFile `json:"files"`
-	Images               []string        `json:"images"`
+	SchemaVersion           string          `json:"schemaVersion"`
+	KubernetesVersion       string          `json:"kubernetesVersion"`
+	KubesprayCommit         string          `json:"kubesprayCommit"`
+	InventoryScope          string          `json:"inventoryScope"`
+	SelectionInputSHA256    string          `json:"selectionInputSha256"`
+	SelectedInventorySHA256 string          `json:"selectedInventorySha256"`
+	Files                   []KubesprayFile `json:"files"`
+	Images                  []string        `json:"images"`
 }
 
-const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v7"
-const KubesprayOfficialScript = "contrib/offline/generate_list.sh"
-const KubesprayFullOfflineInventory = "full-upstream-offline"
+const KubesprayArtifactSchema = "atum.dev/kubespray-artifacts/v8"
+const KubespraySelectedRuntimeInventory = "selected-runtime"
 
-// KubesprayFile is one content-pinned output of Kubespray's official offline
-// discovery and acquisition workflow. Variable is the exact Kubespray URL
-// variable replaced with LocalPath while the pinned playbook is running.
+// KubesprayFile is one checksum-verified, content-pinned file selected from
+// the pinned Kubespray downloads map.
 type KubesprayFile struct {
-	Variable  string `json:"variable"`
-	Source    string `json:"source"`
-	LocalPath string `json:"localPath"`
-	CacheFile string `json:"cacheFile"`
-	SHA256    string `json:"sha256"`
-	Size      int64  `json:"size"`
+	ID             string `json:"id"`
+	Source         string `json:"source"`
+	RepositoryPath string `json:"repositoryPath"`
+	CacheFile      string `json:"cacheFile"`
+	SHA256         string `json:"sha256"`
+	Size           int64  `json:"size"`
 }
 
 type SeedPlane struct {
@@ -824,12 +818,52 @@ func (d Document) DeliverySHA256() (string, error) {
 }
 
 func KubesprayInventorySHA256(inventory KubesprayArtifactInventory) (string, error) {
-	inventory.InventorySHA256 = ""
+	inventory.SelectedInventorySHA256 = ""
 	data, err := canonicalJSON(inventory)
 	if err != nil {
 		return "", err
 	}
 	return SHA256(data), nil
+}
+
+func KubesprayImageID(source string) (string, error) {
+	reference, err := name.ParseReference(source)
+	if err != nil {
+		return "", err
+	}
+	component := sanitizeKubesprayImageComponent(
+		filepath.Base(reference.Context().Name()),
+	)
+	return "kubespray-" + component + "-" +
+		SHA256([]byte(reference.Name()))[:12], nil
+}
+
+func sanitizeKubesprayImageComponent(value string) string {
+	value = strings.ToLower(value)
+	var builder strings.Builder
+	builder.Grow(min(len(value), 32))
+	separator := false
+	for _, character := range value {
+		valid := character >= 'a' && character <= 'z' ||
+			character >= '0' && character <= '9'
+		if valid {
+			if separator && builder.Len() != 0 {
+				builder.WriteByte('-')
+			}
+			builder.WriteRune(character)
+			separator = false
+			continue
+		}
+		separator = true
+	}
+	result := strings.Trim(builder.String(), "-")
+	if result == "" {
+		return "image"
+	}
+	if len(result) > 32 {
+		return strings.TrimRight(result[:32], "-")
+	}
+	return result
 }
 
 func (d Document) DesiredSHA256() (string, error) {
@@ -3317,12 +3351,9 @@ func validateKubesprayArtifactInventory(
 	if inventory.KubernetesVersion != release.Kubernetes ||
 		inventory.KubesprayCommit != release.Kubespray.Commit ||
 		!allowStale && (inventory.SchemaVersion != KubesprayArtifactSchema ||
-			inventory.OfficialScript != KubesprayOfficialScript ||
-			!validHexSHA256(inventory.OfficialScriptSHA256) ||
-			inventory.InventoryScope != KubesprayFullOfflineInventory ||
-			!validHexSHA256(inventory.InventorySHA256) ||
-			len(inventory.OfficialImages) == 0 ||
-			len(inventory.RuntimeImages) == 0 ||
+			inventory.InventoryScope != KubespraySelectedRuntimeInventory ||
+			!validHexSHA256(inventory.SelectionInputSHA256) ||
+			!validHexSHA256(inventory.SelectedInventorySHA256) ||
 			len(inventory.Files) == 0 || len(inventory.Images) == 0) {
 		*problems = append(*problems, "Kubespray artifact inventory identity is invalid")
 		return
@@ -3339,26 +3370,15 @@ func validateKubesprayArtifactInventory(
 			}
 		}
 	}
-	if !allowStale {
-		for _, image := range inventory.OfficialImages {
-			if strings.TrimSpace(image) != image || image == "" {
-				*problems = append(
-					*problems,
-					"Kubespray official image output contains an invalid entry",
-				)
-				return
-			}
-		}
-	}
-	validateEntries("runtime image", inventory.RuntimeImages)
 	validateEntries("image", inventory.Images)
-	fileVariables := make(map[string]struct{}, len(inventory.Files))
+	fileIDs := make(map[string]struct{}, len(inventory.Files))
 	fileSources := make(map[string]struct{}, len(inventory.Files))
 	filePaths := make(map[string]struct{}, len(inventory.Files))
 	for index, file := range inventory.Files {
-		if !validKubesprayURLVariable(file.Variable) ||
-			!strings.HasPrefix(file.Source, "https://") ||
-			!validKubesprayLocalPath(file.LocalPath) ||
+		repositoryPath, pathErr := KubesprayFileRepositoryPath(file.Source)
+		if !ValidKubesprayDownloadID(file.ID) ||
+			pathErr != nil ||
+			repositoryPath != file.RepositoryPath ||
 			!strings.HasPrefix(
 				file.CacheFile,
 				".atum/cache/kubespray-offline/sha256/",
@@ -3367,35 +3387,68 @@ func validateKubesprayArtifactInventory(
 			!strings.HasSuffix(file.CacheFile, file.SHA256) ||
 			file.Size <= 0 ||
 			index > 0 &&
-				inventory.Files[index-1].Variable >= file.Variable {
+				inventory.Files[index-1].ID >= file.ID {
 			*problems = append(
 				*problems,
 				"Kubespray file inventory has an invalid artifact record",
 			)
 			return
 		}
-		if _, duplicate := fileVariables[file.Variable]; duplicate {
-			*problems = append(*problems, "Kubespray file variable is duplicated")
+		if _, duplicate := fileIDs[file.ID]; duplicate {
+			*problems = append(*problems, "Kubespray file id is duplicated")
 			return
 		}
 		if _, duplicate := fileSources[file.Source]; duplicate {
 			*problems = append(*problems, "Kubespray file source is duplicated")
 			return
 		}
-		if _, duplicate := filePaths[file.LocalPath]; duplicate {
-			*problems = append(*problems, "Kubespray file local path is duplicated")
+		if _, duplicate := filePaths[file.RepositoryPath]; duplicate {
+			*problems = append(*problems, "Kubespray file repository path is duplicated")
 			return
 		}
-		fileVariables[file.Variable] = struct{}{}
+		fileIDs[file.ID] = struct{}{}
 		fileSources[file.Source] = struct{}{}
-		filePaths[file.LocalPath] = struct{}{}
+		filePaths[file.RepositoryPath] = struct{}{}
 	}
 	if !allowStale {
 		digest, err := KubesprayInventorySHA256(inventory)
-		if err != nil || digest != inventory.InventorySHA256 {
+		if err != nil || digest != inventory.SelectedInventorySHA256 {
 			*problems = append(*problems, "Kubespray artifact inventory digest is invalid")
 		}
 	}
+}
+
+// KubesprayFileRepositoryPath validates the supported public file-source
+// contract and returns its one canonical Harbor repository path.
+func KubesprayFileRepositoryPath(source string) (string, error) {
+	parsed, err := url.Parse(source)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery ||
+		parsed.Fragment != "" || parsed.RawPath != "" ||
+		strings.ContainsRune(parsed.Path, '\\') {
+		return "", fmt.Errorf(
+			"Kubespray offline source %q is not a supported immutable HTTPS path",
+			source,
+		)
+	}
+	switch parsed.Host {
+	case "dl.k8s.io", "get.helm.sh", "github.com",
+		"raw.githubusercontent.com", "storage.googleapis.com":
+	default:
+		return "", fmt.Errorf(
+			"Kubespray offline source %q has an unsupported repository root",
+			source,
+		)
+	}
+	clean := path.Clean(parsed.Path)
+	if !strings.HasPrefix(parsed.Path, "/") ||
+		clean != parsed.Path ||
+		clean == "/" {
+		return "", fmt.Errorf(
+			"Kubespray offline source %q has no canonical path", source,
+		)
+	}
+	return parsed.Host + clean, nil
 }
 
 func validateKubesprayImageProjection(
@@ -3471,7 +3524,7 @@ func validateKubesprayImageProjection(
 		return
 	}
 	for _, inventory := range inventories {
-		if err := validateKubesprayOfficialImageProjection(
+		if err := validateKubespraySelectedImageProjection(
 			inventory,
 			projected,
 		); err != nil {
@@ -3481,7 +3534,7 @@ func validateKubesprayImageProjection(
 	}
 }
 
-func validateKubesprayOfficialImageProjection(
+func validateKubespraySelectedImageProjection(
 	inventory KubesprayArtifactInventory,
 	projected map[string]Image,
 ) error {
@@ -3505,6 +3558,15 @@ func validateKubesprayOfficialImageProjection(
 			)
 		}
 		source := reference.Name()
+		expectedID, err := KubesprayImageID(source)
+		if err != nil || expectedID != id {
+			return fmt.Errorf(
+				"Kubespray %s projected source %s does not own image id %s",
+				inventory.KubernetesVersion,
+				source,
+				id,
+			)
+		}
 		if previous, duplicate := projectedSources[source]; duplicate {
 			return fmt.Errorf(
 				"Kubespray %s projected source %s is duplicated by %s and %s",
@@ -3517,91 +3579,19 @@ func validateKubesprayOfficialImageProjection(
 		projectedSources[source] = id
 	}
 
-	expectedSources := make(
-		map[string]struct{},
-		len(inventory.OfficialImages)+len(inventory.RuntimeImages),
-	)
-	expected := make(
-		[]string,
-		0,
-		len(inventory.OfficialImages)+len(inventory.RuntimeImages),
-	)
-	expected = append(expected, inventory.OfficialImages...)
-	expected = append(expected, inventory.RuntimeImages...)
-	for _, sourceImage := range expected {
-		reference, err := name.ParseReference(sourceImage)
-		if err != nil {
-			return fmt.Errorf(
-				"Kubespray %s source image %q is invalid: %w",
-				inventory.KubernetesVersion,
-				sourceImage,
-				err,
-			)
-		}
-		tag, tagged := reference.(name.Tag)
-		if !tagged {
-			return fmt.Errorf(
-				"Kubespray %s source image %q is not tag-addressable",
-				inventory.KubernetesVersion,
-				sourceImage,
-			)
-		}
-		source := tag.Name()
-		expectedSources[source] = struct{}{}
-	}
-	missing := make([]string, 0)
-	for source := range expectedSources {
-		if _, found := projectedSources[source]; !found {
-			missing = append(missing, source)
-		}
-	}
-	if len(missing) != 0 {
-		sort.Strings(missing)
-		return fmt.Errorf(
-			"Kubespray %s expected image %s has no matching Harbor projection",
-			inventory.KubernetesVersion,
-			missing[0],
-		)
-	}
-	unexpected := make([]string, 0)
-	for source := range projectedSources {
-		if _, expected := expectedSources[source]; !expected {
-			unexpected = append(unexpected, source)
-		}
-	}
-	if len(unexpected) != 0 {
-		sort.Strings(unexpected)
-		return fmt.Errorf(
-			"Kubespray %s Harbor projection contains non-script image %s",
-			inventory.KubernetesVersion,
-			unexpected[0],
-		)
-	}
 	return nil
 }
 
-func validKubesprayLocalPath(value string) bool {
-	if value == "" || strings.HasPrefix(value, "/") ||
-		strings.ContainsRune(value, '\\') ||
-		filepath.ToSlash(filepath.Clean(value)) != value {
-		return false
-	}
-	for _, segment := range strings.Split(value, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return false
-		}
-	}
-	return true
-}
-
-func validKubesprayURLVariable(value string) bool {
-	if !strings.HasSuffix(value, "_url") || len(value) <= len("_url") {
+// ValidKubesprayDownloadID reports whether value belongs to the persisted v8
+// selected-runtime download-ID vocabulary.
+func ValidKubesprayDownloadID(value string) bool {
+	if value == "" {
 		return false
 	}
 	for index, character := range value {
 		if character >= 'a' && character <= 'z' ||
 			index > 0 && character >= '0' && character <= '9' ||
-			index > 0 && character == '_' {
+			index > 0 && (character == '_' || character == '-') {
 			continue
 		}
 		return false

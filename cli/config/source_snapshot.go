@@ -31,6 +31,51 @@ func AtumSourceSHA256(project *Project) (string, error) {
 	return identity, nil
 }
 
+type kubesprayGroupVarOwner uint8
+
+const (
+	kubespraySelectionInput kubesprayGroupVarOwner = iota
+	kubesprayRuntimeOutput
+)
+
+type kubesprayGroupVar struct {
+	group string
+	file  string
+	owner kubesprayGroupVarOwner
+}
+
+var kubesprayGroupVars = [...]kubesprayGroupVar{
+	{group: "all", file: "all.yml", owner: kubespraySelectionInput},
+	{group: "all", file: "containerd.yml", owner: kubesprayRuntimeOutput},
+	{group: "k8s_cluster", file: "addons.yml", owner: kubespraySelectionInput},
+	{group: "k8s_cluster", file: "k8s-cluster.yml", owner: kubespraySelectionInput},
+}
+
+// KubespraySelectionGroupVarPaths returns the ordered authoritative inputs
+// used to evaluate the pinned Kubespray downloads map. Later entries
+// intentionally have higher Ansible extra-vars precedence.
+func KubespraySelectionGroupVarPaths(desired Document) []string {
+	return kubesprayGroupVarPaths(desired, true)
+}
+
+// KubesprayRuntimeGroupVarPaths returns every tracked local group-variable
+// file, including updater-generated runtime delivery configuration.
+func KubesprayRuntimeGroupVarPaths(desired Document) []string {
+	return kubesprayGroupVarPaths(desired, false)
+}
+
+func kubesprayGroupVarPaths(desired Document, selectionOnly bool) []string {
+	root := filepath.Join(desired.Orchestration.Inventory, "group_vars")
+	paths := make([]string, 0, len(kubesprayGroupVars))
+	for _, groupVar := range kubesprayGroupVars {
+		if selectionOnly && groupVar.owner != kubespraySelectionInput {
+			continue
+		}
+		paths = append(paths, filepath.Join(root, groupVar.group, groupVar.file))
+	}
+	return paths
+}
+
 // RequiredSourceSnapshotMembers is the single inventory of paths that the
 // desired platform, orchestration, generated-value, and build handoffs consume.
 // Membership is checked read-only against the Git index before delivery side
@@ -47,10 +92,6 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 		"go.sum",
 		filepath.Join(desired.Orchestration.Directory, "ansible.cfg"),
 		filepath.Join(desired.Orchestration.Directory, "requirements.txt"),
-		filepath.Join(desired.Orchestration.Inventory, "group_vars", "all", "all.yml"),
-		filepath.Join(desired.Orchestration.Inventory, "group_vars", "all", "containerd.yml"),
-		filepath.Join(desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "addons.yml"),
-		filepath.Join(desired.Orchestration.Inventory, "group_vars", "k8s_cluster", "k8s-cluster.yml"),
 		filepath.Join(desired.Orchestration.Inventory, "hooks", "wait-admin-rbac.yml"),
 		filepath.Join(desired.Orchestration.Directory, "playbooks", "platform-secrets.yml"),
 		desired.Platform.Values.Operational,
@@ -70,6 +111,7 @@ func RequiredSourceSnapshotMembers(desired Document) []string {
 		filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster, "flux-system", "platform-profile.yaml"),
 		filepath.Join(desired.Platform.Directory, "templates", "secrets", "stateful-values.yaml.tmpl"),
 	}
+	members = append(members, KubesprayRuntimeGroupVarPaths(desired)...)
 	members = append(members, fluxSecretRequiredFiles(desired)...)
 	members = append(members, generatedIdentityRequiredFiles(desired, profiles)...)
 	for _, profile := range profiles {

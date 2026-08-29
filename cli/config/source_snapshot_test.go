@@ -2,6 +2,66 @@ package config
 
 import "testing"
 
+func TestKubesprayGroupVarOwnershipProjections(t *testing.T) {
+	t.Parallel()
+	desired := Document{Orchestration: Orchestration{
+		Inventory: "orchestration/inventory/atum",
+	}}
+	runtimeWant := []string{
+		"orchestration/inventory/atum/group_vars/all/all.yml",
+		"orchestration/inventory/atum/group_vars/all/containerd.yml",
+		"orchestration/inventory/atum/group_vars/k8s_cluster/addons.yml",
+		"orchestration/inventory/atum/group_vars/k8s_cluster/k8s-cluster.yml",
+	}
+	selectionWant := []string{
+		runtimeWant[0],
+		runtimeWant[2],
+		runtimeWant[3],
+	}
+	runtimePaths := KubesprayRuntimeGroupVarPaths(desired)
+	selectionPaths := KubespraySelectionGroupVarPaths(desired)
+	if len(runtimePaths) != len(runtimeWant) {
+		t.Fatalf("runtime group-var paths = %#v, want %#v", runtimePaths, runtimeWant)
+	}
+	if len(selectionPaths) != len(selectionWant) {
+		t.Fatalf(
+			"selection group-var paths = %#v, want %#v",
+			selectionPaths,
+			selectionWant,
+		)
+	}
+	members := RequiredSourceSnapshotMembers(desired)
+	for index := range runtimeWant {
+		if runtimePaths[index] != runtimeWant[index] {
+			t.Fatalf(
+				"runtime group-var path %d = %q, want %q",
+				index,
+				runtimePaths[index],
+				runtimeWant[index],
+			)
+		}
+		if !containsSortedMember(members, runtimeWant[index]) {
+			t.Errorf("source snapshot does not contain %q", runtimeWant[index])
+		}
+	}
+	for index := range selectionWant {
+		if selectionPaths[index] != selectionWant[index] {
+			t.Fatalf(
+				"selection group-var path %d = %q, want %q",
+				index,
+				selectionPaths[index],
+				selectionWant[index],
+			)
+		}
+	}
+	if containsSortedMember(selectionPaths, runtimeWant[1]) {
+		t.Fatalf(
+			"generated containerd variables became a selection input: %#v",
+			selectionPaths,
+		)
+	}
+}
+
 func TestOperatorSourceSnapshotMembership(t *testing.T) {
 	desired := Document{
 		Project: ProjectConfig{Cluster: "atum"},

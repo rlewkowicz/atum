@@ -31,11 +31,6 @@ kube_apiserver_authentication_config_anonymous: >-
 kube_apiserver_authentication_config_jwt: >-
   {{ (atum_kubernetes_oidc | default({})).jwt | default([]) }}
 
-# Atum reconstructs Kubespray's official full offline inventory, including
-# unselected CNI payloads. This is only the Cilium chart coordinate used by
-# that inventory discovery; kube_network_plugin above remains authoritative.
-cilium_version: "1.19.4"
-
 # Kubespray's kube-vip documentation requires strict ARP when kube-proxy uses
 # its default IPVS mode and the Flux-owned kube-vip release advertises service
 # addresses in ARP mode.

@@ -1,6 +1,3 @@
-cilium_hubble_envoy_image_tag: v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496
-cilium_image_tag: v1.19.4
-cilium_operator_image_tag: v1.19.4
 containerd_registries_mirrors:
     - mirrors:
         - capabilities:

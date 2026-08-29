@@ -78,60 +78,27 @@ func projectPhase5EvidenceSchema(tree *candidateTree) error {
 		)
 	}
 
-	const oldInventoryRequired = `"required": ["schemaVersion", "kubernetesVersion", "kubesprayCommit", "officialScript", "officialScriptSha256", "inventoryScope", "inventorySha256", "officialImages", "files", "images"],`
-	const inventoryRequired = `"required": ["schemaVersion", "kubernetesVersion", "kubesprayCommit", "officialScript", "officialScriptSha256", "inventoryScope", "inventorySha256", "officialImages", "runtimeImages", "files", "images"],`
-	const oldInventoryProperties = `        "schemaVersion": {"const": "atum.dev/kubespray-artifacts/v6"},
+	const inventoryRequired = `"required": ["schemaVersion", "kubernetesVersion", "kubesprayCommit", "inventoryScope", "selectionInputSha256", "selectedInventorySha256", "files", "images"],`
+	const inventoryProperties = `        "schemaVersion": {"const": "atum.dev/kubespray-artifacts/v8"},
         "kubernetesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
         "kubesprayCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "officialScript": {"const": "contrib/offline/generate_list.sh"},
-        "officialScriptSha256": {"$ref": "#/$defs/hexSha256"},
-        "inventoryScope": {"const": "full-upstream-offline"},
-        "inventorySha256": {"$ref": "#/$defs/hexSha256"},
-        "officialImages": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"$ref": "#/$defs/nonEmpty"}
-        },`
-	const inventoryProperties = `        "schemaVersion": {"const": "atum.dev/kubespray-artifacts/v7"},
-        "kubernetesVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-        "kubesprayCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "officialScript": {"const": "contrib/offline/generate_list.sh"},
-        "officialScriptSha256": {"$ref": "#/$defs/hexSha256"},
-        "inventoryScope": {"const": "full-upstream-offline"},
-        "inventorySha256": {"$ref": "#/$defs/hexSha256"},
-        "officialImages": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"$ref": "#/$defs/nonEmpty"}
-        },
-        "runtimeImages": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/nonEmpty"}
-        },`
-	if bytes.Contains(data, []byte(oldInventoryRequired)) {
-		if bytes.Count(data, []byte(oldInventoryRequired)) != 1 ||
-			bytes.Count(data, []byte(oldInventoryProperties)) != 1 {
-			return errors.New(
-				"project desired schema: Kubespray inventory shape is unsupported",
-			)
-		}
-		data = bytes.Replace(
-			data,
-			[]byte(oldInventoryRequired),
-			[]byte(inventoryRequired),
-			1,
-		)
-		data = bytes.Replace(
-			data,
-			[]byte(oldInventoryProperties),
-			[]byte(inventoryProperties),
-			1,
-		)
-	} else if !bytes.Contains(data, []byte(inventoryRequired)) {
+        "inventoryScope": {"const": "selected-runtime"},
+        "selectionInputSha256": {"$ref": "#/$defs/hexSha256"},
+        "selectedInventorySha256": {"$ref": "#/$defs/hexSha256"},`
+	if bytes.Count(data, []byte(inventoryRequired)) != 1 ||
+		bytes.Count(data, []byte(inventoryProperties)) != 1 {
 		return errors.New(
-			"project desired schema: Kubespray inventory requirements are unsupported",
+			"project desired schema: Kubespray inventory shape is unsupported",
+		)
+	}
+	const fileRequired = `"required": ["id", "source", "repositoryPath", "cacheFile", "sha256", "size"],`
+	const fileProperties = `        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "source": {"type": "string", "pattern": "^https://\\S+$"},
+        "repositoryPath": {"type": "string", "pattern": "^[^/\\s][^\\s]+$"},`
+	if bytes.Count(data, []byte(fileRequired)) != 1 ||
+		bytes.Count(data, []byte(fileProperties)) != 1 {
+		return errors.New(
+			"project desired schema: Kubespray file shape is unsupported",
 		)
 	}
 	if err := tree.Set(desiredSchemaFile, data); err != nil {

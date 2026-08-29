@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"atum/cli/fssecure"
+	"atum/cli/kubespray"
 	"atum/cli/process"
 
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -265,13 +266,12 @@ func renderInventoryYAML(inventory clusterInventory) []byte {
 		}
 	}
 	builder.WriteString("  children:\n")
-	writeInventoryGroup(&builder, "kube_control_plane", inventory.Hosts)
-	writeInventoryGroup(&builder, "etcd", inventory.Hosts)
-	writeInventoryGroup(&builder, "kube_node", inventory.Hosts)
-	builder.WriteString("    k8s_cluster:\n")
-	builder.WriteString("      children:\n")
-	builder.WriteString("        kube_control_plane: {}\n")
-	builder.WriteString("        kube_node: {}\n")
+	kubespray.WriteLocalGroups(
+		&builder,
+		func(builder *strings.Builder, _ string) {
+			writeInventoryHosts(builder, inventory.Hosts)
+		},
+	)
 	return []byte(builder.String())
 }
 
@@ -283,11 +283,7 @@ func (inventory clusterInventory) bastionSSHCommonArgs() string {
 	return fmt.Sprintf("-o ProxyCommand='ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -W %%h:%%p -q {%% if ansible_ssh_private_key_file is defined %%}-i {{ ansible_ssh_private_key_file }} {%% endif %%}%s@%s'", user, inventory.Bastion.AnsibleHost)
 }
 
-func writeInventoryGroup(builder *strings.Builder, name string, hosts []clusterInventoryHost) {
-	builder.WriteString("    ")
-	builder.WriteString(name)
-	builder.WriteString(":\n")
-	builder.WriteString("      hosts:\n")
+func writeInventoryHosts(builder *strings.Builder, hosts []clusterInventoryHost) {
 	for _, host := range hosts {
 		builder.WriteString("        ")
 		builder.WriteString(strconv.Quote(host.Name))

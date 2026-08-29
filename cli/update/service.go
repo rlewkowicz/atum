@@ -379,6 +379,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		selection.kubespray,
 		parallelism,
 		mirrorReceipts,
+		managedFiles,
 	)
 	if err != nil {
 		return Result{}, err

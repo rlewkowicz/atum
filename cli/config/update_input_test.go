@@ -15,15 +15,17 @@ func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 		{ID: "kubespray-image", Discovery: "kubespray"},
 		{ID: "arbitrary", Discovery: "not-a-supported-discovery"},
 	}
-	v5Inventory := KubesprayArtifactInventory{
-		SchemaVersion:     "atum.dev/kubespray-artifacts/v5",
-		KubernetesVersion: "1.35.2",
-		KubesprayCommit:   strings.Repeat("a", 40),
-		InventorySHA256:   strings.Repeat("b", 64),
+	inventory := KubesprayArtifactInventory{
+		SchemaVersion:           KubesprayArtifactSchema,
+		KubernetesVersion:       "1.35.2",
+		KubesprayCommit:         strings.Repeat("a", 40),
+		InventoryScope:          KubespraySelectedRuntimeInventory,
+		SelectionInputSHA256:    strings.Repeat("d", 64),
+		SelectedInventorySHA256: strings.Repeat("b", 64),
 		Files: []KubesprayFile{{
-			Variable:  "kubeadm_download_url",
-			Source:    "https://dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
-			LocalPath: "kubeadm",
+			ID:     "kubeadm",
+			Source: "https://dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
+			RepositoryPath: "dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
 			CacheFile: ".atum/cache/kubespray-offline/sha256/" +
 				strings.Repeat("c", 64),
 			SHA256: strings.Repeat("c", 64),
@@ -32,12 +34,12 @@ func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 		Images: []string{"kubespray-image"},
 	}
 	desired := Document{Delivery: Delivery{
-		Kubespray: []KubesprayArtifactInventory{v5Inventory},
+		Kubespray: []KubesprayArtifactInventory{inventory},
 		Images:    images,
 	}}
 	lock := Lock{
 		Resolved: Resolved{
-			Kubespray: []KubesprayArtifactInventory{v5Inventory},
+			Kubespray: []KubesprayArtifactInventory{inventory},
 		},
 		Delivery: ImageLock{Images: []LockedImage{
 			{ID: "kubespray-image"},
@@ -73,7 +75,7 @@ func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 	var strictProblems []string
 	validateKubesprayImageProjection(
 		&strictProblems,
-		[]KubesprayArtifactInventory{v5Inventory},
+		[]KubesprayArtifactInventory{inventory},
 		nil,
 		"harbor.internal/atum/",
 		false,

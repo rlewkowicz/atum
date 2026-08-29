@@ -79,6 +79,18 @@ func (tree *candidateTree) YAML(relative string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeManagedYAML(relative, data)
+}
+
+func (tree *candidateTree) CandidateYAML(relative string) (map[string]any, error) {
+	data, err := tree.CandidateData(relative)
+	if err != nil {
+		return nil, err
+	}
+	return decodeManagedYAML(relative, data)
+}
+
+func decodeManagedYAML(relative string, data []byte) (map[string]any, error) {
 	var value map[string]any
 	if err := yaml.Unmarshal(data, &value); err != nil {
 		return nil, fmt.Errorf("decode managed YAML %s: %w", relative, err)
@@ -94,14 +106,7 @@ func readManagedYAML(root string, files map[string][]byte, relative string) (map
 	if err != nil {
 		return nil, fmt.Errorf("read managed YAML %s: %w", relative, err)
 	}
-	var value map[string]any
-	if err := yaml.Unmarshal(data, &value); err != nil {
-		return nil, fmt.Errorf("decode managed YAML %s: %w", clean, err)
-	}
-	if value == nil {
-		value = make(map[string]any)
-	}
-	return value, nil
+	return decodeManagedYAML(clean, data)
 }
 
 func (tree *candidateTree) Set(relative string, data []byte) error {
@@ -345,6 +350,10 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 		"platform/build/.dockerignore",
 		"platform/build/docker-bake.hcl",
 	}
+	paths = append(
+		paths,
+		config.KubesprayRuntimeGroupVarPaths(desired)...,
+	)
 	for _, profile := range desired.Platform.Values.SortedProfileNames() {
 		valuesPath := desired.Platform.Values.Profiles[profile]
 		profileRoot := filepath.Dir(filepath.Dir(valuesPath))

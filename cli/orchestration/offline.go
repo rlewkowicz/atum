@@ -177,7 +177,7 @@ func (service Service) kubesprayOfflineInputs(
 	routes := make(map[string]config.KubesprayFile, len(inventory.Files))
 	variables := make(map[string]any, len(inventory.Files))
 	for _, file := range inventory.Files {
-		route := "/" + strings.TrimPrefix(file.LocalPath, "/")
+		route := "/" + strings.TrimPrefix(file.RepositoryPath, "/")
 		if _, duplicate := routes[route]; duplicate {
 			return nil, nil, fmt.Errorf(
 				"Kubespray offline route %s is duplicated",
@@ -218,7 +218,7 @@ func (service Service) kubesprayOfflineInputs(
 		strconv.Itoa(port),
 	)
 	for route, file := range routes {
-		variables[file.Variable] = base + route
+		variables[file.ID+"_download_url"] = base + route
 	}
 	// Let Kubespray fetch pinned files directly on each node. This is its normal
 	// download path and avoids the controller-side rsync cache, whose SSH
@@ -375,7 +375,7 @@ func validateKubesprayOfflineFiles(
 			if err != nil {
 				return fmt.Errorf(
 					"open Kubespray offline file %s: %w",
-					file.Variable,
+					file.ID,
 					err,
 				)
 			}
@@ -395,7 +395,7 @@ func validateKubesprayOfflineFiles(
 				hex.EncodeToString(hash.Sum(nil)) != file.SHA256 {
 				return fmt.Errorf(
 					"Kubespray offline file %s is stale or corrupt",
-					file.Variable,
+					file.ID,
 				)
 			}
 			return nil

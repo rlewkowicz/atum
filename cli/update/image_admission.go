@@ -346,7 +346,7 @@ func admitFinalRenderedImages(
 				image.Delivery.Default.Source == "" ||
 				!strings.HasPrefix(image.Delivery.Default.Digest, "sha256:") {
 				return fmt.Errorf(
-					"Kubespray image %s has no exact official offline mirror",
+					"Kubespray image %s has no exact selected-runtime mirror",
 					image.ID,
 				)
 			}

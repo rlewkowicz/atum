@@ -58,27 +58,18 @@ func TestRetainedCompatibilityBuildRowsExposeEveryRemovalCondition(t *testing.T)
 	}
 }
 
-func TestKubesprayInventoryRowsExposeExactFullUpstreamProvenance(t *testing.T) {
+func TestKubesprayInventoryRowsExposeExactSelectedRuntimeProvenance(t *testing.T) {
 	t.Parallel()
-	scriptSHA := strings.Repeat("c", 64)
+	selectionSHA := strings.Repeat("c", 64)
+	inventorySHA := strings.Repeat("e", 64)
 	inventory := config.KubesprayArtifactInventory{
-		KubernetesVersion:    "1.35.2",
-		KubesprayCommit:      strings.Repeat("d", 40),
-		OfficialScript:       config.KubesprayOfficialScript,
-		OfficialScriptSHA256: scriptSHA,
-		InventoryScope:       config.KubesprayFullOfflineInventory,
-		OfficialImages: []string{
-			"quay.io/calico/node:v3.31.4",
-			"docker.io/flannel/flannel:v0.27.4",
-			"quay.io/metallb/controller:v0.15.3",
-			"quay.io/cilium/hubble-relay:v1.19.1",
-			"quay.io/cilium/operator:v1.19.1",
-		},
-		RuntimeImages: []string{
-			"quay.io/cilium/cilium:v1.19.1",
-			"quay.io/cilium/cilium-envoy:v1.34.10",
-			"quay.io/cilium/operator-generic:v1.19.1",
-		},
+		KubernetesVersion:       "1.35.4",
+		KubesprayCommit:         strings.Repeat("d", 40),
+		InventoryScope:          config.KubespraySelectedRuntimeInventory,
+		SelectionInputSHA256:    selectionSHA,
+		SelectedInventorySHA256: inventorySHA,
+		Files:                   make([]config.KubesprayFile, 11),
+		Images:                  make([]string, 10),
 	}
 	rows, err := renderKubesprayInventoryRows(
 		[]config.KubesprayArtifactInventory{inventory},
@@ -90,11 +81,11 @@ func TestKubesprayInventoryRowsExposeExactFullUpstreamProvenance(t *testing.T) {
 	for _, evidence := range []string{
 		inventory.KubernetesVersion,
 		inventory.KubesprayCommit,
-		config.KubesprayOfficialScript,
-		scriptSHA,
-		"5",
-		"3",
-		config.KubesprayFullOfflineInventory,
+		selectionSHA,
+		inventorySHA,
+		"11",
+		"10",
+		config.KubespraySelectedRuntimeInventory,
 	} {
 		if !strings.Contains(text, evidence) {
 			t.Errorf("Kubespray report row lacks %q:\n%s", evidence, text)

@@ -106,16 +106,13 @@ direct mirror or as material for one evidence-backed compatibility build.
 		desired.Platform.Flux.URL+" @ "+desired.Platform.Flux.Commit)
 
 	document.WriteString(`
-## Kubespray complete upstream offline inventories
+## Kubespray selected-runtime inventories
 
-Each row describes the complete image list emitted by the selected release's
-official offline script. It is retained without an Atum CNI, addon, or runtime
-allowlist; alternative Calico, Flannel, MetalLB, Hubble, and other upstream
-entries remain part of the air-gap inventory. Chart runtime coordinates are
-recorded separately so an upstream offline tag can never be paired with a
-different chart-selected digest.
+Each row describes the exact files and images selected from the pinned
+Kubespray downloads map for the canonical local all-in-one topology. Disabled
+CNIs, runtimes, cloud providers, and addons are not delivery obligations.
 
-| Kubernetes | Kubespray commit | Official script | Script SHA-256 | Official image count | Chart runtime image count | Inventory scope |
+| Kubernetes | Kubespray commit | Selection input SHA-256 | Selected inventory SHA-256 | File count | Image count | Inventory scope |
 | --- | --- | --- | --- | --- | --- | --- |
 `)
 	kubesprayRows, err := renderKubesprayInventoryRows(
@@ -307,13 +304,13 @@ func renderKubesprayInventoryRows(
 ) ([]byte, error) {
 	var rows strings.Builder
 	for _, inventory := range inventories {
-		if inventory.InventoryScope != config.KubesprayFullOfflineInventory ||
-			inventory.OfficialScript != config.KubesprayOfficialScript ||
-			!validHexSHA256(inventory.OfficialScriptSHA256) ||
-			len(inventory.OfficialImages) == 0 ||
-			len(inventory.RuntimeImages) == 0 {
+		if inventory.InventoryScope != config.KubespraySelectedRuntimeInventory ||
+			!validHexSHA256(inventory.SelectionInputSHA256) ||
+			!validHexSHA256(inventory.SelectedInventorySHA256) ||
+			len(inventory.Files) == 0 ||
+			len(inventory.Images) == 0 {
 			return nil, fmt.Errorf(
-				"Kubespray %s package snapshot lacks complete official offline provenance",
+				"Kubespray %s package snapshot lacks selected-runtime provenance",
 				inventory.KubernetesVersion,
 			)
 		}
@@ -321,10 +318,10 @@ func renderKubesprayInventoryRows(
 			&rows,
 			inventory.KubernetesVersion,
 			inventory.KubesprayCommit,
-			inventory.OfficialScript,
-			inventory.OfficialScriptSHA256,
-			fmt.Sprintf("%d", len(inventory.OfficialImages)),
-			fmt.Sprintf("%d", len(inventory.RuntimeImages)),
+			inventory.SelectionInputSHA256,
+			inventory.SelectedInventorySHA256,
+			fmt.Sprintf("%d", len(inventory.Files)),
+			fmt.Sprintf("%d", len(inventory.Images)),
 			inventory.InventoryScope,
 		)
 	}
