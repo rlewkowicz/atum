@@ -72,7 +72,7 @@ func (a *app) terraformEnvironment(
 }
 
 func terraformTargetEnvironment(target config.InfrastructureTarget, additional []string) ([]string, error) {
-	const localVariableCount = 6
+	const localVariableCount = 7
 	capacity := len(additional)
 	if target.LocalAccess != nil {
 		capacity += localVariableCount
@@ -104,6 +104,7 @@ func terraformTargetEnvironment(target config.InfrastructureTarget, additional [
 			"TF_VAR_passthrough_ingress_vip="+access.PassthroughIngressVIP,
 			"TF_VAR_load_balancer_range="+string(loadBalancerRange),
 			"TF_VAR_passthrough_hosts="+string(encodedHosts),
+			"TF_VAR_ssh_private_key_path="+target.SSH.PrivateKeyPath,
 		)
 	}
 	environment = append(environment, additional...)
@@ -120,6 +121,43 @@ func (a *app) runTerraformCommand(ctx context.Context, runtime terraformRuntime,
 		Dir:  a.root,
 		Env:  runtime.environment,
 	})
+}
+
+func (a *app) terraformBastionResourceIdentity(ctx context.Context) (string, error) {
+	if a.outputRunner == nil {
+		return "", errors.New("Terraform bastion identity requires an output runner")
+	}
+	runtime, err := a.terraformRuntime(nil)
+	if err != nil {
+		return "", err
+	}
+	defer clearEnvironment(runtime.environment)
+	output, err := a.outputRunner.Output(ctx, process.Command{
+		Name: runtime.binary,
+		Args: []string{
+			"-chdir=" + runtime.target.Directory,
+			"output",
+			"-raw",
+			"bastion_resource_identity",
+		},
+		Dir: a.root,
+		Env: runtime.environment,
+	})
+	if err != nil {
+		return "", fmt.Errorf("observe Terraform bastion resource identity: %w", err)
+	}
+	return parseTerraformBastionIdentity(output)
+}
+
+func parseTerraformBastionIdentity(output []byte) (string, error) {
+	if len(output) > 1024 {
+		return "", errors.New("Terraform bastion resource identity exceeds 1 KiB")
+	}
+	identity := strings.TrimSpace(string(output))
+	if identity == "" || strings.ContainsAny(identity, "\r\n\x00") {
+		return "", errors.New("Terraform bastion resource identity is invalid")
+	}
+	return identity, nil
 }
 
 func (a *app) runTerraformWithEnvironment(ctx context.Context, environment []string, args ...string) error {
@@ -241,11 +279,12 @@ func (a *app) seedTerraformEnvironment(ctx context.Context) (terraformSeed, erro
 		return terraformSeed{}, err
 	}
 	seed := a.project.Desired.Delivery.Seed
-	environment := make([]string, 0, 10)
+	environment := make([]string, 0, 11)
 	environment = append(environment,
 		"TF_VAR_seed_archive_path="+filepath.Join(a.project.Root, publication.Seed.File),
 		"TF_VAR_seed_archive_sha256="+publication.Seed.SHA256,
 		"TF_VAR_seed_forgejo_image="+seed.Forgejo.Image.Source,
+		"TF_VAR_seed_kubespray_files_image="+seed.KubesprayFiles.Image.Source,
 		"TF_VAR_seed_forgejo_url="+seed.Forgejo.URL,
 		"TF_VAR_seed_forgejo_username="+credentials.Forgejo.Username,
 		"TF_VAR_seed_forgejo_admin_password="+string(credentials.Forgejo.AdminPassword.Bytes()),

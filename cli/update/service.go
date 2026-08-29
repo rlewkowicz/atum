@@ -98,6 +98,14 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if options.Parallelism != 0 {
 		desired.Updates.Parallelism = options.Parallelism
 	}
+	projectSSHIdentity(&desired)
+	if err := projectSeedKubesprayFiles(
+		ctx,
+		&desired,
+		resolveImageDigest,
+	); err != nil {
+		return Result{}, err
+	}
 	previousImages := make(map[string]config.Image, len(desired.Delivery.Images))
 	for index := range desired.Delivery.Images {
 		image := desired.Delivery.Images[index]

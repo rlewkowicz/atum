@@ -120,6 +120,15 @@ printf 'seed plane: preparing Harbor %s without optional services\n' "${harbor_v
 
 "${incoming}/start-seed-plane.sh" "${runtime_root}"
 
+install -d -m 0755 /etc/atum/kubespray-files
+install -m 0600 "${incoming}/kubespray-files-compose.yaml" /etc/atum/kubespray-files/compose.yaml
+install -m 0644 "${incoming}/kubespray-files-nginx.conf" /etc/atum/kubespray-files/nginx.conf
+install -m 0700 "${incoming}/kubespray-files-content.sh" /usr/local/sbin/atum-kubespray-files
+install -m 0644 "${incoming}/atum-kubespray-files.service" /etc/systemd/system/atum-kubespray-files.service
+systemctl daemon-reload
+systemctl enable atum-kubespray-files.service
+systemctl restart atum-kubespray-files.service
+
 forgejo_compose=(
   docker compose
   --project-name atum-forgejo
@@ -216,4 +225,14 @@ find "${seed_root}/releases" -mindepth 1 -maxdepth 1 -type d ! -name "${expected
 find "${seed_root}/runtime" -mindepth 1 -maxdepth 1 -type d ! -name "${expected_sha}-${configuration_sha}" -print0 |
   while IFS= read -r -d '' old_runtime; do rm -rf -- "${old_runtime}"; done
 
-printf 'seed plane: forgejo=ready harbor=ready payload=%s\n' "${expected_sha}"
+deadline=$((SECONDS + 300))
+while [ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' atum-kubespray-files 2>/dev/null || true)" != healthy ]; do
+  if [ "${SECONDS}" -ge "${deadline}" ]; then
+    printf 'seed plane: Kubespray files repository readiness timeout\n' >&2
+    docker logs atum-kubespray-files >&2 || true
+    exit 1
+  fi
+  sleep 2
+done
+
+printf 'seed plane: forgejo=ready harbor=ready kubespray-files=ready payload=%s\n' "${expected_sha}"

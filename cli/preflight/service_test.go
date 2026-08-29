@@ -29,7 +29,12 @@ func TestRequirementsForScope(t *testing.T) {
 		}},
 		{"terraform passthrough", TerraformDirect, requirementSet{terraform: true}},
 		{"committed secrets", CommittedSecrets, requirementSet{sops: true}},
-		{"platform", Platform, requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}},
+		{"artifact publication", ArtifactPublication, requirementSet{
+			terraform: true, docker: true, python: true, ssh: true, sops: true,
+		}},
+		{"platform", Platform, requirementSet{
+			terraform: true, docker: true, python: true, ssh: true, flux: true, sops: true,
+		}},
 		{"full", Full, requirementSet{
 			terraform: true, docker: true, python: true, ssh: true, flux: true, sops: true, localTarget: true,
 			firewall: true,

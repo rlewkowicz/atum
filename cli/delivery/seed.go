@@ -181,9 +181,14 @@ func (service *Service) prepareSeedArchive(
 	}
 	defer func() { _ = fssecure.RemoveTree(project.Root, seedRelative) }()
 
-	images := make([]config.SeedImage, 0, 1+len(project.Desired.Delivery.Seed.Harbor.Images))
+	images := make(
+		[]config.SeedImage,
+		0,
+		2+len(project.Desired.Delivery.Seed.Harbor.Images),
+	)
 	images = append(images, project.Desired.Delivery.Seed.Forgejo.Image)
 	images = append(images, project.Desired.Delivery.Seed.Harbor.Images...)
+	images = append(images, project.Desired.Delivery.Seed.KubesprayFiles.Image)
 	sort.Slice(images, func(i, j int) bool { return images[i].ID < images[j].ID })
 
 	var dockerArchive, installer archiveIdentity
@@ -400,9 +405,10 @@ func validateSeedArchive(project *config.Project, seed seedArchive) error {
 		seed.Payload.HarborInstaller.Size != desired.Harbor.Installer.Size {
 		return fmt.Errorf("minimal seed payload does not match desired state")
 	}
-	wanted := make([]config.SeedImage, 0, 1+len(desired.Harbor.Images))
+	wanted := make([]config.SeedImage, 0, 2+len(desired.Harbor.Images))
 	wanted = append(wanted, desired.Forgejo.Image)
 	wanted = append(wanted, desired.Harbor.Images...)
+	wanted = append(wanted, desired.KubesprayFiles.Image)
 	sort.Slice(wanted, func(i, j int) bool { return wanted[i].ID < wanted[j].ID })
 	if len(seed.Payload.Images) != len(wanted) {
 		return fmt.Errorf("minimal seed image inventory is incomplete")

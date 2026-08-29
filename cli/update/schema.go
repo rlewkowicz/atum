@@ -104,7 +104,121 @@ func projectPhase5EvidenceSchema(tree *candidateTree) error {
 	if err := tree.Set(desiredSchemaFile, data); err != nil {
 		return err
 	}
+	return projectSeedFilesSchema(tree)
+}
+
+func projectSeedFilesSchema(tree *candidateTree) error {
+	data, err := tree.CandidateData(desiredSchemaFile)
+	if err != nil {
+		return err
+	}
+	projected, err := projectSeedFilesSchemaData(data)
+	if err != nil {
+		return err
+	}
+	if err := tree.Set(desiredSchemaFile, projected); err != nil {
+		return err
+	}
+	return projectSSHIdentitySchema(tree)
+}
+
+func projectSeedFilesSchemaData(data []byte) ([]byte, error) {
+	const oldRequired = `      "required": ["forgejo", "harbor"],`
+	const newRequired = `      "required": ["forgejo", "harbor", "kubesprayFiles"],`
+	const harborEnd = `        }
+      }
+    },
+    "seedAsset": {`
+	const projectedEnd = `        },
+        "kubesprayFiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "image"],
+          "properties": {
+            "url": {"const": "http://10.77.0.9:8080"},
+            "image": {"$ref": "#/$defs/seedImage"}
+          }
+        }
+      }
+    },
+    "seedAsset": {`
+	if bytes.Contains(data, []byte(newRequired)) {
+		if bytes.Count(data, []byte(newRequired)) != 1 ||
+			bytes.Count(data, []byte(projectedEnd)) != 1 {
+			return nil, errors.New(
+				"project desired schema: seed files shape is inconsistent",
+			)
+		}
+		return data, nil
+	}
+	if bytes.Count(data, []byte(oldRequired)) != 1 ||
+		bytes.Count(data, []byte(harborEnd)) != 1 {
+		return nil, errors.New(
+			"project desired schema: seed files shape is unsupported",
+		)
+	}
+	data = bytes.Replace(data, []byte(oldRequired), []byte(newRequired), 1)
+	return bytes.Replace(data, []byte(harborEnd), []byte(projectedEnd), 1), nil
+}
+
+func projectSSHIdentitySchema(tree *candidateTree) error {
+	data, err := tree.CandidateData(desiredSchemaFile)
+	if err != nil {
+		return err
+	}
+	projected, err := projectSSHIdentitySchemaData(data)
+	if err != nil {
+		return err
+	}
+	if err := tree.Set(desiredSchemaFile, projected); err != nil {
+		return err
+	}
 	return projectGenericChartSchema(tree)
+}
+
+func projectSSHIdentitySchemaData(data []byte) ([]byte, error) {
+	const oldRequired = `      "required": ["driver", "directory", "autoApprove", "platformProfile"],`
+	const newRequired = `      "required": ["driver", "directory", "autoApprove", "platformProfile", "ssh"],`
+	const oldProperty = `        "platformProfile": {"const": "local"},
+        "localAccess": {"$ref": "#/$defs/localAccess"}`
+	const newProperty = `        "platformProfile": {"const": "local"},
+        "ssh": {"$ref": "#/$defs/sshKeyPair"},
+        "localAccess": {"$ref": "#/$defs/localAccess"}`
+	const definitionAnchor = `    "localAccess": {`
+	const definition = `    "sshKeyPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["privateKeyPath"],
+      "properties": {
+        "privateKeyPath": {"$ref": "#/$defs/nonEmpty"}
+      }
+    },
+    "localAccess": {`
+	if bytes.Contains(data, []byte(newRequired)) {
+		if bytes.Count(data, []byte(newRequired)) != 1 ||
+			bytes.Count(data, []byte(newProperty)) != 1 ||
+			bytes.Count(data, []byte(definition)) != 1 {
+			return nil, errors.New(
+				"project desired schema: SSH key-pair shape is inconsistent",
+			)
+		}
+		return data, nil
+	}
+	if bytes.Count(data, []byte(oldRequired)) != 1 ||
+		bytes.Count(data, []byte(oldProperty)) != 1 ||
+		bytes.Count(data, []byte(definitionAnchor)) != 1 {
+		return nil, errors.New(
+			"project desired schema: SSH key-pair shape is unsupported",
+		)
+	}
+	data = bytes.Replace(data, []byte(oldRequired), []byte(newRequired), 1)
+	data = bytes.Replace(data, []byte(oldProperty), []byte(newProperty), 1)
+	return bytes.Replace(
+		data,
+		[]byte(definitionAnchor),
+		[]byte(definition),
+		1,
+	), nil
 }
 
 func projectGenericChartSchema(tree *candidateTree) error {

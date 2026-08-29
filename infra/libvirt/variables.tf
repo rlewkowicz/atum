@@ -86,16 +86,15 @@ variable "base_cloud_image_url" {
   default     = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
 }
 
-variable "ssh_public_key_path" {
-  description = "SSH public key authorized for root on local VMs."
-  type        = string
-  default     = "~/.ssh/id_ed25519.pub"
-}
-
 variable "ssh_private_key_path" {
-  description = "SSH private key used by Terraform to reconcile bastion seed services."
+  description = "Canonical SSH private key; the matching public half is the same path with .pub appended."
   type        = string
-  default     = "~/.ssh/id_ed25519"
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.ssh_private_key_path) != ""
+    error_message = "ssh_private_key_path must identify the configured private half of the managed SSH key pair."
+  }
 }
 
 variable "seed_archive_path" {
@@ -112,6 +111,12 @@ variable "seed_archive_sha256" {
 
 variable "seed_forgejo_image" {
   description = "Exact tag loaded from the seed payload for the bastion Forgejo container."
+  type        = string
+  default     = ""
+}
+
+variable "seed_kubespray_files_image" {
+  description = "Exact official Nginx Alpine tag loaded from the seed payload for the retained files repository."
   type        = string
   default     = ""
 }

@@ -20,9 +20,16 @@ locals {
     forgejo_image          = jsonencode(var.seed_forgejo_image)
     forgejo_url            = jsonencode(var.seed_forgejo_url)
   })
-  seed_reconcile_script = file("${path.module}/scripts/reconcile-seed-plane.sh")
-  seed_start_script     = file("${path.module}/scripts/start-seed-plane.sh")
-  seed_systemd_unit     = file("${path.module}/systemd/atum-seed-plane.service")
+  seed_reconcile_script   = file("${path.module}/scripts/reconcile-seed-plane.sh")
+  seed_start_script       = file("${path.module}/scripts/start-seed-plane.sh")
+  seed_systemd_unit       = file("${path.module}/systemd/atum-seed-plane.service")
+  kubespray_files_content = file("${path.module}/scripts/kubespray-files-content.sh")
+  kubespray_files_nginx   = file("${path.module}/templates/kubespray-files-nginx.conf")
+  kubespray_files_systemd = file("${path.module}/systemd/atum-kubespray-files.service")
+  kubespray_files_compose = templatefile("${path.module}/templates/kubespray-files-compose.yaml.tftpl", {
+    bastion_ip            = var.bastion_ip
+    kubespray_files_image = jsonencode(var.seed_kubespray_files_image)
+  })
 }
 
 resource "terraform_data" "seed_plane" {
@@ -35,6 +42,7 @@ resource "terraform_data" "seed_plane" {
     harbor_config  = sha256(local.seed_harbor_configuration)
     reconcile      = sha256(local.seed_reconcile_script)
     startup        = sha256("${local.seed_start_script}\n${local.seed_systemd_unit}")
+    files_service  = sha256("${local.kubespray_files_compose}\n${local.kubespray_files_nginx}\n${local.kubespray_files_systemd}\n${local.kubespray_files_content}")
   }
 
   lifecycle {
@@ -50,6 +58,7 @@ resource "terraform_data" "seed_plane" {
       condition = (
         startswith(var.seed_archive_path, "/") &&
         var.seed_forgejo_image != "" &&
+        var.seed_kubespray_files_image != "" &&
         var.seed_forgejo_username != "" &&
         length(var.seed_forgejo_admin_password) >= 24 &&
         length(var.seed_harbor_admin_password) >= 24 &&
@@ -111,10 +120,30 @@ resource "terraform_data" "seed_plane" {
     destination = "/data/atum-seed/incoming/atum-seed-plane.service"
   }
 
+  provisioner "file" {
+    content     = local.kubespray_files_compose
+    destination = "/data/atum-seed/incoming/kubespray-files-compose.yaml"
+  }
+
+  provisioner "file" {
+    content     = local.kubespray_files_nginx
+    destination = "/data/atum-seed/incoming/kubespray-files-nginx.conf"
+  }
+
+  provisioner "file" {
+    content     = local.kubespray_files_systemd
+    destination = "/data/atum-seed/incoming/atum-kubespray-files.service"
+  }
+
+  provisioner "file" {
+    content     = local.kubespray_files_content
+    destination = "/data/atum-seed/incoming/kubespray-files-content.sh"
+  }
+
   provisioner "remote-exec" {
     inline = [
-      "chmod 0600 /data/atum-seed/incoming/harbor.yml /data/atum-seed/incoming/forgejo-compose.yaml /data/atum-seed/incoming/atum-seed-plane.service",
-      "chmod 0700 /data/atum-seed/incoming/reconcile-seed-plane.sh /data/atum-seed/incoming/start-seed-plane.sh",
+      "chmod 0600 /data/atum-seed/incoming/harbor.yml /data/atum-seed/incoming/forgejo-compose.yaml /data/atum-seed/incoming/atum-seed-plane.service /data/atum-seed/incoming/kubespray-files-compose.yaml /data/atum-seed/incoming/kubespray-files-nginx.conf /data/atum-seed/incoming/atum-kubespray-files.service",
+      "chmod 0700 /data/atum-seed/incoming/reconcile-seed-plane.sh /data/atum-seed/incoming/start-seed-plane.sh /data/atum-seed/incoming/kubespray-files-content.sh",
       "/data/atum-seed/incoming/reconcile-seed-plane.sh '${var.seed_archive_sha256}' '${var.seed_harbor_version}'",
     ]
   }

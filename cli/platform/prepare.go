@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"atum/cli/delivery"
@@ -111,6 +112,7 @@ func (service Service) Seed(
 	}
 	if publication == nil ||
 		publication.SourceSHA256 == "" ||
+		publication.KubesprayFiles.Identity.Count == 0 ||
 		len(publication.Images) != len(service.Project.Desired.Delivery.Images) ||
 		len(publication.Charts) != len(service.Project.Lock.Resolved.Artifacts) {
 		return nil, errors.New("canonical publication inputs are required")
@@ -152,6 +154,75 @@ func (service Service) Seed(
 		return nil, err
 	}
 	progress.Done(ctx, progress.Platform, "forgejo", "Forgejo sources", "immutable sources ready for planner handoff")
+	progress.Start(
+		ctx,
+		progress.Platform,
+		"kubespray-files-publication",
+		"Kubespray files",
+		"inspecting retained bastion content",
+	)
+	var filesCurrent, filesBytes atomic.Int64
+	if service.BastionIdentity == nil {
+		forgejo.clear()
+		return nil, errors.New("Terraform bastion identity observer is required")
+	}
+	bastionIdentity, err := service.BastionIdentity(ctx)
+	if err != nil {
+		forgejo.clear()
+		return nil, err
+	}
+	if err := delivery.PublishFileManifest(
+		ctx,
+		service.Runner,
+		service.SSHBin,
+		service.Project.Desired.Infrastructure.Targets[
+			service.Project.Desired.Infrastructure.Active
+		].SSH.PrivateKeyPath,
+		service.Project,
+		publication.KubesprayFiles,
+		bastionIdentity,
+		options.Parallelism,
+		func(id string, size int64, reused bool) {
+			current := int(filesCurrent.Add(1))
+			transferred := filesBytes.Add(size)
+			detail := "published " + id
+			if reused {
+				detail = "reused " + id
+			}
+			progress.UpdateBytes(
+				ctx,
+				progress.Platform,
+				"kubespray-files-publication",
+				"Kubespray files",
+				detail,
+				current,
+				publication.KubesprayFiles.Identity.Count,
+				transferred,
+				publication.KubesprayFiles.Identity.Bytes,
+			)
+		},
+	); err != nil {
+		progress.Fail(
+			ctx,
+			progress.Platform,
+			"kubespray-files-publication",
+			"Kubespray files",
+			err,
+		)
+		forgejo.clear()
+		return nil, err
+	}
+	progress.Done(
+		ctx,
+		progress.Platform,
+		"kubespray-files-publication",
+		"Kubespray files",
+		fmt.Sprintf(
+			"%d immutable blobs active; %d bytes uploaded",
+			publication.KubesprayFiles.Identity.Count,
+			filesBytes.Load(),
+		),
+	)
 	if err := delivery.SaveReceipt(service.Project, publication); err != nil {
 		forgejo.clear()
 		return nil, fmt.Errorf("persist immutable publication receipt: %w", err)

@@ -258,7 +258,7 @@ locals {
         },
       ]
       runcmd = [
-        "install -d -m 0755 /data/docker /data/harbor /data/forgejo /opt/atum-seed",
+        "install -d -m 0755 /data/docker /data/harbor /data/forgejo /data/kubespray-files /opt/atum-seed",
         "chown -R 1000:1000 /data/forgejo",
         "systemctl enable --now qemu-guest-agent",
         "systemctl enable docker",

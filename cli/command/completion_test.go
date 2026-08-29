@@ -118,6 +118,7 @@ func exactCompletionStatus() platform.Status {
 		Delivery: platform.DeliveryComplianceStatus{
 			PublicationExact: true, ForgejoExact: true,
 			HarborImagesExact: true, HarborChartsExact: true,
+			KubesprayFilesExact: true,
 		},
 		Local: platform.LocalIntegrationStatus{
 			Required: true, LoadBalancerReady: true,

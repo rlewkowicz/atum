@@ -432,9 +432,14 @@ func requirementsFor(scope Scope) (requirementSet, error) {
 	case CommittedSecrets:
 		return requirementSet{sops: true}, nil
 	case ArtifactPublication:
-		return requirementSet{docker: true, python: true, ssh: true, sops: true}, nil
+		return requirementSet{
+			terraform: true, docker: true, python: true, ssh: true, sops: true,
+		}, nil
 	case Platform:
-		return requirementSet{docker: true, python: true, ssh: true, flux: true, sops: true}, nil
+		return requirementSet{
+			terraform: true, docker: true, python: true, ssh: true, flux: true,
+			sops: true,
+		}, nil
 	case Full:
 		return requirementSet{
 			terraform: true, docker: true, python: true, ssh: true, flux: true,

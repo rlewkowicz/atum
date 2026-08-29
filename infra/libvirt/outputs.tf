@@ -58,6 +58,11 @@ output "bastion_internal_ip" {
   value       = var.bastion_ip
 }
 
+output "bastion_resource_identity" {
+  description = "Read-only Terraform identity of the current bastion resource instance."
+  value       = libvirt_domain.bastion.id
+}
+
 output "seed_forgejo_url" {
   description = "Private HTTP origin for the Terraform-owned Forgejo seed service."
   value       = var.seed_forgejo_url
@@ -66,6 +71,11 @@ output "seed_forgejo_url" {
 output "seed_harbor_url" {
   description = "Private HTTP origin for the Terraform-owned Harbor seed registry."
   value       = var.seed_harbor_url
+}
+
+output "seed_kubespray_files_url" {
+  description = "Private HTTP origin for the Terraform-owned retained Kubespray files repository."
+  value       = "http://${var.bastion_ip}:8080"
 }
 
 output "seed_plane_configured" {

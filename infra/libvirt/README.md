@@ -7,7 +7,7 @@ Expected host prerequisites:
 - Terraform.
 - Libvirt with QEMU/KVM and a writable system storage pool.
 - The `dmacvicar/libvirt` Terraform provider.
-- An SSH public key at `~/.ssh/id_ed25519.pub`, or `ssh_public_key_path` set to another public key.
+- An SSH key pair at `~/.ssh/id_ed25519` and `~/.ssh/id_ed25519.pub`, or the active target's canonical private-key path set to another pair.
 - Python 3.11 or newer for `atum orchestration prepare`, which hydrates and prepares every exact Kubespray release in the committed ladder.
 - A host CPU with virtualization support exposed through `host-passthrough`.
 

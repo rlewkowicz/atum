@@ -35,7 +35,9 @@ type Service struct {
 	Out           io.Writer
 	Orchestration *orchestration.Service
 	FluxBin       string
-	SOPS          atumsecrets.SOPSAdapter
+	SSHBin        string
+	BastionIdentity func(context.Context) (string, error)
+	SOPS            atumsecrets.SOPSAdapter
 }
 
 type PrepareOptions struct {
@@ -83,16 +85,18 @@ func (status ReconciliationStatus) resourceSets() [][]ResourceStatus {
 }
 
 type DeliveryComplianceStatus struct {
-	PublicationExact  bool     `json:"publicationExact"`
-	ForgejoExact      bool     `json:"forgejoExact"`
-	HarborImagesExact bool     `json:"harborImagesExact"`
-	HarborChartsExact bool     `json:"harborChartsExact"`
-	Issues            []string `json:"issues,omitempty"`
+	PublicationExact    bool     `json:"publicationExact"`
+	ForgejoExact        bool     `json:"forgejoExact"`
+	HarborImagesExact   bool     `json:"harborImagesExact"`
+	HarborChartsExact   bool     `json:"harborChartsExact"`
+	KubesprayFilesExact bool     `json:"kubesprayFilesExact"`
+	Issues              []string `json:"issues,omitempty"`
 }
 
 func (status DeliveryComplianceStatus) Compliant() bool {
 	return status.PublicationExact && status.ForgejoExact &&
 		status.HarborImagesExact && status.HarborChartsExact &&
+		status.KubesprayFilesExact &&
 		len(status.Issues) == 0
 }
 

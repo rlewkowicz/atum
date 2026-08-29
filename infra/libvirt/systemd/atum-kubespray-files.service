@@ -1,0 +1,19 @@
+[Unit]
+Description=Atum retained Kubespray files repository
+Wants=network-online.target
+Requires=docker.service
+After=local-fs.target network-online.target docker.service
+ConditionPathExists=/etc/atum/kubespray-files/compose.yaml
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker compose --project-name atum-kubespray-files --file /etc/atum/kubespray-files/compose.yaml up --detach --remove-orphans --pull never
+ExecStop=/usr/bin/docker compose --project-name atum-kubespray-files --file /etc/atum/kubespray-files/compose.yaml stop
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=multi-user.target

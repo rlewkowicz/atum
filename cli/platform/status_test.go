@@ -68,6 +68,7 @@ func TestStatusDimensionsRemainIndependent(t *testing.T) {
 		ForgejoExact:      true,
 		HarborImagesExact: true,
 		HarborChartsExact: true,
+		KubesprayFilesExact: true,
 	}
 	if !delivery.Compliant() {
 		t.Fatal("exact Atum delivery receipts should be compliant")

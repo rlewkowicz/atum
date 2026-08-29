@@ -170,6 +170,8 @@ func (a *app) platformService() platform.Service {
 		DryRun:        a.dryRun,
 		Out:           a.out,
 		Orchestration: &orchestrationService,
-		SOPS:          a.sops,
+		SSHBin:          a.preflight.Binary(preflight.OpenSSH),
+		BastionIdentity: a.terraformBastionResourceIdentity,
+		SOPS:            a.sops,
 	}
 }

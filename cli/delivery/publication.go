@@ -28,7 +28,7 @@ import (
 
 const (
 	publicationReceiptPath   = ".atum/state/publication.lock.json"
-	publicationReceiptSchema = "atum.dev/publication/v1"
+	publicationReceiptSchema = "atum.dev/publication/v2"
 )
 
 type ArtifactIdentity struct {
@@ -54,26 +54,28 @@ type Image struct {
 }
 
 type Publication struct {
-	SourceRoot   string
-	SourceCommit string
-	SourceTag    string
-	SourceSHA256 string
-	Images       []Image
-	Charts       []Chart
-	Seed         ArtifactIdentity
-	Delivery     config.ImageLock
+	SourceRoot     string
+	SourceCommit   string
+	SourceTag      string
+	SourceSHA256   string
+	Images         []Image
+	Charts         []Chart
+	Seed           ArtifactIdentity
+	KubesprayFiles FileManifest
+	Delivery       config.ImageLock
 }
 
 type Receipt struct {
-	SchemaVersion  string           `json:"schemaVersion"`
-	DesiredSHA256  string           `json:"desiredSha256"`
-	RootLockSHA256 string           `json:"rootLockSha256"`
-	SourceSHA256   string           `json:"sourceSha256"`
-	SourceCommit   string           `json:"sourceCommit"`
-	SourceTag      string           `json:"sourceTag"`
-	Delivery       config.ImageLock `json:"delivery"`
-	Charts         []Chart          `json:"charts"`
-	Seed           ArtifactIdentity `json:"seed"`
+	SchemaVersion   string               `json:"schemaVersion"`
+	DesiredSHA256   string               `json:"desiredSha256"`
+	RootLockSHA256  string               `json:"rootLockSha256"`
+	SourceSHA256    string               `json:"sourceSha256"`
+	SourceCommit    string               `json:"sourceCommit"`
+	SourceTag       string               `json:"sourceTag"`
+	Delivery        config.ImageLock     `json:"delivery"`
+	Charts          []Chart              `json:"charts"`
+	Seed            ArtifactIdentity     `json:"seed"`
+	KubesprayFiles FileManifestIdentity `json:"kubesprayFiles"`
 }
 
 func (service *Service) Prepare(ctx context.Context, options PreparationOptions) (*config.Project, *Publication, error) {
@@ -119,15 +121,20 @@ func (service *Service) Prepare(ctx context.Context, options PreparationOptions)
 	if err != nil {
 		return nil, nil, err
 	}
+	files, err := MaterializeFileManifest(project)
+	if err != nil {
+		return nil, nil, err
+	}
 	return project, &Publication{
-		SourceRoot:   sourceRoot,
-		SourceCommit: sourceIdentity.Commit,
-		SourceTag:    "source-sha256-" + sourceIdentity.SHA256,
-		SourceSHA256: sourceIdentity.SHA256,
-		Images:       images,
-		Charts:       charts,
-		Seed:         seed,
-		Delivery:     local.lock,
+		SourceRoot:     sourceRoot,
+		SourceCommit:   sourceIdentity.Commit,
+		SourceTag:      "source-sha256-" + sourceIdentity.SHA256,
+		SourceSHA256:   sourceIdentity.SHA256,
+		Images:         images,
+		Charts:         charts,
+		Seed:           seed,
+		KubesprayFiles: files,
+		Delivery:       local.lock,
 	}, nil
 }
 
@@ -248,15 +255,16 @@ func SaveReceipt(project *config.Project, publication *Publication) error {
 		return errors.New("complete publication is required")
 	}
 	receipt := Receipt{
-		SchemaVersion:  publicationReceiptSchema,
-		DesiredSHA256:  project.DesiredSHA256,
-		RootLockSHA256: config.SHA256(project.LockData),
-		SourceSHA256:   publication.SourceSHA256,
-		SourceCommit:   publication.SourceCommit,
-		SourceTag:      publication.SourceTag,
-		Delivery:       publication.Delivery,
-		Charts:         append([]Chart(nil), publication.Charts...),
-		Seed:           publication.Seed,
+		SchemaVersion:   publicationReceiptSchema,
+		DesiredSHA256:   project.DesiredSHA256,
+		RootLockSHA256:  config.SHA256(project.LockData),
+		SourceSHA256:    publication.SourceSHA256,
+		SourceCommit:    publication.SourceCommit,
+		SourceTag:       publication.SourceTag,
+		Delivery:        publication.Delivery,
+		Charts:          append([]Chart(nil), publication.Charts...),
+		Seed:            publication.Seed,
+		KubesprayFiles:  publication.KubesprayFiles.Identity,
 	}
 	for index := range receipt.Charts {
 		if !validPublicationDigest(receipt.Charts[index].ManifestDigest) {
@@ -315,6 +323,10 @@ func LoadReceipt(project *config.Project) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
+	files, err := MaterializeFileManifest(project)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("materialize Kubespray files receipt identity: %w", err)
+	}
 	if receipt.SchemaVersion != publicationReceiptSchema ||
 		receipt.DesiredSHA256 != project.DesiredSHA256 ||
 		receipt.RootLockSHA256 != config.SHA256(project.LockData) ||
@@ -330,7 +342,8 @@ func LoadReceipt(project *config.Project) (Receipt, error) {
 			"atum-seed-"+receipt.Seed.SHA256+".tar",
 		)) ||
 		receipt.Seed.SHA256 == "" ||
-		receipt.Seed.Size <= 0 {
+		receipt.Seed.Size <= 0 ||
+		!validFileManifestReceipt(receipt.KubesprayFiles, files.Identity) {
 		return Receipt{}, errors.New("local publication receipt is absent or stale")
 	}
 	runtime := *project
@@ -380,6 +393,16 @@ func LoadReceipt(project *config.Project) (Receipt, error) {
 		return Receipt{}, errors.New("minimal seed from publication receipt is stale")
 	}
 	return receipt, nil
+}
+
+func validFileManifestReceipt(
+	actual FileManifestIdentity,
+	expected FileManifestIdentity,
+) bool {
+	return actual == expected &&
+		actual.SHA256 != "" &&
+		actual.Count > 0 &&
+		actual.Bytes > 0
 }
 
 func validPublicationDigest(value string) bool {

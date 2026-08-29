@@ -121,7 +121,21 @@ type InfrastructureTarget struct {
 	Directory       string       `json:"directory"`
 	AutoApprove     bool         `json:"autoApprove"`
 	PlatformProfile string       `json:"platformProfile"`
+	SSH             SSHKeyPair   `json:"ssh"`
 	LocalAccess     *LocalAccess `json:"localAccess,omitempty"`
+}
+
+const DefaultSSHPrivateKeyPath = "~/.ssh/id_ed25519"
+
+type SSHKeyPair struct {
+	PrivateKeyPath string `json:"privateKeyPath"`
+}
+
+func (pair SSHKeyPair) PublicKeyPath() string {
+	if pair.PrivateKeyPath == "" {
+		return ""
+	}
+	return pair.PrivateKeyPath + ".pub"
 }
 
 const MaxPassthroughHosts = 32
@@ -414,9 +428,21 @@ type KubesprayFile struct {
 }
 
 type SeedPlane struct {
-	Forgejo SeedForgejo `json:"forgejo"`
-	Harbor  SeedHarbor  `json:"harbor"`
+	Forgejo        SeedForgejo        `json:"forgejo"`
+	Harbor         SeedHarbor         `json:"harbor"`
+	KubesprayFiles SeedKubesprayFiles `json:"kubesprayFiles"`
 }
+
+type SeedKubesprayFiles struct {
+	URL   string    `json:"url"`
+	Image SeedImage `json:"image"`
+}
+
+const (
+	SeedKubesprayFilesURL         = "http://10.77.0.9:8080"
+	SeedKubesprayFilesImageID     = "kubespray-files-nginx"
+	SeedKubesprayFilesImageSource = "docker.io/library/nginx:1.28.2-alpine"
+)
 
 type SeedForgejo struct {
 	URL   string    `json:"url"`
@@ -1832,6 +1858,15 @@ func (p *Project) validate(
 		} else if target.LocalAccess != nil {
 			add("infrastructure target %s may define local access only for the local platform profile", name)
 		}
+		if !allowStale || target.SSH != (SSHKeyPair{}) {
+			privateKey := target.SSH.PrivateKeyPath
+			if privateKey == "" ||
+				strings.TrimSpace(privateKey) != privateKey ||
+				strings.ContainsAny(privateKey, "\r\n\x00") ||
+				target.SSH.PublicKeyPath() != privateKey+".pub" {
+				add("infrastructure target %s SSH key-pair declaration is invalid", name)
+			}
+		}
 	}
 	validateRelative(&problems, "orchestration directory", p.Desired.Orchestration.Directory)
 	validateRelative(&problems, "orchestration inventory", p.Desired.Orchestration.Inventory)
@@ -1892,7 +1927,14 @@ func (p *Project) validate(
 		p.Desired.Platform.Bootstrap.Registry.TLSVerify != p.Desired.Delivery.Registry.TLSVerify {
 		add("bootstrap registry must identify the internal charts project on the delivery Harbor endpoint")
 	}
-	validateSeedPlane(&problems, p.Desired.Platform.Sources, p.Desired.Delivery.Registry, p.Desired.Delivery.Policy, p.Desired.Delivery.Seed)
+	validateSeedPlane(
+		&problems,
+		p.Desired.Platform.Sources,
+		p.Desired.Delivery.Registry,
+		p.Desired.Delivery.Policy,
+		p.Desired.Delivery.Seed,
+		allowStale,
+	)
 	if p.Desired.Delivery.Policy.DefaultProfile != "platform" {
 		add("delivery default profile must be platform")
 	}
@@ -3238,6 +3280,7 @@ func validateSeedPlane(
 	registry Registry,
 	policy DeliveryPolicy,
 	seed SeedPlane,
+	allowStale bool,
 ) {
 	if seed.Forgejo.URL != sources.ExternalURL || seed.Forgejo.URL != sources.ClusterURL {
 		*problems = append(*problems, "seed Forgejo URL must be the exact external and cluster source origin")
@@ -3294,6 +3337,17 @@ func validateSeedPlane(
 		!strings.HasPrefix(seed.Forgejo.Image.Source, "code.forgejo.org/forgejo/forgejo:") ||
 		!strings.HasSuffix(seed.Forgejo.Image.Source, "-rootless") {
 		*problems = append(*problems, "seed Forgejo must use the official rootless Forgejo image")
+	}
+	if !allowStale || seed.KubesprayFiles != (SeedKubesprayFiles{}) {
+		validateImage("seed Kubespray files", seed.KubesprayFiles.Image, "")
+		if seed.KubesprayFiles.URL != SeedKubesprayFilesURL ||
+			seed.KubesprayFiles.Image.ID != SeedKubesprayFilesImageID ||
+			seed.KubesprayFiles.Image.Source != SeedKubesprayFilesImageSource {
+			*problems = append(
+				*problems,
+				"seed Kubespray files repository must use its fixed private URL and official Nginx Alpine image",
+			)
+		}
 	}
 	for _, image := range seed.Harbor.Images {
 		validateImage("seed Harbor", image, seed.Harbor.Version)
