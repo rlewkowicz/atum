@@ -200,6 +200,7 @@ func TestKubesprayFileContractRejectsUnsupportedAndMismatchedPaths(t *testing.T)
 		"https://dl.k8s.io/release/../release/kubeadm",
 		"https://dl.k8s.io/release//kubeadm",
 		"https://dl.k8s.io/release/kubeadm/",
+		"https://raw.githubusercontent.com/example/project/main/install.yaml",
 	} {
 		if _, err := KubesprayFileRepositoryPath(source); err == nil {
 			t.Fatalf("ambiguous source %q passed the file contract", source)

@@ -16,7 +16,7 @@ missing or incompatible tools with official installation links. The local
 profile also verifies the configured system-libvirt connection and `/dev/kvm`;
 a failed preflight stops before Terraform, host DNS, or CA trust changes.
 
-`atum infra libvirt permissions` manages the intentionally broad all-users Polkit rule when a dedicated development host permits that trust model. `atum infra libvirt forwarding` manages persistent, bridge-scoped firewalld exceptions after Terraform creates the network. Each namespace requires an explicit `install`, `status`, or `uninstall`; mutations require root. Terraform itself never elevates privileges or mutates the host firewall.
+`atum infra libvirt permissions` manages the intentionally broad all-users Polkit rule when a dedicated development host permits that trust model. `atum infra libvirt forwarding` manages optional persistent, bridge-scoped firewalld exceptions after Terraform creates the network. Each namespace requires an explicit `install`, `status`, or `uninstall`; mutations require root. Normal apply and Kubespray convergence do not require firewalld: nodes reach the private bastion directly on the libvirt network. Terraform itself never elevates privileges or mutates the host firewall.
 
 Run from the repository root:
 
@@ -82,4 +82,4 @@ locked-memory limits, systemd service limits, and virtio disk queue tuning
 during first boot before Kubespray runs.
 It installs and enables containerd for the Kubernetes nodes; the matching Kubespray inventory selects containerd rather than Docker as the CRI.
 
-When Atum supplies a lock-bound seed payload, Terraform verifies its SHA-256 and reconciles Forgejo at `http://10.77.0.9:3000` and Harbor at `http://10.77.0.9:32443` as ordinary Docker Compose services on the bastion. Their images are loaded from the payload, so deployment does not pull mutable image tags. This private HTTP configuration is limited to the isolated local libvirt network. `terraform destroy` removes the bastion domain and its root/data volumes along with every other VM, cloud-init volume, and the Atum network.
+When Atum supplies a lock-bound seed payload, Terraform verifies its SHA-256 and reconciles Forgejo at `http://10.77.0.9:3000`, Harbor at `http://10.77.0.9:32443`, and the retained Kubespray files repository at `http://10.77.0.9:8080` as ordinary Docker Compose services on the bastion. Their images are loaded from the payload, so deployment does not pull mutable image tags. Atum publishes only updater-selected Kubespray files, preserving their original domain-root paths; each node downloads them through Kubespray's native checksum-verified path. This private HTTP traffic remains inside the isolated local libvirt network and does not use a workstation listener or forwarding rule. `terraform destroy` removes the bastion domain and its root/data volumes along with every other VM, cloud-init volume, and the Atum network.

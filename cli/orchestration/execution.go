@@ -259,7 +259,7 @@ func (service Service) runKubespray(
 	toolchain Toolchain,
 	inventoryPath, playbook string,
 	rawArgs []string,
-) (resultErr error) {
+) error {
 	id := "kubernetes:" + toolchain.Release.Kubernetes
 	label := "Kubernetes " + toolchain.Release.Kubernetes
 	detail := "installing cluster"
@@ -271,13 +271,10 @@ func (service Service) runKubespray(
 	if err != nil {
 		return fmt.Errorf("derive initial Kubernetes OIDC configuration: %w", err)
 	}
-	managed, offlineServer, err := service.kubesprayOfflineInputs(ctx, toolchain)
+	managed, err := service.kubesprayHandoffInputs(ctx, toolchain)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		resultErr = errors.Join(resultErr, offlineServer.Close())
-	}()
 	managed["serial"] = 1
 	managed["kube_version"] = toolchain.Release.Kubernetes
 	if oidc != nil {
@@ -323,14 +320,22 @@ func managedKubesprayArguments(
 	playbookPath string,
 	rawArgs []string,
 ) []string {
+	tail := len(rawArgs)
+	for index, argument := range rawArgs {
+		if argument == "--" {
+			tail = index
+			break
+		}
+	}
 	args := make([]string, 0, len(rawArgs)+7)
 	args = append(args,
 		"--inventory", inventoryPath,
 		"--forks", strconv.Itoa(forks),
-		"--extra-vars", extraVars,
 		playbookPath,
 	)
-	return append(args, rawArgs...)
+	args = append(args, rawArgs[:tail]...)
+	args = append(args, "--extra-vars", extraVars)
+	return append(args, rawArgs[tail:]...)
 }
 
 func (service Service) runAnsiblePlaybook(ctx context.Context, command process.Command) error {

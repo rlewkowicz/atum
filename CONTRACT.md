@@ -86,6 +86,18 @@ upstream registry. The sole exception is a minimal bastion-only seed payload
 that Terraform uses to start Forgejo and Harbor before Harbor exists. That
 payload is not cluster desired state and is never copied to cluster nodes.
 
+The updater evaluates Kubespray's exact downloads map against the canonical
+local inventory and retains only enabled files and images for each selected
+release. Selected files are content-addressed locally, published once to the
+Terraform-owned private bastion repository, and exposed beneath Kubespray's
+documented `github_url`, `dl_k8s_io_url`, `storage_googleapis_url`, or
+`get_helm_url` domain root. Selected images resolve only at their exact
+receipt-bound Harbor targets. Before Ansible starts, Atum verifies the local
+file cache, every selected live bastion file by size and SHA-256, and every
+selected live Harbor image by digest. Kubespray then owns checksum-enforced
+per-node file downloads and containerd image pulls. Atum runs no workstation
+artifact listener, controller cache, rsync, SCP, or node-side OCI bundle.
+
 ## Ownership handoffs
 
 ```text
@@ -403,7 +415,9 @@ The local apply sequence is linear:
 2. load SOPS material and prepare bounded projections;
 3. ask Terraform to apply local infrastructure;
 4. publish the lock-bound repository state only to the seed Forgejo `main`
-   branch and publish every cluster image and chart to Harbor;
+   branch, publish every selected cluster image and chart to Harbor, and
+   activate the exact selected Kubespray files on the retained bastion
+   repository;
 5. ask Ansible/Kubespray to configure Kubernetes;
 6. ask `flux bootstrap git` to install only Flux and bind it to Forgejo
    `main`;
@@ -481,6 +495,11 @@ permission, forwarding, systemd-resolved, and CA-trust artifacts. Interactive
 authorization transfers the user's real terminal to the canonical host
 `sudo`; a TUI line is never treated as a password prompt.
 
+Normal apply and Kubespray convergence do not probe or mutate firewalld. The
+only firewalld integration is the explicit
+`atum infra libvirt forwarding ...` command for optional workstation bridge
+forwarding; it is not part of private node-to-bastion artifact delivery.
+
 Prefer official chart OIDC values, realm imports, and client declarations.
 When the selected Keycloak and Vault charts cannot express required
 service-internal configuration, one Flux-deployed Atum operator reconciles a
@@ -523,12 +542,12 @@ Ansible playbooks, and imperative post-Flux handoffs are prohibited.
 ## Repository and documentation
 
 Upstream directories are replaceable read-only inputs. The exact pinned
-Kubespray offline scripts may create their own transient output inside an
-ignored hydrated checkout while running; Atum removes that output before the
-workflow returns. Atum supplies synthesized offline variables from a unique
-mode-`0600` invocation directory beneath `.atum/`, removes that directory as
-soon as the official discovery process returns, and retains only
-content-pinned files beneath `.atum/`.
+Kubespray roles evaluate the selected-runtime `downloads` map from one unique
+invocation directory beneath `.atum/`. Atum writes the private mode-`0600`
+projection there, removes the invocation directory when evaluation returns,
+and retains only content-pinned selected files beneath `.atum/`. It does not
+invoke or retain a full Kubespray offline catalog or upstream offline-script
+output.
 Atum does not modify `../bigbang`, `../kubespray`, or hydrated package source,
 and does not vendor whole upstream repositories. If a minimal chart must be
 vendored, it belongs under `platform/charts`.

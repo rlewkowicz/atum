@@ -392,7 +392,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	containerdValues, err := kubesprayRegistryValues(desired)
+	containerdValues, err := config.KubesprayRegistryValues(desired)
 	if err != nil {
 		return Result{}, err
 	}
@@ -768,7 +768,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 			return Result{}, err
 		}
 	}
-	containerdValues, err = kubesprayRegistryValues(desired)
+	containerdValues, err = config.KubesprayRegistryValues(desired)
 	if err != nil {
 		return Result{}, err
 	}

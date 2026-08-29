@@ -126,26 +126,6 @@ value for a demonstrated selected-release migration edge, and make no changes
 to downstream victims. A fresh deployment remains the proof that this is
 deterministic.
 
-There is also separate updater noise that is not cluster churn.
-`atum pull updates` currently rebuilds Kubespray's official full-offline
-candidate inventories on each run. The repeated download output is an
-inefficiency in compatibility selection, but both consecutive runs selected
-the same state and ended successfully:
-
-```text
-rendering candidate Helm contracts bigbang=3.31.1 kubernetes=1.35.4
-attempt=1 candidates=31
-PLAY [Collect container images for offline deployment]
-...
-rendered exact packaged Helm contract ... completed=31 total=31
-verified official image runtime contracts completed=165 total=165
-upstream state is current
-```
-
-The official full-offline inventory includes payloads for unselected CNIs.
-Seeing `kubespray-cilium-*` content mirrored into Harbor therefore does not
-mean Cilium is deployed; `kube_network_plugin: calico` is the runtime
-selection.
 
 ## Fresh Calico deployment follow-up
 

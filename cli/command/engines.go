@@ -396,7 +396,6 @@ func (a *app) orchestrationService() orchestration.Service {
 		PythonBin:      a.preflight.Binary(preflight.Python),
 		PythonIdentity: a.preflight.Identity(preflight.Python),
 		SSHBin:         a.preflight.Binary(preflight.OpenSSH),
-		FirewallBin:    a.preflight.Binary(preflight.Firewall),
 	}
 }
 

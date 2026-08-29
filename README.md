@@ -17,7 +17,7 @@ Big Bang is a platform in a box. The deployment model is open source and openly 
 1. All images are swapped out for immutable official upstreams when they satisfy the selected chart's rendered contract. A bounded compatibility image is built from official project source only when the rendered command, filesystem, identity, or lifecycle proves it necessary.
 2. It's all fully declarative. Big Bang itself is a Helm chart of Helm charts. Selected charts are repackaged into Harbor rather than vendored wholesale; the repo maintains only the bounded compatibility material and minimal Flux/Kustomize wiring needed to deliver them.
 3. As of this writing, it uses Kubespray for the cluster. Lean into it. Own the cluster. I may add support for cloud-native Kubernetes implementations in the future, but this handles upgrades and deployment using Ansible with Mitogen. I'm also out of money in a big way.
-4. It's air-gap ready. It publishes every cluster image and chart to [Harbor](https://github.com/goharbor/harbor), while a minimal bastion seed starts Harbor and [Forgejo](https://forgejo.org/) for first-time deployment.
+4. It's air-gap ready. It publishes every selected cluster image and chart to [Harbor](https://github.com/goharbor/harbor), while a minimal bastion seed starts Harbor, [Forgejo](https://forgejo.org/), and a private repository for the exact checksum-pinned files Kubespray selected.
 
 # Infra, Orchestration, Platform
 
@@ -137,7 +137,8 @@ atum destroy --force --keep-bastion
 ```
 
 The next normal `apply` recreates the cluster and verifies existing immutable
-images and charts in Harbor before publishing anything missing.
+images and charts in Harbor plus retained Kubespray files on the bastion before
+publishing anything missing.
 
 ## Plane commands
 
@@ -167,8 +168,10 @@ atum artifacts publish
 ```
 
 Full `atum apply` runs that same Forgejo and Harbor publication path
-automatically. GitLab's PostgreSQL is managed by CloudNativePG, not a Bitnami
-PostgreSQL subchart.
+automatically. Kubespray nodes fetch only their selected checksum-pinned files
+from the retained private bastion repository; Atum does not open a workstation
+listener or copy a controller cache to the nodes. GitLab's PostgreSQL is
+managed by CloudNativePG, not a Bitnami PostgreSQL subchart.
 
 ## Status
 

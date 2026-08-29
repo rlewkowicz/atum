@@ -37,7 +37,6 @@ type Service struct {
 	PythonBin      string
 	PythonIdentity string
 	SSHBin         string
-	FirewallBin    string
 	RootCAPEM      []byte
 }
 

@@ -3,14 +3,19 @@ package delivery
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"atum/cli/config"
 	"atum/cli/fssecure"
@@ -38,6 +43,233 @@ type FileManifest struct {
 	Identity FileManifestIdentity `json:"identity"`
 	Blobs    []FileBlob           `json:"-"`
 	Data     []byte               `json:"-"`
+}
+
+type kubesprayFileProjectionEntry struct {
+	label  string
+	path   string
+	sha256 string
+	size   int64
+}
+
+// KubesprayFileProjection is the immutable byte-identity set observed at the
+// Terraform-owned private bastion endpoint.
+type KubesprayFileProjection struct {
+	entries []kubesprayFileProjectionEntry
+}
+
+// Count reports the number of original-domain paths in the projection.
+func (projection KubesprayFileProjection) Count() int {
+	return len(projection.entries)
+}
+
+// SelectedKubesprayFileProjection projects one release's selected files.
+func SelectedKubesprayFileProjection(
+	files []config.KubesprayFile,
+) (KubesprayFileProjection, error) {
+	entries := make([]kubesprayFileProjectionEntry, 0, len(files))
+	for _, file := range files {
+		entries = append(entries, kubesprayFileProjectionEntry{
+			label:  file.ID,
+			path:   file.RepositoryPath,
+			sha256: file.SHA256,
+			size:   file.Size,
+		})
+	}
+	return newKubesprayFileProjection(entries)
+}
+
+// ManifestKubesprayFileProjection projects the complete selected ladder union.
+func ManifestKubesprayFileProjection(
+	manifest FileManifest,
+) (KubesprayFileProjection, error) {
+	count := 0
+	for _, blob := range manifest.Blobs {
+		count += len(blob.Paths)
+	}
+	entries := make([]kubesprayFileProjectionEntry, 0, count)
+	for _, blob := range manifest.Blobs {
+		for _, repositoryPath := range blob.Paths {
+			entries = append(entries, kubesprayFileProjectionEntry{
+				label:  repositoryPath,
+				path:   repositoryPath,
+				sha256: blob.SHA256,
+				size:   blob.Size,
+			})
+		}
+	}
+	return newKubesprayFileProjection(entries)
+}
+
+func newKubesprayFileProjection(
+	entries []kubesprayFileProjectionEntry,
+) (KubesprayFileProjection, error) {
+	if len(entries) == 0 {
+		return KubesprayFileProjection{}, errors.New(
+			"Kubespray file projection is empty",
+		)
+	}
+	paths := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		decoded, digestErr := hex.DecodeString(entry.sha256)
+		if entry.label == "" ||
+			entry.path == "" ||
+			strings.HasPrefix(entry.path, "/") ||
+			strings.ContainsRune(entry.path, '\\') ||
+			strings.ContainsAny(entry.path, "?#\t\r\n\x00") ||
+			path.Clean(entry.path) != entry.path ||
+			digestErr != nil ||
+			len(decoded) != 32 ||
+			entry.sha256 != strings.ToLower(entry.sha256) ||
+			entry.size <= 0 {
+			return KubesprayFileProjection{}, fmt.Errorf(
+				"Kubespray file projection entry %q is invalid",
+				entry.label,
+			)
+		}
+		if previous, duplicate := paths[entry.path]; duplicate {
+			return KubesprayFileProjection{}, fmt.Errorf(
+				"Kubespray file projection path %s is duplicated by %s and %s",
+				entry.path,
+				previous,
+				entry.label,
+			)
+		}
+		paths[entry.path] = entry.label
+	}
+	return KubesprayFileProjection{
+		entries: append([]kubesprayFileProjectionEntry(nil), entries...),
+	}, nil
+}
+
+// ObserveKubesprayFileProjection proves every projected path directly against
+// the fixed private bastion without proxy or redirect behavior.
+func ObserveKubesprayFileProjection(
+	ctx context.Context,
+	endpoint string,
+	projection KubesprayFileProjection,
+	parallelism int,
+) error {
+	endpoint = strings.TrimSuffix(endpoint, "/")
+	if endpoint != config.SeedKubesprayFilesURL {
+		return fmt.Errorf(
+			"Kubespray files endpoint %q is not the fixed private bastion",
+			endpoint,
+		)
+	}
+	if len(projection.entries) == 0 {
+		return errors.New("Kubespray file projection is empty")
+	}
+	client, transport := directKubesprayFilesClient(parallelism)
+	defer transport.CloseIdleConnections()
+	return observeKubesprayFileProjection(
+		ctx,
+		client,
+		endpoint,
+		projection,
+		parallelism,
+	)
+}
+
+func directKubesprayFilesClient(
+	parallelism int,
+) (*http.Client, *http.Transport) {
+	limit := config.EffectiveWorkLimit(
+		parallelism,
+		0,
+		config.DefaultWorkLimit,
+	)
+	dialer := &net.Dialer{
+		Timeout:   15 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:                  nil,
+		DialContext:            dialer.DialContext,
+		ForceAttemptHTTP2:      false,
+		DisableCompression:     true,
+		MaxIdleConns:           limit,
+		MaxIdleConnsPerHost:    limit,
+		IdleConnTimeout:        30 * time.Second,
+		ResponseHeaderTimeout:  15 * time.Second,
+		ExpectContinueTimeout:  time.Second,
+		MaxResponseHeaderBytes: 64 << 10,
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Minute,
+		CheckRedirect: func(
+			_ *http.Request,
+			_ []*http.Request,
+		) error {
+			return http.ErrUseLastResponse
+		},
+	}, transport
+}
+
+func observeKubesprayFileProjection(
+	ctx context.Context,
+	client *http.Client,
+	endpoint string,
+	projection KubesprayFileProjection,
+	parallelism int,
+) error {
+	if client == nil || endpoint == "" || len(projection.entries) == 0 {
+		return errors.New("complete direct files observation inputs are required")
+	}
+	group, groupContext := errgroup.WithContext(ctx)
+	group.SetLimit(config.EffectiveWorkLimit(
+		parallelism,
+		0,
+		config.DefaultWorkLimit,
+	))
+	for index := range projection.entries {
+		entry := projection.entries[index]
+		group.Go(func() error {
+			request, err := http.NewRequestWithContext(
+				groupContext,
+				http.MethodGet,
+				endpoint+"/"+entry.path,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			response, err := client.Do(request)
+			if err != nil {
+				return fmt.Errorf("%s is unavailable: %w", entry.label, err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+				return fmt.Errorf(
+					"%s returned HTTP %d",
+					entry.label,
+					response.StatusCode,
+				)
+			}
+			if response.ContentLength >= 0 &&
+				response.ContentLength != entry.size {
+				return fmt.Errorf(
+					"%s has Content-Length %d, want %d",
+					entry.label,
+					response.ContentLength,
+					entry.size,
+				)
+			}
+			digest, size, err := readerSHA256(
+				io.LimitReader(response.Body, entry.size+1),
+			)
+			if err != nil {
+				return fmt.Errorf("read %s: %w", entry.label, err)
+			}
+			if size != entry.size || digest != entry.sha256 {
+				return fmt.Errorf("%s content identity differs", entry.label)
+			}
+			return nil
+		})
+	}
+	return group.Wait()
 }
 
 // MaterializeFileManifest creates the one publication vocabulary consumed by

@@ -2,115 +2,21 @@ package orchestration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
-	"os/exec"
-	"strconv"
 	"strings"
 
 	"atum/cli/config"
 	"atum/cli/delivery"
-	"atum/cli/fssecure"
 	atumoci "atum/cli/oci"
-	"atum/cli/process"
 
 	"golang.org/x/sync/errgroup"
 )
 
-type kubesprayOfflineServer struct {
-	server      *http.Server
-	listener    net.Listener
-	result      chan error
-	cleanupCtx  context.Context
-	firewallBin string
-	runner      process.Runner
-	port        int
-	openedPort  bool
-}
-
-func (server *kubesprayOfflineServer) Close() error {
-	if server == nil {
-		return nil
-	}
-	closeErr := server.server.Close()
-	serveErr := <-server.result
-	if errors.Is(serveErr, http.ErrServerClosed) {
-		serveErr = nil
-	}
-	firewallErr := server.closeFirewallPort()
-	return errors.Join(closeErr, serveErr, firewallErr)
-}
-
-func (server *kubesprayOfflineServer) closeFirewallPort() error {
-	if !server.openedPort {
-		return nil
-	}
-	server.openedPort = false
-	err := server.runner.Run(server.cleanupCtx, process.Command{
-		Name: server.firewallBin,
-		Args: []string{
-			"--quiet",
-			"--zone=libvirt",
-			"--remove-port=" + strconv.Itoa(server.port) + "/tcp",
-		},
-	})
-	if err != nil {
-		return fmt.Errorf(
-			"close temporary Kubespray offline port %d/tcp: %w",
-			server.port,
-			err,
-		)
-	}
-	return nil
-}
-
-func (server *kubesprayOfflineServer) openFirewallPort(ctx context.Context) error {
-	if server.runner == nil {
-		return errors.New("Kubespray offline server command runner is unavailable")
-	}
-	if server.firewallBin == "" {
-		return errors.New("validated firewalld preflight identity is required")
-	}
-	port := strconv.Itoa(server.port) + "/tcp"
-	queryErr := server.runner.Run(ctx, process.Command{
-		Name: server.firewallBin,
-		Args: []string{"--quiet", "--zone=libvirt", "--query-port=" + port},
-	})
-	if queryErr == nil {
-		// A pre-existing rule is not Atum-owned and must not be removed.
-		return nil
-	}
-	var exitErr *exec.ExitError
-	if !errors.As(queryErr, &exitErr) || exitErr.ExitCode() != 1 {
-		return fmt.Errorf(
-			"query temporary Kubespray offline port %s: %w",
-			port,
-			queryErr,
-		)
-	}
-	if err := server.runner.Run(ctx, process.Command{
-		Name: server.firewallBin,
-		Args: []string{"--quiet", "--zone=libvirt", "--add-port=" + port},
-	}); err != nil {
-		return fmt.Errorf(
-			"open temporary Kubespray offline port %s: %w",
-			port,
-			err,
-		)
-	}
-	server.openedPort = true
-	return nil
-}
-
-func (service Service) kubesprayOfflineInputs(
+func (service Service) kubesprayHandoffInputs(
 	ctx context.Context,
 	toolchain Toolchain,
-) (map[string]any, *kubesprayOfflineServer, error) {
+) (map[string]any, error) {
 	var inventory *config.KubesprayArtifactInventory
 	for index := range service.Project.Desired.Delivery.Kubespray {
 		candidate := &service.Project.Desired.Delivery.Kubespray[index]
@@ -119,8 +25,8 @@ func (service Service) kubesprayOfflineInputs(
 			continue
 		}
 		if inventory != nil {
-			return nil, nil, fmt.Errorf(
-				"Kubespray offline inventory %s/%s is duplicated",
+			return nil, fmt.Errorf(
+				"Kubespray artifact inventory %s/%s is duplicated",
 				candidate.KubernetesVersion,
 				candidate.KubesprayCommit,
 			)
@@ -128,16 +34,16 @@ func (service Service) kubesprayOfflineInputs(
 		inventory = candidate
 	}
 	if inventory == nil {
-		return nil, nil, fmt.Errorf(
-			"Kubespray offline inventory is absent for %s/%s",
+		return nil, fmt.Errorf(
+			"Kubespray artifact inventory is absent for %s/%s",
 			toolchain.Release.Kubernetes,
 			toolchain.Release.Kubespray.Commit,
 		)
 	}
 	receipt, err := delivery.LoadReceipt(service.Project)
 	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"load required Harbor publication receipt: %w",
+		return nil, fmt.Errorf(
+			"load required publication receipt: %w",
 			err,
 		)
 	}
@@ -147,19 +53,7 @@ func (service Service) kubesprayOfflineInputs(
 		receipt.Delivery,
 	)
 	if err != nil {
-		return nil, nil, err
-	}
-	if err := validateKubesprayOfflineFiles(
-		ctx,
-		service.Project.Root,
-		inventory.Files,
-		config.EffectiveWorkLimit(
-			0,
-			service.Project.Desired.Updates.Parallelism,
-			config.DefaultWorkLimit,
-		),
-	); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := verifyLiveKubesprayImages(
 		ctx,
@@ -172,83 +66,84 @@ func (service Service) kubesprayOfflineInputs(
 		),
 		service.RootCAPEM,
 	); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	routes := make(map[string]config.KubesprayFile, len(inventory.Files))
-	variables := make(map[string]any, len(inventory.Files))
-	for _, file := range inventory.Files {
-		route := "/" + strings.TrimPrefix(file.RepositoryPath, "/")
-		if _, duplicate := routes[route]; duplicate {
-			return nil, nil, fmt.Errorf(
-				"Kubespray offline route %s is duplicated",
-				route,
-			)
-		}
-		routes[route] = file
-	}
-	targetName := service.Project.Desired.Infrastructure.Active
-	target, found := service.Project.Desired.Infrastructure.Targets[targetName]
-	if !found {
-		return nil, nil, fmt.Errorf(
-			"active infrastructure target %q is absent",
-			targetName,
-		)
-	}
-	if target.LocalAccess == nil {
-		return nil, nil, fmt.Errorf(
-			"active infrastructure target %q has no local access contract",
-			targetName,
-		)
-	}
-	offlineHost := target.LocalAccess.DNSServer
-	listener, err := (&net.ListenConfig{}).Listen(
-		ctx,
-		"tcp",
-		net.JoinHostPort(offlineHost, "0"),
+	variables, fileProjection, err := kubesprayFileRepositoryInputs(
+		service.Project.Desired.Delivery.Seed.KubesprayFiles.URL,
+		inventory.Files,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"listen for Kubespray offline files: %w",
-			err,
-		)
+		return nil, err
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	base := "http://" + net.JoinHostPort(
-		offlineHost,
-		strconv.Itoa(port),
+	if err := delivery.ObserveKubesprayFileProjection(
+		ctx,
+		service.Project.Desired.Delivery.Seed.KubesprayFiles.URL,
+		fileProjection,
+		config.EffectiveWorkLimit(
+			0,
+			service.Project.Desired.Updates.Parallelism,
+			config.DefaultWorkLimit,
+		),
+	); err != nil {
+		return nil, err
+	}
+	registryVariables, err := config.KubesprayRegistryValues(
+		service.Project.Desired,
 	)
-	for route, file := range routes {
-		variables[file.ID+"_download_url"] = base + route
+	if err != nil {
+		return nil, err
 	}
-	// Let Kubespray fetch pinned files directly on each node. This is its normal
-	// download path and avoids the controller-side rsync cache, whose SSH
-	// subprocess is denied by the Fedora SELinux rsync domain. The content-only
-	// server is exposed to the libvirt zone for exactly this convergence.
+	for key, value := range registryVariables {
+		if _, duplicate := variables[key]; duplicate {
+			return nil, fmt.Errorf("managed Kubespray variable %s is duplicated", key)
+		}
+		variables[key] = value
+	}
+	// Each node uses Kubespray's checksum-enforcing get_url path directly.
 	variables["download_container"] = true
 	variables["download_force_cache"] = false
 	variables["download_localhost"] = false
 	variables["download_run_once"] = false
-	handler := &kubesprayOfflineHandler{
-		root: service.Project.Root, routes: routes,
+	return variables, nil
+}
+
+func kubesprayFileRepositoryInputs(
+	endpoint string,
+	files []config.KubesprayFile,
+) (map[string]any, delivery.KubesprayFileProjection, error) {
+	endpoint = strings.TrimSuffix(endpoint, "/")
+	variables := map[string]any{"files_repo": endpoint}
+	for _, file := range files {
+		repositoryPath, variable, err := config.KubesprayFileRepository(
+			file.Source,
+		)
+		if err != nil || repositoryPath != file.RepositoryPath {
+			return nil, delivery.KubesprayFileProjection{}, fmt.Errorf(
+				"Kubespray file %s has an invalid repository path",
+				file.ID,
+			)
+		}
+		domain, path, found := strings.Cut(repositoryPath, "/")
+		if !found || variable == "" || path == "" {
+			return nil, delivery.KubesprayFileProjection{}, fmt.Errorf(
+				"Kubespray file %s is not beneath a documented files_repo domain root",
+				file.ID,
+			)
+		}
+		root := endpoint + "/" + domain
+		if existing, set := variables[variable]; set && existing != root {
+			return nil, delivery.KubesprayFileProjection{}, fmt.Errorf(
+				"Kubespray files_repo variable %s is ambiguous",
+				variable,
+			)
+		}
+		variables[variable] = root
 	}
-	httpServer := &http.Server{Handler: handler}
-	running := &kubesprayOfflineServer{
-		server:      httpServer,
-		listener:    listener,
-		result:      make(chan error, 1),
-		cleanupCtx:  context.WithoutCancel(ctx),
-		firewallBin: service.FirewallBin,
-		runner:      service.Runner,
-		port:        port,
+	projection, err := delivery.SelectedKubesprayFileProjection(files)
+	if err != nil {
+		return nil, delivery.KubesprayFileProjection{}, err
 	}
-	if err := running.openFirewallPort(ctx); err != nil {
-		_ = listener.Close()
-		return nil, nil, err
-	}
-	go func() {
-		running.result <- httpServer.Serve(listener)
-	}()
-	return variables, running, nil
+	return variables, projection, nil
 }
 
 func validatePublishedKubesprayImages(
@@ -356,87 +251,4 @@ func verifyLiveKubesprayImages(
 		return fmt.Errorf("verify live Kubespray Harbor admission: %w", err)
 	}
 	return nil
-}
-
-func validateKubesprayOfflineFiles(
-	ctx context.Context,
-	root string,
-	files []config.KubesprayFile,
-	parallelism int,
-) error {
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(config.EffectiveWorkLimit(
-		parallelism, 0, config.DefaultWorkLimit,
-	))
-	for index := range files {
-		file := files[index]
-		group.Go(func() error {
-			input, err := fssecure.OpenRegular(root, file.CacheFile)
-			if err != nil {
-				return fmt.Errorf(
-					"open Kubespray offline file %s: %w",
-					file.ID,
-					err,
-				)
-			}
-			hash := sha256.New()
-			size, readErr := io.Copy(hash, input)
-			closeErr := input.Close()
-			if readErr != nil {
-				return readErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			if err := groupContext.Err(); err != nil {
-				return err
-			}
-			if size != file.Size ||
-				hex.EncodeToString(hash.Sum(nil)) != file.SHA256 {
-				return fmt.Errorf(
-					"Kubespray offline file %s is stale or corrupt",
-					file.ID,
-				)
-			}
-			return nil
-		})
-	}
-	return group.Wait()
-}
-
-type kubesprayOfflineHandler struct {
-	root   string
-	routes map[string]config.KubesprayFile
-}
-
-func (handler *kubesprayOfflineHandler) ServeHTTP(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		writer.Header().Set("Allow", "GET, HEAD")
-		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	file, found := handler.routes[request.URL.Path]
-	if !found {
-		http.NotFound(writer, request)
-		return
-	}
-	input, err := fssecure.OpenRegular(handler.root, file.CacheFile)
-	if err != nil {
-		http.Error(writer, "offline artifact unavailable", http.StatusNotFound)
-		return
-	}
-	defer input.Close()
-	writer.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
-	writer.Header().Set("ETag", `"`+file.SHA256+`"`)
-	writer.Header().Set("Content-Type", "application/octet-stream")
-	if request.Method == http.MethodHead {
-		writer.WriteHeader(http.StatusOK)
-		return
-	}
-	if _, err := io.CopyN(writer, input, file.Size); err != nil {
-		return
-	}
 }

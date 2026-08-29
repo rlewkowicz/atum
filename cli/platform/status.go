@@ -2,11 +2,7 @@ package platform
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -20,7 +16,6 @@ import (
 	atumsecrets "atum/cli/secrets"
 	platformv1alpha1 "atum/operator/api/v1alpha1"
 
-	"golang.org/x/sync/errgroup"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -711,112 +706,16 @@ func (service Service) observeKubesprayFiles(
 	if manifest.Identity != receipt.KubesprayFiles {
 		return fmt.Errorf("manifest identity differs from the publication receipt")
 	}
-	endpoint := strings.TrimSuffix(
-		service.Project.Desired.Delivery.Seed.KubesprayFiles.URL,
-		"/",
-	)
-	if endpoint != config.SeedKubesprayFilesURL {
-		return fmt.Errorf("files endpoint %q is not the fixed private bastion", endpoint)
+	projection, err := delivery.ManifestKubesprayFileProjection(manifest)
+	if err != nil {
+		return err
 	}
-	client, transport := directKubesprayFilesClient()
-	defer transport.CloseIdleConnections()
-	return observeFileProjection(
+	return delivery.ObserveKubesprayFileProjection(
 		ctx,
-		client,
-		endpoint,
-		manifest,
+		service.Project.Desired.Delivery.Seed.KubesprayFiles.URL,
+		projection,
 		service.Project.Desired.Updates.Parallelism,
 	)
-}
-
-func directKubesprayFilesClient() (*http.Client, *http.Transport) {
-	dialer := &net.Dialer{
-		Timeout:   15 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	transport := &http.Transport{
-		Proxy:                  nil,
-		DialContext:            dialer.DialContext,
-		ForceAttemptHTTP2:      false,
-		DisableCompression:     true,
-		MaxIdleConns:           16,
-		MaxIdleConnsPerHost:    16,
-		IdleConnTimeout:        30 * time.Second,
-		ResponseHeaderTimeout:  15 * time.Second,
-		ExpectContinueTimeout:  1 * time.Second,
-		MaxResponseHeaderBytes: 64 << 10,
-	}
-	return &http.Client{
-		Transport: transport,
-		Timeout:   5 * time.Minute,
-		CheckRedirect: func(
-			_ *http.Request,
-			_ []*http.Request,
-		) error {
-			return http.ErrUseLastResponse
-		},
-	}, transport
-}
-
-func observeFileProjection(
-	ctx context.Context,
-	client *http.Client,
-	endpoint string,
-	manifest delivery.FileManifest,
-	parallelism int,
-) error {
-	if client == nil || endpoint == "" || len(manifest.Blobs) == 0 {
-		return fmt.Errorf("complete direct files observation inputs are required")
-	}
-	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(config.EffectiveWorkLimit(
-		0,
-		parallelism,
-		8,
-	))
-	for _, blob := range manifest.Blobs {
-		blob := blob
-		for _, repositoryPath := range blob.Paths {
-			repositoryPath := repositoryPath
-			group.Go(func() error {
-				request, err := http.NewRequestWithContext(
-					groupContext,
-					http.MethodGet,
-					endpoint+"/"+repositoryPath,
-					nil,
-				)
-				if err != nil {
-					return err
-				}
-				response, err := client.Do(request)
-				if err != nil {
-					return fmt.Errorf("%s is unavailable: %w", repositoryPath, err)
-				}
-				defer response.Body.Close()
-				if response.StatusCode != http.StatusOK {
-					return fmt.Errorf(
-						"%s returned HTTP %d",
-						repositoryPath,
-						response.StatusCode,
-					)
-				}
-				hash := sha256.New()
-				size, err := io.Copy(
-					hash,
-					io.LimitReader(response.Body, blob.Size+1),
-				)
-				if err != nil {
-					return fmt.Errorf("read %s: %w", repositoryPath, err)
-				}
-				if size != blob.Size ||
-					fmt.Sprintf("%x", hash.Sum(nil)) != blob.SHA256 {
-					return fmt.Errorf("%s content identity differs", repositoryPath)
-				}
-				return nil
-			})
-		}
-	}
-	return group.Wait()
 }
 
 func (service Service) observeLocalIntegration(

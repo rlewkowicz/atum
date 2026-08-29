@@ -444,6 +444,160 @@ const (
 	SeedKubesprayFilesImageSource = "docker.io/library/nginx:1.28.2-alpine"
 )
 
+// KubesprayRegistryValues projects the one canonical set of documented
+// Kubespray registry variables from the exact selected image graph.
+func KubesprayRegistryValues(desired Document) (map[string]any, error) {
+	selected, repositories, targetHost, err := kubesprayCanonicalImages(desired)
+	if err != nil {
+		return nil, err
+	}
+	registry := desired.Delivery.Registry
+	if targetHost != registry.Host {
+		return nil, fmt.Errorf(
+			"Kubespray Harbor target host %s does not match %s",
+			targetHost,
+			registry.Host,
+		)
+	}
+	scheme := "https://"
+	if !registry.TLSVerify {
+		scheme = "http://"
+	}
+	harborHost := scheme + targetHost
+	mirrors := make([]any, 0, len(repositories)+1)
+	mirrors = append(mirrors, map[string]any{
+		"prefix": targetHost,
+		"server": harborHost,
+		"mirrors": []any{map[string]any{
+			"host": harborHost, "capabilities": []any{"pull", "resolve"},
+			"skip_verify": !registry.TLSVerify,
+		}},
+	})
+	sources := make([]string, 0, len(repositories))
+	for source := range repositories {
+		sources = append(sources, source)
+	}
+	sort.Strings(sources)
+	for _, source := range sources {
+		target := repositories[source]
+		targetURL := scheme + target
+		mirrors = append(mirrors, map[string]any{
+			"prefix": source,
+			"server": targetURL,
+			"mirrors": []any{map[string]any{
+				"host": targetURL, "capabilities": []any{"pull", "resolve"},
+				"skip_verify": !registry.TLSVerify, "override_path": true,
+			}},
+		})
+	}
+	expectedImages := make(map[string]struct{})
+	for _, inventory := range desired.Delivery.Kubespray {
+		for _, id := range inventory.Images {
+			expectedImages[id] = struct{}{}
+		}
+	}
+	if len(selected) != len(expectedImages) {
+		return nil, errors.New("Kubespray canonical image graph is incomplete")
+	}
+	values := map[string]any{
+		"containerd_registries_mirrors": mirrors,
+	}
+	for source, variable := range map[string]string{
+		"gcr.io": "gcr_image_repo", "registry.k8s.io": "kube_image_repo",
+		"index.docker.io": "docker_image_repo", "quay.io": "quay_image_repo",
+		"ghcr.io": "github_image_repo",
+	} {
+		if target, found := repositories[source]; found {
+			values[variable] = target
+			if variable == "kube_image_repo" {
+				values["kubeadm_image_repo"] = target
+			}
+		}
+	}
+	return values, nil
+}
+
+func kubesprayCanonicalImages(
+	desired Document,
+) (map[string]Image, map[string]string, string, error) {
+	all := make(map[string]Image, len(desired.Delivery.Images))
+	for _, image := range desired.Delivery.Images {
+		if _, duplicate := all[image.ID]; duplicate {
+			return nil, nil, "", fmt.Errorf("delivery image %s is duplicated", image.ID)
+		}
+		all[image.ID] = image
+	}
+	imageIDs := make(map[string]struct{})
+	for _, inventory := range desired.Delivery.Kubespray {
+		for _, id := range inventory.Images {
+			imageIDs[id] = struct{}{}
+		}
+	}
+	selected := make(map[string]Image, len(imageIDs))
+	repositories := make(map[string]string)
+	targetHost := ""
+	for id := range imageIDs {
+		image, found := all[id]
+		if !found || image.Discovery != "kubespray" ||
+			image.Delivery.Default.Type != "mirror" ||
+			image.Delivery.Default.Source == "" ||
+			image.Delivery.Default.Digest == "" {
+			return nil, nil, "", fmt.Errorf(
+				"Kubespray canonical image %s is missing or incomplete", id,
+			)
+		}
+		source, err := name.ParseReference(image.Delivery.Default.Source)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		sourceRegistry := source.Context().RegistryStr()
+		sourceRepository := source.Context().Name()
+		target, err := name.ParseReference(image.Target)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		if targetHost == "" {
+			targetHost = target.Context().RegistryStr()
+		} else if target.Context().RegistryStr() != targetHost {
+			return nil, nil, "", fmt.Errorf(
+				"Kubespray image %s targets a second registry %s",
+				id,
+				target.Context().RegistryStr(),
+			)
+		}
+		targetRepository := target.Context().Name()
+		suffix := "/" + sourceRepository
+		if !strings.HasSuffix(targetRepository, suffix) {
+			return nil, nil, "", fmt.Errorf(
+				"Kubespray image %s target %s is not derived from %s",
+				id, image.Target, image.Delivery.Default.Source,
+			)
+		}
+		targetRoot := strings.TrimSuffix(targetRepository, suffix)
+		if !strings.HasSuffix(targetRoot, "/kubespray") {
+			return nil, nil, "", fmt.Errorf(
+				"Kubespray image %s target %s has no canonical namespace",
+				id,
+				image.Target,
+			)
+		}
+		targetRepository = targetRoot + "/" + sourceRegistry
+		if existing, duplicate := repositories[sourceRegistry]; duplicate &&
+			existing != targetRepository {
+			return nil, nil, "", fmt.Errorf(
+				"Kubespray source registry %s has ambiguous Harbor targets",
+				sourceRegistry,
+			)
+		}
+		repositories[sourceRegistry] = targetRepository
+		selected[id] = image
+	}
+	if targetHost == "" {
+		return nil, nil, "", errors.New("Kubespray canonical image graph is empty")
+	}
+	return selected, repositories, targetHost, nil
+}
+
 type SeedForgejo struct {
 	URL   string    `json:"url"`
 	Image SeedImage `json:"image"`
@@ -3472,25 +3626,33 @@ func validateKubesprayArtifactInventory(
 	}
 }
 
-// KubesprayFileRepositoryPath validates the supported public file-source
-// contract and returns its one canonical Harbor repository path.
-func KubesprayFileRepositoryPath(source string) (string, error) {
+// KubesprayFileRepository validates the documented Kubespray domain-root
+// mirror contract and returns its canonical repository path and override
+// variable.
+func KubesprayFileRepository(source string) (string, string, error) {
 	parsed, err := url.Parse(source)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery ||
 		parsed.Fragment != "" || parsed.RawPath != "" ||
 		strings.ContainsRune(parsed.Path, '\\') {
-		return "", fmt.Errorf(
-			"Kubespray offline source %q is not a supported immutable HTTPS path",
+		return "", "", fmt.Errorf(
+			"Kubespray file source %q is not a supported immutable HTTPS path",
 			source,
 		)
 	}
+	var variable string
 	switch parsed.Host {
-	case "dl.k8s.io", "get.helm.sh", "github.com",
-		"raw.githubusercontent.com", "storage.googleapis.com":
+	case "github.com":
+		variable = "github_url"
+	case "dl.k8s.io":
+		variable = "dl_k8s_io_url"
+	case "storage.googleapis.com":
+		variable = "storage_googleapis_url"
+	case "get.helm.sh":
+		variable = "get_helm_url"
 	default:
-		return "", fmt.Errorf(
-			"Kubespray offline source %q has an unsupported repository root",
+		return "", "", fmt.Errorf(
+			"Kubespray file source %q has an unsupported repository root",
 			source,
 		)
 	}
@@ -3498,11 +3660,17 @@ func KubesprayFileRepositoryPath(source string) (string, error) {
 	if !strings.HasPrefix(parsed.Path, "/") ||
 		clean != parsed.Path ||
 		clean == "/" {
-		return "", fmt.Errorf(
-			"Kubespray offline source %q has no canonical path", source,
+		return "", "", fmt.Errorf(
+			"Kubespray file source %q has no canonical path", source,
 		)
 	}
-	return parsed.Host + clean, nil
+	return parsed.Host + clean, variable, nil
+}
+
+// KubesprayFileRepositoryPath returns the canonical path beneath files_repo.
+func KubesprayFileRepositoryPath(source string) (string, error) {
+	repositoryPath, _, err := KubesprayFileRepository(source)
+	return repositoryPath, err
 }
 
 func validateKubesprayImageProjection(

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"atum/cli/config"
@@ -231,6 +235,215 @@ func TestManifestReportAndReceiptRejectUnknownOrStaleIdentity(t *testing.T) {
 	stale.Bytes++
 	if validFileManifestReceipt(stale, manifest.Identity) {
 		t.Fatal("stale v2 file-manifest receipt was accepted")
+	}
+}
+
+func TestKubesprayFileObserverUsesOneDirectExactContentContract(t *testing.T) {
+	content := []byte("blob")
+	projection, err := SelectedKubesprayFileProjection(
+		[]config.KubesprayFile{{
+			ID:             "kubeadm",
+			RepositoryPath: "dl.k8s.io/release/kubeadm",
+			SHA256:         config.SHA256(content),
+			Size:           int64(len(content)),
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var proxyRequests atomic.Int64
+	proxy := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		_ *http.Request,
+	) {
+		proxyRequests.Add(1)
+		writer.WriteHeader(http.StatusBadGateway)
+	}))
+	defer proxy.Close()
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("HTTPS_PROXY", proxy.URL)
+
+	tests := []struct {
+		name    string
+		status  int
+		body    []byte
+		wantErr string
+	}{
+		{name: "exact", status: http.StatusOK, body: content},
+		{name: "status", status: http.StatusNotFound, body: content, wantErr: "HTTP 404"},
+		{name: "stale size", status: http.StatusOK, body: []byte("blo"), wantErr: "Content-Length"},
+		{name: "wrong digest", status: http.StatusOK, body: []byte("clob"), wantErr: "identity differs"},
+		{name: "oversized", status: http.StatusOK, body: []byte("blob-extra"), wantErr: "Content-Length"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(
+				writer http.ResponseWriter,
+				request *http.Request,
+			) {
+				if request.URL.Path != "/dl.k8s.io/release/kubeadm" {
+					t.Errorf("path = %q", request.URL.Path)
+				}
+				writer.Header().Set(
+					"Content-Length",
+					strconv.Itoa(len(test.body)),
+				)
+				writer.WriteHeader(test.status)
+				_, _ = writer.Write(test.body)
+			}))
+			defer server.Close()
+			client, transport := directKubesprayFilesClient(1)
+			defer transport.CloseIdleConnections()
+			if transport.Proxy != nil {
+				t.Fatal("direct files transport inherited a proxy function")
+			}
+			err := observeKubesprayFileProjection(
+				t.Context(),
+				client,
+				server.URL,
+				projection,
+				1,
+			)
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("observation error = %v, want %q", err, test.wantErr)
+			}
+		})
+	}
+	if proxyRequests.Load() != 0 {
+		t.Fatal("direct files observation used the environment proxy")
+	}
+}
+
+func TestKubesprayFileObserverRejectsRedirectAndCancellation(t *testing.T) {
+	content := []byte("blob")
+	projection, err := SelectedKubesprayFileProjection(
+		[]config.KubesprayFile{{
+			ID:             "kubeadm",
+			RepositoryPath: "dl.k8s.io/release/kubeadm",
+			SHA256:         config.SHA256(content),
+			Size:           int64(len(content)),
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		_ *http.Request,
+	) {
+		_, _ = writer.Write(content)
+	}))
+	defer destination.Close()
+	redirect := httptest.NewServer(http.RedirectHandler(
+		destination.URL,
+		http.StatusFound,
+	))
+	defer redirect.Close()
+	client, transport := directKubesprayFilesClient(1)
+	defer transport.CloseIdleConnections()
+	if err := observeKubesprayFileProjection(
+		t.Context(),
+		client,
+		redirect.URL,
+		projection,
+		1,
+	); err == nil || !strings.Contains(err.Error(), "HTTP 302") {
+		t.Fatalf("redirect observation error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := observeKubesprayFileProjection(
+		ctx,
+		client,
+		destination.URL,
+		projection,
+		1,
+	); err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled observation error = %v", err)
+	}
+}
+
+func TestManifestKubesprayFileProjectionObservesLadderUnion(t *testing.T) {
+	content := []byte("blob")
+	digest := config.SHA256(content)
+	projection, err := ManifestKubesprayFileProjection(FileManifest{
+		Blobs: []FileBlob{{
+			SHA256: digest,
+			Size:   int64(len(content)),
+			Paths:  []string{"dl.k8s.io/a", "github.com/b"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Count() != 2 {
+		t.Fatalf("union projection count = %d, want 2", projection.Count())
+	}
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		if request.URL.Path != "/dl.k8s.io/a" &&
+			request.URL.Path != "/github.com/b" {
+			t.Errorf("path = %q", request.URL.Path)
+		}
+		requests.Add(1)
+		_, _ = writer.Write(content)
+	}))
+	defer server.Close()
+	client, transport := directKubesprayFilesClient(2)
+	defer transport.CloseIdleConnections()
+	if err := observeKubesprayFileProjection(
+		t.Context(),
+		client,
+		server.URL,
+		projection,
+		2,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("union requests = %d, want 2", requests.Load())
+	}
+}
+
+func TestKubesprayFileProjectionRejectsUnsupportedPathAndEndpoint(t *testing.T) {
+	content := []byte("blob")
+	if _, err := SelectedKubesprayFileProjection(
+		[]config.KubesprayFile{{
+			ID:             "escape",
+			RepositoryPath: "../outside",
+			SHA256:         config.SHA256(content),
+			Size:           int64(len(content)),
+		}},
+	); err == nil {
+		t.Fatal("unsupported projection path was accepted")
+	}
+	projection, err := SelectedKubesprayFileProjection(
+		[]config.KubesprayFile{{
+			ID:             "kubeadm",
+			RepositoryPath: "dl.k8s.io/release/kubeadm",
+			SHA256:         config.SHA256(content),
+			Size:           int64(len(content)),
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ObserveKubesprayFileProjection(
+		t.Context(),
+		"http://proxy.invalid",
+		projection,
+		1,
+	); err == nil || !strings.Contains(err.Error(), "fixed private bastion") {
+		t.Fatalf("unsupported endpoint error = %v", err)
 	}
 }
 
