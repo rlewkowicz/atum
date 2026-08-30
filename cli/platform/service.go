@@ -26,16 +26,16 @@ const DefaultReadinessTimeout = 6 * time.Hour
 type Environment func(string) string
 
 type Service struct {
-	Project       *config.Project
-	Publication   *delivery.Publication
-	Logger        *slog.Logger
-	Runner        process.Runner
-	Environment   Environment
-	DryRun        bool
-	Out           io.Writer
-	Orchestration *orchestration.Service
-	FluxBin       string
-	SSHBin        string
+	Project         *config.Project
+	Publication     *delivery.Publication
+	Logger          *slog.Logger
+	Runner          process.Runner
+	Environment     Environment
+	DryRun          bool
+	Out             io.Writer
+	Orchestration   *orchestration.Service
+	FluxBin         string
+	SSHBin          string
 	BastionIdentity func(context.Context) (string, error)
 	SOPS            atumsecrets.SOPSAdapter
 }

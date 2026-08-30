@@ -46,11 +46,12 @@ type clusterInventoryBastion struct {
 }
 
 type clusterInventoryHost struct {
-	Name           string
-	AnsibleHost    string
-	IP             string
-	AccessIP       string
-	EtcdMemberName string
+	Name            string
+	AnsibleHost     string
+	IP              string
+	AccessIP        string
+	EtcdMemberName  string
+	ProxyViaBastion bool
 }
 
 type InventoryService struct {
@@ -153,22 +154,25 @@ func parseTerraformInventory(data []byte) (clusterInventory, error) {
 			return clusterInventory{}, err
 		}
 		ansibleHost := internalIP
-		if bastion == nil && len(mainIPs) > 0 {
-			if strings.TrimSpace(mainIPs[i]) != "" {
-				mainIP, err := inventoryIPv4(fmt.Sprintf("node_main_ips[%d]", i), mainIPs[i])
-				if err != nil {
-					return clusterInventory{}, err
-				}
+		proxyViaBastion := bastion != nil
+		if len(mainIPs) > 0 && strings.TrimSpace(mainIPs[i]) != "" {
+			mainIP, err := inventoryIPv4(fmt.Sprintf("node_main_ips[%d]", i), mainIPs[i])
+			if err != nil {
+				return clusterInventory{}, err
+			}
+			if bastion == nil || mainIP == internalIP {
 				ansibleHost = mainIP
+				proxyViaBastion = false
 			}
 		}
 
 		hosts[i] = clusterInventoryHost{
-			Name:           name,
-			AnsibleHost:    ansibleHost,
-			IP:             internalIP,
-			AccessIP:       internalIP,
-			EtcdMemberName: name,
+			Name:            name,
+			AnsibleHost:     ansibleHost,
+			IP:              internalIP,
+			AccessIP:        internalIP,
+			EtcdMemberName:  name,
+			ProxyViaBastion: proxyViaBastion,
 		}
 	}
 
@@ -261,7 +265,7 @@ func renderInventoryYAML(inventory clusterInventory) []byte {
 		writeYAMLScalar(&builder, 6, "ip", host.IP)
 		writeYAMLScalar(&builder, 6, "access_ip", host.AccessIP)
 		writeYAMLScalar(&builder, 6, "etcd_member_name", host.EtcdMemberName)
-		if inventory.Bastion != nil {
+		if host.ProxyViaBastion {
 			writeYAMLScalar(&builder, 6, "ansible_ssh_common_args", inventory.bastionSSHCommonArgs())
 		}
 	}

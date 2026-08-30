@@ -106,7 +106,6 @@ stringData:
                                     - name: tls-keycloak
                                       number: 443
                                       protocol: TLS
-                                resolution: DNS
                 networkPolicies:
                     egress:
                         from:
@@ -199,6 +198,14 @@ stringData:
             prometheus:
                 client_id: atum-prometheus
                 client_secret: ${ATUM_PROMETHEUS_CLIENT_SECRET}
+        values:
+            networkPolicies:
+                egress:
+                    from:
+                        prometheus:
+                            to:
+                                definition:
+                                    vaultIngress: true
     networkPolicies:
         egress:
             definitions:
@@ -206,9 +213,34 @@ stringData:
                     ports:
                         - port: 443
                           protocol: TCP
+                        - port: 8443
+                          protocol: TCP
                     to:
                         - ipBlock:
                             cidr: 10.77.0.21/32
+                        - namespaceSelector:
+                            matchLabels:
+                                kubernetes.io/metadata.name: istio-gateway
+                          podSelector:
+                            matchLabels:
+                                app.kubernetes.io/name: passthrough-ingressgateway
+                                istio: ingressgateway
+                vaultIngress:
+                    ports:
+                        - port: 443
+                          protocol: TCP
+                        - port: 8443
+                          protocol: TCP
+                    to:
+                        - ipBlock:
+                            cidr: 10.77.0.20/32
+                        - namespaceSelector:
+                            matchLabels:
+                                kubernetes.io/metadata.name: istio-gateway
+                          podSelector:
+                            matchLabels:
+                                app.kubernetes.io/name: public-ingressgateway
+                                istio: ingressgateway
     packages:
         opensearch:
             istio:

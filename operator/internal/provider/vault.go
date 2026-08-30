@@ -52,11 +52,10 @@ type vaultList struct {
 }
 
 type vaultGroupAlias struct {
-	ID             string            `json:"id,omitempty"`
-	Name           string            `json:"name,omitempty"`
-	MountAccessor  string            `json:"mount_accessor,omitempty"`
-	CanonicalID    string            `json:"canonical_id,omitempty"`
-	CustomMetadata map[string]string `json:"custom_metadata,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name,omitempty"`
+	MountAccessor string `json:"mount_accessor,omitempty"`
+	CanonicalID   string `json:"canonical_id,omitempty"`
 }
 
 func (v *Vault) authMounts(ctx context.Context) (map[string]jsonMount, error) {
@@ -143,7 +142,7 @@ func (v *Vault) Reconcile(ctx context.Context, issuer string, ca []byte, intent 
 	if err := v.upsertGroupAlias(ctx, mount.Accessor, groupID, intent.ExternalGroup); err != nil {
 		return err
 	}
-	return v.prune(ctx, intent, mount)
+	return v.prune(ctx, intent, mount, groupID)
 }
 
 func policyBody(purpose platformv1alpha1.VaultPolicyPurpose) (string, error) {
@@ -230,20 +229,46 @@ func (v *Vault) upsertGroupAlias(ctx context.Context, mountAccessor, groupID str
 	if err != nil {
 		return err
 	}
-	if exists && alias.CustomMetadata[ownerMarkerKey] != ownerMarkerValue {
-		return Conflict("external group alias %q exists without Atum ownership", desired.Claim)
+	if exists && alias.CanonicalID != groupID {
+		owned, err := v.groupIsOwned(ctx, alias.CanonicalID)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return Conflict("external group alias %q points outside Atum-owned provider state", desired.Claim)
+		}
 	}
 	body := map[string]any{
-		"name":            desired.Claim,
-		"canonical_id":    groupID,
-		"mount_accessor":  mountAccessor,
-		"custom_metadata": map[string]string{ownerMarkerKey: ownerMarkerValue},
+		"name":           desired.Claim,
+		"canonical_id":   groupID,
+		"mount_accessor": mountAccessor,
 	}
 	endpoint := "/v1/identity/group-alias"
 	if exists {
 		endpoint = "/v1/identity/group-alias/id/" + url.PathEscape(alias.ID)
 	}
 	return v.client.JSON(ctx, http.MethodPost, endpoint, body, nil)
+}
+
+func (v *Vault) groupIsOwned(ctx context.Context, id string) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	var response struct {
+		Data vaultGroup `json:"data"`
+	}
+	if err := v.client.JSON(
+		ctx,
+		http.MethodGet,
+		"/v1/identity/group/id/"+url.PathEscape(id),
+		nil,
+		&response,
+		http.StatusOK,
+		http.StatusNotFound,
+	); err != nil {
+		return false, err
+	}
+	return response.Data.ID != "" && response.Data.Metadata[ownerMarkerKey] == ownerMarkerValue, nil
 }
 
 func (v *Vault) listIDs(ctx context.Context, endpoint string) ([]string, error) {
@@ -279,8 +304,10 @@ func (v *Vault) findGroupAlias(ctx context.Context, name, accessor string) (vaul
 	return found, matches == 1, nil
 }
 
-func (v *Vault) prune(ctx context.Context, intent platformv1alpha1.VaultIntent, desiredMount jsonMount) error {
-	if err := v.pruneAliases(ctx, map[string]struct{}{desiredAliasKey(intent.ExternalGroup.Claim, desiredMount.Accessor): {}}); err != nil {
+func (v *Vault) prune(ctx context.Context, intent platformv1alpha1.VaultIntent, desiredMount jsonMount, groupID string) error {
+	if err := v.pruneAliases(ctx, map[string]struct{}{
+		desiredAliasKey(intent.ExternalGroup.Claim, desiredMount.Accessor, groupID): {},
+	}); err != nil {
 		return err
 	}
 	if err := v.pruneGroups(ctx, map[string]struct{}{intent.ExternalGroup.Name: {}}); err != nil {
@@ -304,13 +331,17 @@ func (v *Vault) prune(ctx context.Context, intent platformv1alpha1.VaultIntent, 
 	return nil
 }
 
-func desiredAliasKey(name, accessor string) string { return name + "\x00" + accessor }
+func desiredAliasKey(name, accessor, groupID string) string {
+	return name + "\x00" + accessor + "\x00" + groupID
+}
 
 func (v *Vault) pruneAliases(ctx context.Context, desired map[string]struct{}) error {
 	ids, err := v.listIDs(ctx, "/v1/identity/group-alias/id")
 	if err != nil {
 		return err
 	}
+	ownedGroups := make(map[string]bool)
+	checkedGroups := make(map[string]struct{})
 	for _, id := range ids {
 		var response struct {
 			Data vaultGroupAlias `json:"data"`
@@ -319,10 +350,18 @@ func (v *Vault) pruneAliases(ctx context.Context, desired map[string]struct{}) e
 			return err
 		}
 		alias := response.Data
-		if alias.CustomMetadata[ownerMarkerKey] != ownerMarkerValue {
+		if _, keep := desired[desiredAliasKey(alias.Name, alias.MountAccessor, alias.CanonicalID)]; keep {
 			continue
 		}
-		if _, keep := desired[desiredAliasKey(alias.Name, alias.MountAccessor)]; keep {
+		if _, checked := checkedGroups[alias.CanonicalID]; !checked {
+			owned, err := v.groupIsOwned(ctx, alias.CanonicalID)
+			if err != nil {
+				return err
+			}
+			ownedGroups[alias.CanonicalID] = owned
+			checkedGroups[alias.CanonicalID] = struct{}{}
+		}
+		if !ownedGroups[alias.CanonicalID] {
 			continue
 		}
 		if err := v.client.JSON(ctx, http.MethodDelete, "/v1/identity/group-alias/id/"+url.PathEscape(alias.ID), nil, nil); err != nil {

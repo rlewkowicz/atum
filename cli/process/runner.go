@@ -28,16 +28,17 @@ type Identity struct {
 }
 
 type Command struct {
-	Name     string
-	Args     []string
-	Dir      string
-	Env      []string
-	ExactEnv bool
-	Identity *Identity
-	Activity progress.Target
-	Stdin    io.Reader
-	Stdout   io.Writer
-	Stderr   io.Writer
+	Name       string
+	Args       []string
+	Dir        string
+	Env        []string
+	ExactEnv   bool
+	Identity   *Identity
+	Activity   progress.Target
+	Foreground bool
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 type ExecRunner struct{}
@@ -83,7 +84,7 @@ func clearEnvironment(environment []string) {
 
 func newExecCommand(ctx context.Context, command Command) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, command.Name, command.Args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: !command.Foreground}
 	if command.Identity != nil {
 		cmd.SysProcAttr.Credential = &syscall.Credential{
 			Uid: command.Identity.UID,
@@ -94,7 +95,12 @@ func newExecCommand(ctx context.Context, command Command) *exec.Cmd {
 		if cmd.Process == nil {
 			return os.ErrProcessDone
 		}
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		var err error
+		if command.Foreground {
+			err = cmd.Process.Kill()
+		} else {
+			err = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
 		if errors.Is(err, syscall.ESRCH) {
 			return os.ErrProcessDone
 		}

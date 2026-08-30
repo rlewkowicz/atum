@@ -80,6 +80,17 @@ variable "disk_size_gib" {
   default     = 80
 }
 
+variable "node_data_disk_size_gib" {
+  description = "Raw Kubernetes data disk size in GiB for every node VM."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.node_data_disk_size_gib >= 40 && floor(var.node_data_disk_size_gib) == var.node_data_disk_size_gib
+    error_message = "node_data_disk_size_gib must be an integer of at least 40 GiB."
+  }
+}
+
 variable "base_cloud_image_url" {
   description = "Ubuntu cloud image URL used as the VM backing image."
   type        = string

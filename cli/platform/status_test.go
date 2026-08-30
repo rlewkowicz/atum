@@ -64,10 +64,10 @@ func TestStatusDimensionsRemainIndependent(t *testing.T) {
 		t.Fatal("native Ready condition should complete only reconciliation")
 	}
 	delivery := DeliveryComplianceStatus{
-		PublicationExact:  true,
-		ForgejoExact:      true,
-		HarborImagesExact: true,
-		HarborChartsExact: true,
+		PublicationExact:    true,
+		ForgejoExact:        true,
+		HarborImagesExact:   true,
+		HarborChartsExact:   true,
 		KubesprayFilesExact: true,
 	}
 	if !delivery.Compliant() {

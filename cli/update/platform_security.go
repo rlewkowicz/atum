@@ -90,6 +90,8 @@ type serviceSecurityObservation struct {
 }
 
 type servicePortObservation struct {
+	Name            string
+	NameValid       bool
 	Port            int
 	PortValid       bool
 	TargetPort      int
@@ -389,12 +391,15 @@ func observePlatformSecurity(
 			return
 		}
 		for _, value := range ports {
+			name, nameValid := value["name"].(string)
+			nameValid = nameValid && boundedSecurityStrings(name)
 			port, portValid := exactInteger(value["port"])
 			targetPort, targetPortValid := exactInteger(value["targetPort"])
 			if _, found := value["targetPort"]; !found {
 				targetPort, targetPortValid = port, portValid
 			}
 			service.Ports = append(service.Ports, servicePortObservation{
+				Name: name, NameValid: nameValid,
 				Port: port, PortValid: portValid,
 				TargetPort: targetPort, TargetPortValid: targetPortValid,
 			})
@@ -1789,6 +1794,10 @@ func selectedServiceFailure(
 	}
 	for _, candidate := range service.Ports {
 		if candidate.PortValid && candidate.Port == port {
+			if !candidate.NameValid || candidate.Name != "https" {
+				return resource,
+					"OpenSearch Service TCP 9200 must use the HTTPS protocol name"
+			}
 			if candidate.TargetPortValid && candidate.TargetPort == port {
 				return resource, ""
 			}

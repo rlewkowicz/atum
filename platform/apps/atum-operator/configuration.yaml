@@ -75,7 +75,6 @@ spec:
       - https://opensearch.atum.test
     groupsScope:
       claimName: groups
-      name: atum-groups
     realm: master
     scopes:
     - openid

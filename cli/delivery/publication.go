@@ -66,15 +66,15 @@ type Publication struct {
 }
 
 type Receipt struct {
-	SchemaVersion   string               `json:"schemaVersion"`
-	DesiredSHA256   string               `json:"desiredSha256"`
-	RootLockSHA256  string               `json:"rootLockSha256"`
-	SourceSHA256    string               `json:"sourceSha256"`
-	SourceCommit    string               `json:"sourceCommit"`
-	SourceTag       string               `json:"sourceTag"`
-	Delivery        config.ImageLock     `json:"delivery"`
-	Charts          []Chart              `json:"charts"`
-	Seed            ArtifactIdentity     `json:"seed"`
+	SchemaVersion  string               `json:"schemaVersion"`
+	DesiredSHA256  string               `json:"desiredSha256"`
+	RootLockSHA256 string               `json:"rootLockSha256"`
+	SourceSHA256   string               `json:"sourceSha256"`
+	SourceCommit   string               `json:"sourceCommit"`
+	SourceTag      string               `json:"sourceTag"`
+	Delivery       config.ImageLock     `json:"delivery"`
+	Charts         []Chart              `json:"charts"`
+	Seed           ArtifactIdentity     `json:"seed"`
 	KubesprayFiles FileManifestIdentity `json:"kubesprayFiles"`
 }
 
@@ -255,16 +255,16 @@ func SaveReceipt(project *config.Project, publication *Publication) error {
 		return errors.New("complete publication is required")
 	}
 	receipt := Receipt{
-		SchemaVersion:   publicationReceiptSchema,
-		DesiredSHA256:   project.DesiredSHA256,
-		RootLockSHA256:  config.SHA256(project.LockData),
-		SourceSHA256:    publication.SourceSHA256,
-		SourceCommit:    publication.SourceCommit,
-		SourceTag:       publication.SourceTag,
-		Delivery:        publication.Delivery,
-		Charts:          append([]Chart(nil), publication.Charts...),
-		Seed:            publication.Seed,
-		KubesprayFiles:  publication.KubesprayFiles.Identity,
+		SchemaVersion:  publicationReceiptSchema,
+		DesiredSHA256:  project.DesiredSHA256,
+		RootLockSHA256: config.SHA256(project.LockData),
+		SourceSHA256:   publication.SourceSHA256,
+		SourceCommit:   publication.SourceCommit,
+		SourceTag:      publication.SourceTag,
+		Delivery:       publication.Delivery,
+		Charts:         append([]Chart(nil), publication.Charts...),
+		Seed:           publication.Seed,
+		KubesprayFiles: publication.KubesprayFiles.Identity,
 	}
 	for index := range receipt.Charts {
 		if !validPublicationDigest(receipt.Charts[index].ManifestDigest) {

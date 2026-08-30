@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,95 @@ func TestVaultRejectsUnownedMountWithoutMutation(t *testing.T) {
 	}
 	if mutated {
 		t.Fatal("unowned mount was mutated")
+	}
+}
+
+func TestVaultAcceptsOwnedGroupAliasWithoutUnsupportedMetadata(t *testing.T) {
+	var written map[string]any
+	vault := testVault(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/v1/identity/group-alias/id" &&
+			request.URL.Query().Get("list") == "true":
+			_, _ = response.Write([]byte(`{"data":{"keys":["alias-id"]}}`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/v1/identity/group-alias/id/alias-id":
+			_, _ = response.Write([]byte(`{"data":{` +
+				`"id":"alias-id",` +
+				`"name":"atum-admins",` +
+				`"mount_accessor":"auth_oidc",` +
+				`"canonical_id":"atum-group-id"` +
+				`}}`))
+		case request.Method == http.MethodPost &&
+			request.URL.Path == "/v1/identity/group-alias/id/alias-id":
+			if err := json.NewDecoder(request.Body).Decode(&written); err != nil {
+				response.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	err := vault.upsertGroupAlias(
+		context.Background(),
+		"auth_oidc",
+		"atum-group-id",
+		platformv1alpha1.VaultExternalGroup{Claim: "atum-admins"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := written["custom_metadata"]; exists {
+		t.Fatalf("group-alias request contains unsupported custom_metadata: %v", written)
+	}
+	if written["canonical_id"] != "atum-group-id" {
+		t.Fatalf("group-alias request = %v", written)
+	}
+}
+
+func TestVaultRejectsGroupAliasAttachedToForeignGroup(t *testing.T) {
+	mutated := false
+	vault := testVault(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/v1/identity/group-alias/id" &&
+			request.URL.Query().Get("list") == "true":
+			_, _ = response.Write([]byte(`{"data":{"keys":["alias-id"]}}`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/v1/identity/group-alias/id/alias-id":
+			_, _ = response.Write([]byte(`{"data":{` +
+				`"id":"alias-id",` +
+				`"name":"atum-admins",` +
+				`"mount_accessor":"auth_oidc",` +
+				`"canonical_id":"foreign-group-id"` +
+				`}}`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/v1/identity/group/id/foreign-group-id":
+			_, _ = response.Write([]byte(`{"data":{` +
+				`"id":"foreign-group-id",` +
+				`"metadata":{"another-owner":"true"}` +
+				`}}`))
+		default:
+			if request.Method != http.MethodGet {
+				mutated = true
+			}
+			response.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	err := vault.upsertGroupAlias(
+		context.Background(),
+		"auth_oidc",
+		"atum-group-id",
+		platformv1alpha1.VaultExternalGroup{Claim: "atum-admins"},
+	)
+	if err == nil || !IsTerminal(err) || !strings.Contains(err.Error(), "outside Atum-owned") {
+		t.Fatalf("ownership error = %v", err)
+	}
+	if mutated {
+		t.Fatal("foreign group alias was mutated")
 	}
 }
 
@@ -133,6 +223,7 @@ func TestVaultReconcilePruningPreservesForeignRole(t *testing.T) {
 		context.Background(),
 		intent,
 		jsonMount{Accessor: "auth_oidc", Description: vaultMountDescription},
+		"atum-group-id",
 	); err != nil {
 		t.Fatal(err)
 	}

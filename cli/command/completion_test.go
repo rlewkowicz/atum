@@ -84,6 +84,34 @@ func TestPlatformCompletionUsesCanonicalCategoriesAndPreservesUnknownRoutes(t *t
 	}
 }
 
+func TestPlatformExactnessErrorAttributesTheIncompleteBoundary(t *testing.T) {
+	t.Parallel()
+
+	status := exactCompletionStatus()
+	status.Delivery.PublicationExact = false
+	status.Delivery.Issues = []string{"local publication receipt is stale"}
+	if err := platformExactnessError(status); err == nil ||
+		!strings.Contains(err.Error(), "platform delivery compliance is incomplete: local publication receipt is stale") {
+		t.Fatalf("delivery error = %v", err)
+	}
+
+	status = exactCompletionStatus()
+	status.Local.CATrustReady = false
+	if err := platformExactnessError(status); err == nil ||
+		err.Error() != "local platform integration is incomplete" {
+		t.Fatalf("local integration error = %v", err)
+	}
+
+	status = exactCompletionStatus()
+	status.Reconciliation.HelmReleases[0].Ready = false
+	status.Reconciliation.HelmReleases[0].Message = "install pending"
+	if err := platformExactnessError(status); err == nil ||
+		!strings.Contains(err.Error(), "Flux reconciliation is incomplete") ||
+		!strings.Contains(err.Error(), "install pending") {
+		t.Fatalf("reconciliation error = %v", err)
+	}
+}
+
 func exactCompletionStatus() platform.Status {
 	urls := []string{
 		"https://keycloak.atum.test",

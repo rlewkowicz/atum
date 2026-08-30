@@ -454,6 +454,13 @@ the exact committed release ladder. An existing cluster must match one ladder
 entry, and each observation may select only the next exact entry; unavailable,
 newer, skipped, or unlisted versions terminate without mutation. Atum retains
 no orchestration receipt, resume checkpoint, or durable configuration hash.
+A fresh or current cluster has one exact target entry. Additional adjacent
+minor entries are active upgrade intent, not permanent release history; a
+patch refresh replaces the terminal entry instead of appending another step.
+Ordinary update pulls do not observe the cluster while that target is singular.
+While an upgrade plan has multiple entries, the updater may read the live API
+version solely to retire completed steps; an absent or unavailable observation
+retains the complete plan.
 A direct user-requested Kubespray apply may reconcile the current exact target,
 with native health checks and an in-memory input-consistency check confined to
 that invocation.
@@ -467,8 +474,8 @@ structured authentication API. A candidate is rejected if an active
 uncredentialed lifecycle check escapes the three health paths; the one
 additional scoped-anonymous path is kubeadm's exact public cluster-info
 token-discovery endpoint. Atum does not patch Kubespray. The pinned Kubespray
-`v2.29.1`, `v2.30.0`, and `v2.31.0` sources are admissible only with Kubernetes
-1.34 or newer and the canonical scoped-anonymous projection.
+source is admissible only with its selected compatible Kubernetes release and
+the canonical scoped-anonymous projection.
 
 Flux and package/controller `Ready` or failure conditions own reconciliation
 completion. Atum does not install Flux twice or infer completion from

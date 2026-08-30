@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,6 +31,8 @@ type Options struct {
 	Err          io.Writer
 	Env          func(string) string
 }
+
+const projectLockBypassAnnotation = "atum.dev/bypass-project-lock"
 
 type app struct {
 	runner        process.Runner
@@ -118,15 +119,31 @@ func New(options Options) *cobra.Command {
 				a.root = root
 				return nil
 			}
-			if err := a.loadProject(
-				cmd.Context(),
-				commandAnnotation(cmd, "atum.dev/allow-stale") == "true",
-				commandAnnotation(
-					cmd,
-					"atum.dev/allow-missing-generated-identity",
-				) == "true",
-				commandAnnotation(cmd, "atum.dev/allow-missing-flux-secrets") == "true",
-			); err != nil {
+			allowStale := commandAnnotation(cmd, "atum.dev/allow-stale") == "true"
+			allowMissingGeneratedIdentity := commandAnnotation(
+				cmd,
+				"atum.dev/allow-missing-generated-identity",
+			) == "true"
+			allowMissingFluxSecrets := commandAnnotation(
+				cmd,
+				"atum.dev/allow-missing-flux-secrets",
+			) == "true"
+			var err error
+			if commandAnnotation(cmd, projectLockBypassAnnotation) == "true" {
+				err = a.loadProjectSnapshot(
+					allowStale,
+					allowMissingGeneratedIdentity,
+					allowMissingFluxSecrets,
+				)
+			} else {
+				err = a.loadProject(
+					cmd.Context(),
+					allowStale,
+					allowMissingGeneratedIdentity,
+					allowMissingFluxSecrets,
+				)
+			}
+			if err != nil {
 				return err
 			}
 			return a.ensureCommandAllowed(cmd)
@@ -276,12 +293,41 @@ func (a *app) loadProject(
 		unlock()
 		return err
 	}
+	a.acceptProject(project, unlock)
+	return nil
+}
+
+// loadProjectSnapshot intentionally performs no Atum lock acquisition or
+// interrupted-update recovery. Destruction must be able to reach Terraform
+// while another Atum workflow is active; Terraform's state lock remains the
+// sole serialization authority for the infrastructure mutation itself.
+func (a *app) loadProjectSnapshot(
+	allowStale bool,
+	allowMissingGeneratedIdentity bool,
+	allowMissingFluxSecrets bool,
+) error {
+	root, err := config.Discover(a.rootHint)
+	if err != nil {
+		return err
+	}
+	project, err := config.LoadWithOptions(root, config.LoadOptions{
+		AllowStale:                    allowStale,
+		AllowMissingGeneratedIdentity: allowMissingGeneratedIdentity,
+		AllowMissingFluxSecrets:       allowMissingFluxSecrets,
+	})
+	if err != nil {
+		return err
+	}
+	a.acceptProject(project, nil)
+	return nil
+}
+
+func (a *app) acceptProject(project *config.Project, unlock func()) {
 	a.projectUnlock = unlock
 	a.project = project
 	a.preflight = preflight.Report{}
 	a.sops = atumsecrets.SOPSAdapter{}
 	a.root = project.Root
-	return nil
 }
 
 func (a *app) unlockProject() {
@@ -315,31 +361,86 @@ func (a *app) pullCommand() *cobra.Command {
 			if len(args) != 0 {
 				bigBangCommit = args[0]
 			}
-			service := update.NewService(a.root, a.logger)
-			result, err := service.Pull(cmd.Context(), update.Options{
-				Check:         check || a.dryRun,
-				BigBangCommit: bigBangCommit,
-				Parallelism:   parallelism,
-			})
-			if err != nil {
-				return err
-			}
-			if len(result.Changed) == 0 {
-				a.logger.InfoContext(cmd.Context(), "upstream state is current")
-				return nil
-			}
-			for _, path := range result.Changed {
-				_, _ = fmt.Fprintln(a.out, path)
-			}
-			if check {
-				return fmt.Errorf("%d managed files require upstream updates", len(result.Changed))
-			}
-			if a.dryRun {
-				a.logger.InfoContext(cmd.Context(), "upstream state would be updated", "files", len(result.Changed))
-				return nil
-			}
-			a.logger.InfoContext(cmd.Context(), "upstream state updated", "files", len(result.Changed))
-			return nil
+			return a.withDashboardAtRoot(
+				cmd.Context(),
+				"upstream updates",
+				tui.ScopeUpdates,
+				func(ctx context.Context) error {
+					progress.Start(
+						ctx,
+						progress.Updates,
+						"update-state",
+						"Declarative state",
+						"resolving managed upstream state",
+					)
+					service := update.NewService(a.root, a.logger, a.runner)
+					result, err := service.Pull(ctx, update.Options{
+						Check:         check || a.dryRun,
+						BigBangCommit: bigBangCommit,
+						Parallelism:   parallelism,
+					})
+					if err != nil {
+						progress.Fail(
+							ctx,
+							progress.Updates,
+							"update-state",
+							"Declarative state",
+							err,
+						)
+						return err
+					}
+					if len(result.Changed) == 0 {
+						a.logger.InfoContext(ctx, "upstream state is current")
+						progress.Done(
+							ctx,
+							progress.Updates,
+							"update-state",
+							"Declarative state",
+							"current",
+						)
+						return nil
+					}
+					for _, path := range result.Changed {
+						_, _ = fmt.Fprintln(a.out, path)
+					}
+					detail := fmt.Sprintf("%d managed files updated", len(result.Changed))
+					if check || a.dryRun {
+						detail = fmt.Sprintf(
+							"%d managed files require updates",
+							len(result.Changed),
+						)
+					}
+					progress.Done(
+						ctx,
+						progress.Updates,
+						"update-state",
+						"Declarative state",
+						detail,
+					)
+					if check {
+						return fmt.Errorf(
+							"%d managed files require upstream updates",
+							len(result.Changed),
+						)
+					}
+					if a.dryRun {
+						a.logger.InfoContext(
+							ctx,
+							"upstream state would be updated",
+							"files",
+							len(result.Changed),
+						)
+						return nil
+					}
+					a.logger.InfoContext(
+						ctx,
+						"upstream state updated",
+						"files",
+						len(result.Changed),
+					)
+					return nil
+				},
+			)
 		}),
 	}
 	updates.Flags().BoolVar(&check, "check", false, "report available updates without changing tracked files")
@@ -556,77 +657,82 @@ func (a *app) applyCommand() *cobra.Command {
 			if err := a.checkPreflight(cmd.Context(), preflight.Full); err != nil {
 				return err
 			}
-			return a.withDashboardCompletion(
-				cmd.Context(), "full deployment", tui.ScopeAll,
-				func(ctx context.Context) (tui.Completion, error) {
-					if err := a.ensurePublication(ctx, preflight.Full); err != nil {
-						return tui.Completion{}, err
-					}
-					service := a.orchestrationService()
-					preflight, err := service.Plan(ctx)
-					if err != nil {
-						return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
-					}
-					if err := service.ValidatePlan(preflight, orchestration.FullConvergence); err != nil {
-						return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
-					}
-					var seed terraformSeed
-					if !a.dryRun {
-						seed, err = a.seedTerraformEnvironment(ctx)
-						if err != nil {
-							return tui.Completion{}, err
-						}
-						defer seed.Clear()
-					}
-					if err := a.runTerraformActionWithEnvironment(ctx, "apply", seed.environment); err != nil {
-						return tui.Completion{}, err
-					}
-					seed.ClearEnvironment()
-					if a.dryRun {
-						return tui.Completion{}, a.printOrchestrationPlan(preflight)
-					}
-					platformService, err := a.managedPlatformService()
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					handoff, err := platformService.Seed(
-						ctx,
-						seed.publication,
-						seed.credentials,
-						platform.PrepareOptions{},
-					)
-					seed.Clear()
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					defer handoff.Clear()
-					service.RootCAPEM = handoff.RootCAPEM()
-					defer clear(service.RootCAPEM)
-					if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
-						return tui.Completion{}, err
-					}
-					if err := a.runFullConvergence(
-						ctx, service, platformService, handoff, applyOptions,
-					); err != nil {
-						return tui.Completion{}, err
-					}
-					// Host DNS and trust are local integration, not a cluster
-					// control plane. Mutate them only after Flux reports its
-					// complete native dependency graph ready.
-					if err := a.ensureLocalDNS(ctx); err != nil {
-						return tui.Completion{}, err
-					}
-					dns, err := a.startLocalDNSObservation(ctx)
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					defer dns.Cancel()
-					status, err := a.completePlatformApply(ctx, dns)
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					return a.platformCompletion(ctx, status)
-				})
+			return a.withLocalAccessAuthorization(
+				cmd.Context(),
+				func(authorizedContext context.Context) error {
+					return a.withDashboardCompletion(
+						authorizedContext, "full deployment", tui.ScopeAll,
+						func(ctx context.Context) (tui.Completion, error) {
+							if err := a.ensurePublication(ctx, preflight.Full); err != nil {
+								return tui.Completion{}, err
+							}
+							service := a.orchestrationService()
+							preflight, err := service.Plan(ctx)
+							if err != nil {
+								return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
+							}
+							if err := service.ValidatePlan(preflight, orchestration.FullConvergence); err != nil {
+								return tui.Completion{}, fmt.Errorf("orchestration preflight: %w", err)
+							}
+							var seed terraformSeed
+							if !a.dryRun {
+								seed, err = a.seedTerraformEnvironment(ctx)
+								if err != nil {
+									return tui.Completion{}, err
+								}
+								defer seed.Clear()
+							}
+							if err := a.runTerraformActionWithEnvironment(ctx, "apply", seed.environment); err != nil {
+								return tui.Completion{}, err
+							}
+							seed.ClearEnvironment()
+							if a.dryRun {
+								return tui.Completion{}, a.printOrchestrationPlan(preflight)
+							}
+							platformService, err := a.managedPlatformService()
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							handoff, err := platformService.Seed(
+								ctx,
+								seed.publication,
+								seed.credentials,
+								platform.PrepareOptions{},
+							)
+							seed.Clear()
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							defer handoff.Clear()
+							service.RootCAPEM = handoff.RootCAPEM()
+							defer clear(service.RootCAPEM)
+							if err := a.generateOrchestrationInventory(ctx, a.orchestrationInventoryPath()); err != nil {
+								return tui.Completion{}, err
+							}
+							if err := a.runFullConvergence(
+								ctx, service, platformService, handoff, applyOptions,
+							); err != nil {
+								return tui.Completion{}, err
+							}
+							// Host DNS and trust are local integration, not a cluster
+							// control plane. Mutate them only after Flux reports its
+							// complete native dependency graph ready.
+							if err := a.ensureLocalDNS(ctx); err != nil {
+								return tui.Completion{}, err
+							}
+							dns, err := a.startLocalDNSObservation(ctx)
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							defer dns.Cancel()
+							status, err := a.completePlatformApply(ctx, dns)
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							return a.platformCompletion(ctx, status)
+						})
+				},
+			)
 		}),
 	}
 	command.Flags().DurationVar(
@@ -654,9 +760,8 @@ func (a *app) verifyLocalAccessStatus(
 	if err := a.observePlatformHostAccessWithDNS(ctx, &result, dns); err != nil {
 		return err
 	}
-	if !result.Reconciliation.Complete() || !result.Delivery.Compliant() ||
-		!result.Local.Exact() {
-		return errors.New("local access is not exact")
+	if err := platformExactnessError(result); err != nil {
+		return err
 	}
 	*status = result
 	return nil

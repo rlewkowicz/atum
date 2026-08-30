@@ -60,12 +60,13 @@
     "infrastructureTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["driver", "directory", "autoApprove", "platformProfile"],
+      "required": ["driver", "directory", "autoApprove", "platformProfile", "ssh"],
       "properties": {
         "driver": {"const": "terraform"},
         "directory": {"$ref": "#/$defs/nonEmpty"},
         "autoApprove": {"type": "boolean"},
         "platformProfile": {"const": "local"},
+        "ssh": {"$ref": "#/$defs/sshKeyPair"},
         "localAccess": {"$ref": "#/$defs/localAccess"}
       },
       "allOf": [
@@ -78,6 +79,14 @@
           "else": {"not": {"required": ["localAccess"]}}
         }
       ]
+    },
+    "sshKeyPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["privateKeyPath"],
+      "properties": {
+        "privateKeyPath": {"$ref": "#/$defs/nonEmpty"}
+      }
     },
     "localAccess": {
       "type": "object",
@@ -428,7 +437,7 @@
     "seedPlane": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["forgejo", "harbor"],
+      "required": ["forgejo", "harbor", "kubesprayFiles"],
       "properties": {
         "forgejo": {
           "type": "object",
@@ -452,6 +461,15 @@
               "minItems": 1,
               "items": {"$ref": "#/$defs/seedImage"}
             }
+          }
+        },
+        "kubesprayFiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "image"],
+          "properties": {
+            "url": {"const": "http://10.77.0.9:8080"},
+            "image": {"$ref": "#/$defs/seedImage"}
           }
         }
       }

@@ -36,7 +36,7 @@ resource "libvirt_volume" "load_balancer" {
 }
 
 resource "libvirt_volume" "bastion" {
-  name          = "${local.bastion_name}.qcow2"
+  name          = "${local.bastion_name}-${substr(sha256(local.bastion_user_data), 0, 12)}.qcow2"
   pool          = var.storage_pool
   capacity      = local.disk_size_bytes
   capacity_unit = "bytes"
@@ -85,6 +85,20 @@ resource "libvirt_volume" "node" {
   target = {
     format = {
       type = "qcow2"
+    }
+  }
+}
+
+resource "libvirt_volume" "node_data" {
+  count         = var.node_count
+  name          = "${local.node_names[count.index]}-data.raw"
+  pool          = var.storage_pool
+  capacity      = local.node_data_size_bytes
+  capacity_unit = "bytes"
+
+  target = {
+    format = {
+      type = "raw"
     }
   }
 }
@@ -276,6 +290,10 @@ resource "libvirt_domain" "bastion" {
       }
     }]
   }
+
+  lifecycle {
+    replace_triggered_by = [libvirt_volume.bastion]
+  }
 }
 
 resource "libvirt_domain" "node" {
@@ -325,6 +343,23 @@ resource "libvirt_domain" "node" {
         }
       },
       {
+        source = {
+          volume = {
+            pool   = var.storage_pool
+            volume = libvirt_volume.node_data[count.index].name
+          }
+        }
+        target = {
+          dev = "vdb"
+          bus = "virtio"
+        }
+        driver = {
+          type  = "raw"
+          cache = "none"
+          io    = "native"
+        }
+      },
+      {
         device = "cdrom"
         source = {
           file = {
@@ -367,6 +402,33 @@ resource "libvirt_domain" "node" {
         }
       }
     }]
+  }
+}
+
+resource "terraform_data" "node_storage_ready" {
+  count = var.node_count
+
+  triggers_replace = {
+    cloudinit_id = libvirt_cloudinit_disk.node[count.index].id
+    domain_id    = libvirt_domain.node[count.index].id
+    volume_key   = libvirt_volume.node_data[count.index].key
+  }
+
+  connection {
+    type        = "ssh"
+    host        = local.node_ips[count.index]
+    user        = "root"
+    private_key = file(pathexpand(var.ssh_private_key_path))
+    timeout     = "10m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "cloud-init status --wait --long",
+      "findmnt --mountpoint /var/lib/atum --types ext4 --noheadings",
+      "test \"$(findmnt --mountpoint /var/lib/atum --noheadings --output SOURCE)\" = /dev/vdb1",
+      "test -d /var/lib/atum/containerd -a -d /var/lib/atum/etcd -a -d /var/lib/atum/local-path-provisioner",
+    ]
   }
 }
 

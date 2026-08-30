@@ -13,7 +13,7 @@ valid_sha() {
 }
 
 validate_manifest() {
-  local manifest="${1}"
+  local manifest_path="${1}"
   awk -F '\t' -v schema="${schema}" '
     NR == 1 { if ($0 != schema) exit 1; next }
     function safe_path(value) {
@@ -35,7 +35,7 @@ validate_manifest() {
       records++
     }
     END { if (NR < 2 || records != NR - 1) exit 1 }
-  ' "${manifest}"
+  ' "${manifest_path}"
 }
 
 if ! valid_sha "${manifest_sha}"; then

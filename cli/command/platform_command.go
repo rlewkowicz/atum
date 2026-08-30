@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"atum/cli/platform"
 	"atum/cli/preflight"
@@ -56,33 +58,38 @@ func (a *app) platformCommand() *cobra.Command {
 			if err := a.checkPreflight(cmd.Context(), preflight.Platform); err != nil {
 				return err
 			}
-			return a.withDashboardCompletion(
-				cmd.Context(), "platform apply", tui.ScopePlatform,
-				func(ctx context.Context) (tui.Completion, error) {
-					if err := a.ensurePublication(ctx, preflight.Platform); err != nil {
-						return tui.Completion{}, err
-					}
-					service, err := a.managedPlatformService()
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					if err := service.Apply(ctx, applyOptions); err != nil {
-						return tui.Completion{}, err
-					}
-					if err := a.ensureLocalDNS(ctx); err != nil {
-						return tui.Completion{}, err
-					}
-					dns, err := a.startLocalDNSObservation(ctx)
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					defer dns.Cancel()
-					status, err := a.completePlatformApply(ctx, dns)
-					if err != nil {
-						return tui.Completion{}, err
-					}
-					return a.platformCompletion(ctx, status)
-				})
+			return a.withLocalAccessAuthorization(
+				cmd.Context(),
+				func(authorizedContext context.Context) error {
+					return a.withDashboardCompletion(
+						authorizedContext, "platform apply", tui.ScopePlatform,
+						func(ctx context.Context) (tui.Completion, error) {
+							if err := a.ensurePublication(ctx, preflight.Platform); err != nil {
+								return tui.Completion{}, err
+							}
+							service, err := a.managedPlatformService()
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							if err := service.Apply(ctx, applyOptions); err != nil {
+								return tui.Completion{}, err
+							}
+							if err := a.ensureLocalDNS(ctx); err != nil {
+								return tui.Completion{}, err
+							}
+							dns, err := a.startLocalDNSObservation(ctx)
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							defer dns.Cancel()
+							status, err := a.completePlatformApply(ctx, dns)
+							if err != nil {
+								return tui.Completion{}, err
+							}
+							return a.platformCompletion(ctx, status)
+						})
+				},
+			)
 		}),
 	}
 	apply.Flags().DurationVar(
@@ -110,16 +117,7 @@ func (a *app) platformCommand() *cobra.Command {
 			if err := encoder.Encode(result); err != nil {
 				return err
 			}
-			if !result.Reconciliation.Complete() {
-				return errors.New("Flux reconciliation is incomplete")
-			}
-			if !result.Delivery.Compliant() {
-				return errors.New("platform delivery compliance is incomplete")
-			}
-			if !result.Local.Exact() {
-				return errors.New("local platform integration is incomplete")
-			}
-			return nil
+			return platformExactnessError(result)
 		}),
 	}
 
@@ -149,6 +147,33 @@ func (a *app) platformCommand() *cobra.Command {
 	return command
 }
 
+func platformExactnessError(status platform.Status) error {
+	if !status.Reconciliation.Complete() {
+		return fmt.Errorf(
+			"Flux reconciliation is incomplete: %s",
+			nativeReconciliationDiagnostics(status.Reconciliation),
+		)
+	}
+	if !status.Delivery.Compliant() {
+		detail := strings.Join(status.Delivery.Issues, "; ")
+		if detail == "" {
+			detail = fmt.Sprintf(
+				"publicationExact=%t forgejoExact=%t harborImagesExact=%t harborChartsExact=%t kubesprayFilesExact=%t",
+				status.Delivery.PublicationExact,
+				status.Delivery.ForgejoExact,
+				status.Delivery.HarborImagesExact,
+				status.Delivery.HarborChartsExact,
+				status.Delivery.KubesprayFilesExact,
+			)
+		}
+		return fmt.Errorf("platform delivery compliance is incomplete: %s", detail)
+	}
+	if !status.Local.Exact() {
+		return errors.New("local platform integration is incomplete")
+	}
+	return nil
+}
+
 func (a *app) managedPlatformService() (platform.Service, error) {
 	flux, err := a.requiredBinary(preflight.Flux)
 	if err != nil {
@@ -162,14 +187,14 @@ func (a *app) managedPlatformService() (platform.Service, error) {
 func (a *app) platformService() platform.Service {
 	orchestrationService := a.orchestrationService()
 	return platform.Service{
-		Project:       a.project,
-		Publication:   a.publication,
-		Logger:        a.logger,
-		Runner:        a.runner,
-		Environment:   a.env,
-		DryRun:        a.dryRun,
-		Out:           a.out,
-		Orchestration: &orchestrationService,
+		Project:         a.project,
+		Publication:     a.publication,
+		Logger:          a.logger,
+		Runner:          a.runner,
+		Environment:     a.env,
+		DryRun:          a.dryRun,
+		Out:             a.out,
+		Orchestration:   &orchestrationService,
 		SSHBin:          a.preflight.Binary(preflight.OpenSSH),
 		BastionIdentity: a.terraformBastionResourceIdentity,
 		SOPS:            a.sops,

@@ -1018,9 +1018,13 @@ func (a *app) runPrivilegedHelper(
 		capabilities, trustStore, updater, sudo, need, refreshTrust); err != nil {
 		return err
 	}
-	if err := a.runner.Run(ctx, process.Command{
-		Name: sudo, Args: []string{"-v"}, Stdin: terminal.input,
-		Stdout: terminal.output, Stderr: terminal.errorOutput,
+	if authorization := sudoAuthorizationFromContext(ctx); authorization != nil {
+		if err := authorization.require(ctx, sudo); err != nil {
+			return err
+		}
+	} else if err := a.runner.Run(ctx, process.Command{
+		Name: sudo, Args: []string{"-v"}, Foreground: true,
+		Stdin: terminal.input, Stdout: terminal.output, Stderr: terminal.errorOutput,
 	}); err != nil {
 		return fmt.Errorf("sudo authorization failed: %w", err)
 	}

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"atum/cli/config"
 	"atum/cli/process"
@@ -27,6 +28,16 @@ type filePublicationRunner struct {
 	uploadedBytes int64
 }
 
+func fileHelperOperation(command process.Command) string {
+	for index, argument := range command.Args {
+		if argument == "/usr/local/sbin/atum-kubespray-files" &&
+			index+1 < len(command.Args) {
+			return command.Args[index+1]
+		}
+	}
+	return ""
+}
+
 func (runner *filePublicationRunner) Run(
 	_ context.Context,
 	command process.Command,
@@ -36,15 +47,7 @@ func (runner *filePublicationRunner) Run(
 	copied := command
 	copied.Args = append([]string(nil), command.Args...)
 	runner.commands = append(runner.commands, copied)
-	operation := ""
-	for index, argument := range command.Args {
-		if argument == "/usr/local/sbin/atum-kubespray-files" &&
-			index+1 < len(command.Args) {
-			operation = command.Args[index+1]
-			break
-		}
-	}
-	switch operation {
+	switch fileHelperOperation(command) {
 	case "report":
 		if runner.failReport {
 			return errors.New("report failed")
@@ -54,6 +57,50 @@ func (runner *filePublicationRunner) Run(
 	case "put":
 		size, err := io.Copy(io.Discard, command.Stdin)
 		runner.uploadedBytes += size
+		return err
+	case "activate":
+		return nil
+	default:
+		return errors.New("unexpected helper operation")
+	}
+}
+
+type concurrentFilePublicationRunner struct {
+	missing string
+	started chan struct{}
+	release chan struct{}
+	current atomic.Int64
+	maximum atomic.Int64
+}
+
+func (runner *concurrentFilePublicationRunner) Run(
+	ctx context.Context,
+	command process.Command,
+) error {
+	switch fileHelperOperation(command) {
+	case "report":
+		_, err := io.WriteString(command.Stdout, runner.missing)
+		return err
+	case "put":
+		current := runner.current.Add(1)
+		defer runner.current.Add(-1)
+		for maximum := runner.maximum.Load(); current > maximum; {
+			if runner.maximum.CompareAndSwap(maximum, current) {
+				break
+			}
+			maximum = runner.maximum.Load()
+		}
+		select {
+		case runner.started <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		select {
+		case <-runner.release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		_, err := io.Copy(io.Discard, command.Stdin)
 		return err
 	case "activate":
 		return nil
@@ -162,6 +209,110 @@ func TestFilePublicationIsolatesTrustAndReusesRetainedBlobs(t *testing.T) {
 			uploaded,
 			reused,
 			len(reuseRunner.commands),
+		)
+	}
+}
+
+func TestFilePublicationCapsConcurrentBastionSSHTransfers(t *testing.T) {
+	t.Parallel()
+
+	const blobCount = maxConcurrentBastionFileSSHTransfers + 3
+	root := t.TempDir()
+	cache := filepath.Join(".atum", "cache", "kubespray-offline", "sha256")
+	if err := os.MkdirAll(filepath.Join(root, cache), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := make([]config.KubesprayFile, 0, blobCount)
+	for index := range blobCount {
+		content := []byte("blob-" + strconv.Itoa(index))
+		digest := config.SHA256(content)
+		cacheFile := filepath.Join(cache, digest)
+		if err := os.WriteFile(
+			filepath.Join(root, cacheFile),
+			content,
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, config.KubesprayFile{
+			ID:             "file-" + strconv.Itoa(index),
+			RepositoryPath: "example.com/file-" + strconv.Itoa(index),
+			CacheFile:      cacheFile,
+			SHA256:         digest,
+			Size:           int64(len(content)),
+		})
+	}
+	project := &config.Project{
+		Root: root,
+		Desired: config.Document{
+			Updates: config.UpdatePolicy{Parallelism: blobCount},
+			Delivery: config.Delivery{
+				Kubespray: []config.KubesprayArtifactInventory{{
+					Files: files,
+				}},
+			},
+		},
+	}
+	manifest, err := MaterializeFileManifest(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var missing strings.Builder
+	for _, blob := range manifest.Blobs {
+		missing.WriteString(blob.SHA256)
+		missing.WriteByte('\n')
+	}
+	privateKey := filepath.Join(root, "identity")
+	if err := os.WriteFile(privateKey, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &concurrentFilePublicationRunner{
+		missing: missing.String(),
+		started: make(chan struct{}, blobCount),
+		release: make(chan struct{}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- PublishFileManifest(
+			t.Context(),
+			runner,
+			"/usr/bin/ssh",
+			privateKey,
+			project,
+			manifest,
+			"terraform-bastion-limit",
+			blobCount,
+			nil,
+		)
+	}()
+	expected := min(
+		config.EffectiveWorkLimit(blobCount, blobCount, defaultParallelism),
+		maxConcurrentBastionFileSSHTransfers,
+	)
+	for range expected {
+		select {
+		case <-runner.started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for concurrent SSH transfers")
+		}
+	}
+	if maximum := runner.maximum.Load(); maximum != int64(expected) {
+		t.Fatalf("maximum concurrent SSH transfers = %d, want %d", maximum, expected)
+	}
+	close(runner.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out completing SSH transfers")
+	}
+	if maximum := runner.maximum.Load(); maximum > maxConcurrentBastionFileSSHTransfers {
+		t.Fatalf(
+			"maximum concurrent SSH transfers = %d, limit %d",
+			maximum,
+			maxConcurrentBastionFileSSHTransfers,
 		)
 	}
 }
@@ -469,15 +620,15 @@ func fileManifestFixture(t *testing.T) (*config.Project, FileManifest) {
 				Kubespray: []config.KubesprayArtifactInventory{
 					{Files: []config.KubesprayFile{{
 						RepositoryPath: "github.com/b",
-						CacheFile: cacheFile,
-						SHA256: digest,
-						Size: int64(len(content)),
+						CacheFile:      cacheFile,
+						SHA256:         digest,
+						Size:           int64(len(content)),
 					}}},
 					{Files: []config.KubesprayFile{{
 						RepositoryPath: "dl.k8s.io/a",
-						CacheFile: cacheFile,
-						SHA256: digest,
-						Size: int64(len(content)),
+						CacheFile:      cacheFile,
+						SHA256:         digest,
+						Size:           int64(len(content)),
 					}}},
 				},
 			},

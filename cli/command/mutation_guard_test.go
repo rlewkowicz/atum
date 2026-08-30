@@ -89,6 +89,7 @@ func TestCommandMutationExceptionsAreExplicit(t *testing.T) {
 		{path: []string{"platform", "status"}, annotation: "atum.dev/read-only", value: "true"},
 		{path: []string{"infra", "access", "status"}, annotation: "atum.dev/read-only", value: "true"},
 		{path: []string{"pull", "updates"}, annotation: "atum.dev/update-writer", value: "true"},
+		{path: []string{"destroy"}, annotation: projectLockBypassAnnotation, value: "true"},
 		{path: []string{"__host-access"}, annotation: "atum.dev/internal-process", value: internalRootProcess},
 		{path: []string{"__verify-host-access"}, annotation: "atum.dev/internal-process", value: internalVerifyProcess},
 	} {

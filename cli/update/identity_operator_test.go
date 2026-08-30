@@ -49,6 +49,9 @@ func TestOperatorConfigurationProjectsIdentityKindAndCanonicalClaims(t *testing.
 				configuration.Spec.Keycloak.Scopes, configuration.Spec.Vault.Role.Scopes)
 		}
 	}
+	if configuration.Spec.Keycloak.GroupsScope.ClaimName != wantScopes[len(wantScopes)-1] {
+		t.Fatalf("groups scope projection = %#v", configuration.Spec.Keycloak.GroupsScope)
+	}
 }
 
 func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
@@ -105,30 +108,85 @@ func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 	}
 }
 
-func TestIdentityValuesScopeSSOEgressToPassthroughHTTPSVIP(t *testing.T) {
+func TestIdentityValuesScopeSSOEgressToPassthroughVIPAndGateway(t *testing.T) {
 	t.Parallel()
 
 	values := loadLocalIdentityValues(t)
+	assertIdentityGatewayEgress(
+		t,
+		values,
+		"sso",
+		"10.77.0.21/32",
+		"passthrough-ingressgateway",
+	)
+}
+
+func TestIdentityValuesScopeVaultEgressToPublicVIPAndGateway(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	assertIdentityGatewayEgress(
+		t,
+		values,
+		"vaultIngress",
+		"10.77.0.20/32",
+		"public-ingressgateway",
+	)
+	monitoring := values["monitoring"].(map[string]any)
+	monitoringValues := monitoring["values"].(map[string]any)
+	networkPolicies := monitoringValues["networkPolicies"].(map[string]any)
+	egress := networkPolicies["egress"].(map[string]any)
+	from := egress["from"].(map[string]any)
+	prometheus := from["prometheus"].(map[string]any)
+	to := prometheus["to"].(map[string]any)
+	definition := to["definition"].(map[string]any)
+	if definition["vaultIngress"] != true {
+		t.Fatalf("Prometheus Vault egress = %#v", definition)
+	}
+}
+
+func assertIdentityGatewayEgress(
+	t *testing.T,
+	values map[string]any,
+	definitionName string,
+	wantCIDR string,
+	wantGateway string,
+) {
+	t.Helper()
+
 	networkPolicies := values["networkPolicies"].(map[string]any)
 	egress := networkPolicies["egress"].(map[string]any)
 	definitions := egress["definitions"].(map[string]any)
-	sso := definitions["sso"].(map[string]any)
-	to := sso["to"].([]any)
-	if len(to) != 1 {
-		t.Fatalf("SSO egress destinations = %#v", to)
+	definition := definitions[definitionName].(map[string]any)
+	to := definition["to"].([]any)
+	if len(to) != 2 {
+		t.Fatalf("%s egress destinations = %#v", definitionName, to)
 	}
-	destination := to[0].(map[string]any)
-	ipBlock := destination["ipBlock"].(map[string]any)
-	if ipBlock["cidr"] != "10.77.0.21/32" || len(destination) != 1 {
-		t.Fatalf("SSO egress destination = %#v", destination)
+	vip := to[0].(map[string]any)
+	ipBlock := vip["ipBlock"].(map[string]any)
+	if ipBlock["cidr"] != wantCIDR || len(vip) != 1 {
+		t.Fatalf("%s VIP destination = %#v", definitionName, vip)
 	}
-	ports := sso["ports"].([]any)
-	if len(ports) != 1 {
-		t.Fatalf("SSO egress ports = %#v", ports)
+	destination := to[1].(map[string]any)
+	namespaceSelector := destination["namespaceSelector"].(map[string]any)
+	namespaceLabels := namespaceSelector["matchLabels"].(map[string]any)
+	podSelector := destination["podSelector"].(map[string]any)
+	podLabels := podSelector["matchLabels"].(map[string]any)
+	if namespaceLabels["kubernetes.io/metadata.name"] != "istio-gateway" ||
+		podLabels["app.kubernetes.io/name"] != wantGateway ||
+		podLabels["istio"] != "ingressgateway" ||
+		len(destination) != 2 {
+		t.Fatalf("%s egress destination = %#v", definitionName, destination)
 	}
-	port := ports[0].(map[string]any)
-	if port["port"] != 443 || port["protocol"] != "TCP" {
-		t.Fatalf("SSO egress port = %#v", port)
+	ports := definition["ports"].([]any)
+	if len(ports) != 2 {
+		t.Fatalf("%s egress ports = %#v", definitionName, ports)
+	}
+	for index, wanted := range []int{443, 8443} {
+		port := ports[index].(map[string]any)
+		if port["port"] != wanted || port["protocol"] != "TCP" {
+			t.Fatalf("%s egress port %d = %#v", definitionName, index, port)
+		}
 	}
 }
 
@@ -178,7 +236,7 @@ func TestIdentityValuesMountPolicyReporterOIDCCA(t *testing.T) {
 	}
 }
 
-func TestOperatorNetworkPolicyProjectsBothIngressVIPs(t *testing.T) {
+func TestOperatorNetworkPolicySelectsIngressVIPsAndGateways(t *testing.T) {
 	t.Parallel()
 
 	text := readPlatformText(t, "platform/apps/atum-operator/network-policy.yaml")
@@ -186,6 +244,70 @@ func TestOperatorNetworkPolicyProjectsBothIngressVIPs(t *testing.T) {
 		if strings.Count(text, "cidr: "+cidr) != 1 {
 			t.Fatalf("operator network policy does not contain exactly one %s", cidr)
 		}
+	}
+	for _, name := range []string{"public-ingressgateway", "passthrough-ingressgateway"} {
+		if strings.Count(text, "- "+name) != 1 {
+			t.Fatalf("operator network policy does not select exactly one %s", name)
+		}
+	}
+	if strings.Count(text, "port: 443") != 1 ||
+		strings.Count(text, "port: 8443") != 1 ||
+		!strings.Contains(text, "kubernetes.io/metadata.name: istio-gateway") {
+		t.Fatalf("operator network policy does not select gateway VIPs and HTTPS endpoints:\n%s", text)
+	}
+}
+
+func TestOperatorImageProjectionComposesWithRenderedCandidate(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const relative = "platform/apps/atum-operator/deployment.yaml"
+	tree := newCandidateTree(root)
+	if err := tree.Set(relative, []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atum-operator
+  labels:
+    test.atum.dev/rendered-candidate: retained
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          image: 10.77.0.9:32443/atum/atum-operator:0.1.1
+`)); err != nil {
+		t.Fatal(err)
+	}
+	images := []config.Image{{
+		ID:      "atum-operator",
+		Version: "0.1.1",
+		Target:  "10.77.0.9:32443/atum/atum-operator:build-test",
+	}}
+	if err := projectOperatorImage(tree, images); err != nil {
+		t.Fatal(err)
+	}
+	first, err := tree.CandidateData(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(first), "test.atum.dev/rendered-candidate: retained") {
+		t.Fatalf("operator image projection discarded rendered candidate:\n%s", first)
+	}
+	if !strings.Contains(string(first), "atum/atum-operator:build-test") {
+		t.Fatalf("operator image projection did not use resolved target:\n%s", first)
+	}
+	if err := projectOperatorImage(tree, images); err != nil {
+		t.Fatal(err)
+	}
+	second, err := tree.CandidateData(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("operator image projection is not idempotent:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }
 
@@ -201,6 +323,7 @@ func loadLocalIdentityValues(t *testing.T) map[string]any {
 		t.Fatal(err)
 	}
 	values, err := identityValues(contract, &config.LocalAccess{
+		PublicIngressVIP:      "10.77.0.20",
 		PassthroughIngressVIP: "10.77.0.21",
 	})
 	if err != nil {

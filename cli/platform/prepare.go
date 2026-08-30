@@ -175,9 +175,7 @@ func (service Service) Seed(
 		ctx,
 		service.Runner,
 		service.SSHBin,
-		service.Project.Desired.Infrastructure.Targets[
-			service.Project.Desired.Infrastructure.Active
-		].SSH.PrivateKeyPath,
+		service.Project.Desired.Infrastructure.Targets[service.Project.Desired.Infrastructure.Active].SSH.PrivateKeyPath,
 		service.Project,
 		publication.KubesprayFiles,
 		bastionIdentity,

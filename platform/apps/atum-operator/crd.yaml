@@ -126,13 +126,8 @@ spec:
                         enum:
                         - groups
                         type: string
-                      name:
-                        enum:
-                        - atum-groups
-                        type: string
                     required:
                     - claimName
-                    - name
                     type: object
                   realm:
                     enum:

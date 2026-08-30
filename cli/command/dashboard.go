@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"atum/cli/config"
 	"atum/cli/progress"
 	"atum/cli/tui"
 )
@@ -19,11 +20,42 @@ func (a *app) withDashboard(
 	scope tui.Scope,
 	run func(context.Context) error,
 ) error {
+	return a.withDashboardProject(parent, a.project, title, scope, run)
+}
+
+// withDashboardAtRoot owns presentation for a managed operation that must load
+// and lock its own project state. The minimal project supplies only the
+// repository root needed for private logs and update-specific phase layout.
+func (a *app) withDashboardAtRoot(
+	parent context.Context,
+	title string,
+	scope tui.Scope,
+	run func(context.Context) error,
+) error {
+	return a.withDashboardProject(
+		parent,
+		&config.Project{Root: a.root},
+		title,
+		scope,
+		run,
+	)
+}
+
+func (a *app) withDashboardProject(
+	parent context.Context,
+	project *config.Project,
+	title string,
+	scope tui.Scope,
+	run func(context.Context) error,
+) error {
 	if run == nil {
 		return errors.New("managed operation is unavailable")
 	}
-	return a.withDashboardCompletion(
-		parent, title, scope,
+	return a.withDashboardProjectCompletion(
+		parent,
+		project,
+		title,
+		scope,
 		func(ctx context.Context) (tui.Completion, error) {
 			return tui.Completion{}, run(ctx)
 		},
@@ -36,7 +68,23 @@ func (a *app) withDashboardCompletion(
 	scope tui.Scope,
 	run func(context.Context) (tui.Completion, error),
 ) error {
-	if a.project == nil {
+	return a.withDashboardProjectCompletion(
+		parent,
+		a.project,
+		title,
+		scope,
+		run,
+	)
+}
+
+func (a *app) withDashboardProjectCompletion(
+	parent context.Context,
+	project *config.Project,
+	title string,
+	scope tui.Scope,
+	run func(context.Context) (tui.Completion, error),
+) error {
+	if project == nil {
 		return errors.New("Atum project is not loaded")
 	}
 	if run == nil {
@@ -45,7 +93,7 @@ func (a *app) withDashboardCompletion(
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	session, err := tui.New(tui.Options{
-		Project: a.project,
+		Project: project,
 		Title:   title,
 		Scope:   scope,
 		Raw:     a.raw,

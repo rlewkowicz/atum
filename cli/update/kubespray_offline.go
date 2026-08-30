@@ -42,15 +42,16 @@ type kubespraySourceOverrides struct {
 }
 
 type kubespraySelectionVars struct {
-	KubernetesVersion string `json:"kube_version"`
-	GCRImageRepo      string `json:"gcr_image_repo"`
-	KubeImageRepo     string `json:"kube_image_repo"`
-	KubeadmImageRepo  string `json:"kubeadm_image_repo"`
-	DockerImageRepo   string `json:"docker_image_repo"`
-	QuayImageRepo     string `json:"quay_image_repo"`
-	GitHubImageRepo   string `json:"github_image_repo"`
-	ProjectionPath    string `json:"atum_projection_path"`
-	KubeadmTemplate   string `json:"atum_kubeadm_template"`
+	KubernetesVersion        string `json:"kube_version"`
+	GCRImageRepo             string `json:"gcr_image_repo"`
+	KubeImageRepo            string `json:"kube_image_repo"`
+	KubeadmImageRepo         string `json:"kubeadm_image_repo"`
+	DockerImageRepo          string `json:"docker_image_repo"`
+	QuayImageRepo            string `json:"quay_image_repo"`
+	GitHubImageRepo          string `json:"github_image_repo"`
+	ProjectionPath           string `json:"atum_projection_path"`
+	KubeadmTemplate          string `json:"atum_kubeadm_template"`
+	AnsiblePythonInterpreter string `json:"ansible_python_interpreter"`
 }
 
 type discoveredKubesprayFile struct {
@@ -322,7 +323,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 				}},
 			}
 			progress.Update(
-				groupContext, progress.Platform, "kubespray-artifacts",
+				groupContext, progress.Updates, "kubespray-artifacts",
 				"Kubespray artifacts", "resolved image "+source,
 				int(completed.Add(1)), len(sources),
 			)
@@ -331,7 +332,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 	}
 	if err := group.Wait(); err != nil {
 		progress.Fail(
-			ctx, progress.Platform, "kubespray-artifacts",
+			ctx, progress.Updates, "kubespray-artifacts",
 			"Kubespray artifacts", err,
 		)
 		return config.KubesprayArtifactInventory{}, err
@@ -377,7 +378,7 @@ func (service *Service) reconstructKubesprayArtifacts(
 		)
 	}
 	progress.Done(
-		ctx, progress.Platform, "kubespray-artifacts", "Kubespray artifacts",
+		ctx, progress.Updates, "kubespray-artifacts", "Kubespray artifacts",
 		fmt.Sprintf("%d files and %d images locked", len(files), len(images)),
 	)
 	return inventory, nil
@@ -452,16 +453,31 @@ func (service *Service) runKubespraySelectionWorkflow(
 		QuayImageRepo:    "quay.io",
 		GitHubImageRepo:  "ghcr.io",
 	}
+	ansibleBin, err := fssecure.Resolve(
+		service.root,
+		filepath.Join(
+			".atum", "cache", "tools", "kubespray",
+			resolved.Source.Commit, "venv", "bin",
+		),
+		false,
+	)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf(
+			"resolve exact Kubespray toolchain for selection: %w",
+			err,
+		)
+	}
 	vars := kubespraySelectionVars{
-		KubernetesVersion: strings.TrimPrefix(kubernetesVersion, "v"),
-		GCRImageRepo:      sourceOverrides.GCRImageRepo,
-		KubeImageRepo:     sourceOverrides.KubeImageRepo,
-		KubeadmImageRepo:  sourceOverrides.KubeadmImageRepo,
-		DockerImageRepo:   sourceOverrides.DockerImageRepo,
-		QuayImageRepo:     sourceOverrides.QuayImageRepo,
-		GitHubImageRepo:   sourceOverrides.GitHubImageRepo,
-		ProjectionPath:    projectionPath,
-		KubeadmTemplate:   kubeadmTemplate,
+		KubernetesVersion:        strings.TrimPrefix(kubernetesVersion, "v"),
+		GCRImageRepo:             sourceOverrides.GCRImageRepo,
+		KubeImageRepo:            sourceOverrides.KubeImageRepo,
+		KubeadmImageRepo:         sourceOverrides.KubeadmImageRepo,
+		DockerImageRepo:          sourceOverrides.DockerImageRepo,
+		QuayImageRepo:            sourceOverrides.QuayImageRepo,
+		GitHubImageRepo:          sourceOverrides.GitHubImageRepo,
+		ProjectionPath:           projectionPath,
+		KubeadmTemplate:          kubeadmTemplate,
+		AnsiblePythonInterpreter: filepath.Join(ansibleBin, "python"),
 	}
 	varsData, err := json.Marshal(vars)
 	if err != nil {
@@ -498,7 +514,16 @@ func (service *Service) runKubespraySelectionWorkflow(
       ansible.builtin.set_fact:
         atum_selected_downloads: >-
           {{ atum_selected_downloads | default({})
-             | combine({item.key: download_defaults | combine(item.value)}) }}
+             | combine({item.key: {
+               'enabled': item.value.enabled | bool,
+               'file': item.value.file | default(false) | bool,
+               'container': item.value.container | default(false) | bool,
+               'repo': item.value.repo | default(none),
+               'tag': item.value.tag | default(none),
+               'url': item.value.url | default(none),
+               'checksum': item.value.checksum | default(none),
+               'groups': item.value.groups | default([])
+             }}) }}
       loop: "{{ downloads | dict2items }}"
       when:
         - item.value.enabled | bool
@@ -601,7 +626,7 @@ func (service *Service) runKubespraySelectionWorkflow(
 		)
 	}
 	progress.Start(
-		ctx, progress.Platform, "kubespray-artifacts", "Kubespray artifacts",
+		ctx, progress.Updates, "kubespray-artifacts", "Kubespray artifacts",
 		"evaluating the pinned selected-runtime downloads",
 	)
 	arguments := make([]string, 0, 5+len(groupVarPaths)*2)
@@ -610,20 +635,6 @@ func (service *Service) runKubespraySelectionWorkflow(
 		arguments = append(arguments, "--extra-vars", "@"+path)
 	}
 	arguments = append(arguments, "--extra-vars", "@"+varsPath)
-	ansibleBin, err := fssecure.Resolve(
-		service.root,
-		filepath.Join(
-			".atum", "cache", "tools", "kubespray",
-			resolved.Source.Commit, "venv", "bin",
-		),
-		false,
-	)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf(
-			"resolve exact Kubespray toolchain for selection: %w",
-			err,
-		)
-	}
 	if err := service.runner.Run(ctx, process.Command{
 		Name: filepath.Join(ansibleBin, "ansible-playbook"),
 		Args: arguments,
@@ -633,7 +644,7 @@ func (service *Service) runKubespraySelectionWorkflow(
 				os.Getenv("PATH"),
 		},
 		Activity: progress.Target{
-			Phase: progress.Platform, ID: "kubespray-offline",
+			Phase: progress.Updates, ID: "kubespray-offline",
 			Label: "Kubespray selected-runtime discovery",
 		},
 	}); err != nil {
@@ -693,7 +704,7 @@ func (service *Service) runKubespraySelectionWorkflow(
 		return files[i].ID < files[j].ID
 	})
 	progress.Update(
-		ctx, progress.Platform, "kubespray-artifacts", "Kubespray artifacts",
+		ctx, progress.Updates, "kubespray-artifacts", "Kubespray artifacts",
 		fmt.Sprintf(
 			"%d files acquired and %d images discovered",
 			len(files), len(images),
@@ -957,7 +968,7 @@ func (service *Service) acquireKubesprayFiles(
 					); err != nil {
 						return err
 					}
-					size = counter.written
+					size = counter.count
 					return nil
 				},
 			)
@@ -997,7 +1008,7 @@ func (service *Service) acquireKubesprayFiles(
 			acquired[record.id] = sourcePath
 			acquiredMu.Unlock()
 			progress.Update(
-				groupContext, progress.Platform, "kubespray-artifacts",
+				groupContext, progress.Updates, "kubespray-artifacts",
 				"Kubespray artifacts", "content-pinned "+record.id,
 				int(completed.Add(1)), len(discovered),
 			)
@@ -1008,17 +1019,6 @@ func (service *Service) acquireKubesprayFiles(
 		return nil, nil, err
 	}
 	return result, acquired, nil
-}
-
-type countingWriter struct {
-	writer  io.Writer
-	written int64
-}
-
-func (writer *countingWriter) Write(data []byte) (int, error) {
-	written, err := writer.writer.Write(data)
-	writer.written += int64(written)
-	return written, err
 }
 
 func retainKubesprayFile(

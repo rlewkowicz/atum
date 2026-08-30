@@ -180,6 +180,8 @@ func TestDestroyKeepBastionForwardsExactTerraformTargets(t *testing.T) {
 		"-target=libvirt_domain.node",
 		"-target=libvirt_volume.load_balancer",
 		"-target=libvirt_volume.node",
+		"-target=libvirt_volume.node_data",
+		"-target=terraform_data.node_storage_ready",
 	}
 	if strings.Join(terraformArgs, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("Terraform arguments = %#v, want %#v", terraformArgs, want)
@@ -230,6 +232,9 @@ func TestLifecycleCommandsAreTopLevelAndDestroyFlagsAreExposed(t *testing.T) {
 	}
 	if keepBastion := destroy.Flags().Lookup("keep-bastion"); keepBastion == nil {
 		t.Fatal("destroy --keep-bastion flag is absent")
+	}
+	if commandAnnotation(destroy, projectLockBypassAnnotation) != "true" {
+		t.Fatal("destroy does not bypass Atum project locks")
 	}
 	uninstall, _, err := root.Find([]string{"uninstall"})
 	if err != nil {

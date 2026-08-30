@@ -14,11 +14,11 @@ func TestTerraformEnvironmentProjectsOneCanonicalSSHDeclaration(t *testing.T) {
 	target := config.InfrastructureTarget{
 		SSH: config.SSHKeyPair{PrivateKeyPath: "/keys/atum"},
 		LocalAccess: &config.LocalAccess{
-			Domain: "atum.test",
-			DNSServer: "10.77.0.1",
-			PublicIngressVIP: "10.77.0.20",
+			Domain:                "atum.test",
+			DNSServer:             "10.77.0.1",
+			PublicIngressVIP:      "10.77.0.20",
 			PassthroughIngressVIP: "10.77.0.21",
-			LoadBalancerRange: "10.77.0.22-10.77.0.39",
+			LoadBalancerRange:     "10.77.0.22-10.77.0.39",
 		},
 	}
 	environment, err := terraformTargetEnvironment(target, nil)

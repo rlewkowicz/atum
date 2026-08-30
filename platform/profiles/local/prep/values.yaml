@@ -76,17 +76,6 @@ kiali:
         spec:
           deployment:
             replicas: 1
-kyverno:
-  values:
-    upstream:
-      admissionController:
-        replicas: 1
-      backgroundController:
-        replicas: 1
-      cleanupController:
-        replicas: 1
-      reportsController:
-        replicas: 1
 kyvernoReporter:
   values:
     upstream:

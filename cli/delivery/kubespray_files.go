@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -24,7 +23,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const fileManifestSchema = "atum.dev/kubespray-files/v1"
+const (
+	fileManifestSchema                   = "atum.dev/kubespray-files/v1"
+	maxConcurrentBastionFileSSHTransfers = 8
+)
 
 type FileManifestIdentity struct {
 	SHA256 string `json:"sha256"`
@@ -36,7 +38,7 @@ type FileBlob struct {
 	SHA256    string   `json:"sha256"`
 	Size      int64    `json:"size"`
 	Paths     []string `json:"paths"`
-	CacheFile string  `json:"-"`
+	CacheFile string   `json:"-"`
 }
 
 type FileManifest struct {
@@ -112,12 +114,13 @@ func newKubesprayFileProjection(
 	paths := make(map[string]string, len(entries))
 	for _, entry := range entries {
 		decoded, digestErr := hex.DecodeString(entry.sha256)
+		canonicalPath, pathErr := config.KubesprayFileRepositoryPath(
+			"https://" + entry.path,
+		)
 		if entry.label == "" ||
 			entry.path == "" ||
-			strings.HasPrefix(entry.path, "/") ||
-			strings.ContainsRune(entry.path, '\\') ||
-			strings.ContainsAny(entry.path, "?#\t\r\n\x00") ||
-			path.Clean(entry.path) != entry.path ||
+			pathErr != nil ||
+			canonicalPath != entry.path ||
 			digestErr != nil ||
 			len(decoded) != 32 ||
 			entry.sha256 != strings.ToLower(entry.sha256) ||
@@ -367,8 +370,8 @@ func MaterializeFileManifest(project *config.Project) (FileManifest, error) {
 			Count:  len(blobs),
 			Bytes:  total,
 		},
-		Blobs:    blobs,
-		Data:     append([]byte(nil), data...),
+		Blobs: blobs,
+		Data:  append([]byte(nil), data...),
 	}, nil
 }
 
@@ -466,10 +469,13 @@ func PublishFileManifest(
 		byDigest[blob.SHA256] = blob
 	}
 	group, groupContext := errgroup.WithContext(ctx)
-	group.SetLimit(config.EffectiveWorkLimit(
-		parallelism,
-		project.Desired.Updates.Parallelism,
-		defaultParallelism,
+	group.SetLimit(min(
+		config.EffectiveWorkLimit(
+			parallelism,
+			project.Desired.Updates.Parallelism,
+			defaultParallelism,
+		),
+		maxConcurrentBastionFileSSHTransfers,
 	))
 	for digest := range missing {
 		blob := byDigest[digest]
@@ -484,8 +490,8 @@ func PublishFileManifest(
 				"put", manifest.Identity.SHA256, blob.SHA256,
 			)
 			if runErr := runner.Run(groupContext, process.Command{
-				Name: sshBinary,
-				Args: putArgs,
+				Name:  sshBinary,
+				Args:  putArgs,
 				Stdin: io.LimitReader(file, blob.Size+1),
 			}); runErr != nil {
 				return fmt.Errorf("publish Kubespray file %s: %w", blob.SHA256, runErr)

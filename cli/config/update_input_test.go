@@ -5,6 +5,70 @@ import (
 	"testing"
 )
 
+func TestUpdateInputDiscardsOnlyUpdaterOwnedKubespraySchemas(t *testing.T) {
+	t.Parallel()
+
+	for _, fixture := range []struct {
+		name    string
+		section string
+		data    []byte
+		target  any
+	}{
+		{
+			name:    "desired",
+			section: "delivery",
+			data: []byte(`{
+				"delivery": {
+					"kubespray": [{"officialScript": "obsolete"}]
+				}
+			}`),
+			target: &Document{},
+		},
+		{
+			name:    "lock",
+			section: "resolved",
+			data: []byte(`{
+				"resolved": {
+					"kubespray": [{"officialScript": "obsolete"}]
+				}
+			}`),
+			target: &Lock{},
+		},
+	} {
+		fixture := fixture
+		t.Run(fixture.name, func(t *testing.T) {
+			t.Parallel()
+			sanitized, err := discardUpdaterKubesprayProjection(
+				fixture.data,
+				fixture.section,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(sanitized), "officialScript") {
+				t.Fatalf("obsolete projection survived: %s", sanitized)
+			}
+			if err := DecodeJSON(sanitized, fixture.target); err != nil {
+				t.Fatalf("decode sanitized input: %v", err)
+			}
+		})
+	}
+
+	unsupported, err := discardUpdaterKubesprayProjection(
+		[]byte(`{
+			"delivery": {"kubespray": []},
+			"unsupported": true
+		}`),
+		"delivery",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := DecodeJSON(unsupported, &Document{}); err == nil {
+		t.Fatal("discard boundary accepted an unrelated unknown field")
+	}
+}
+
 func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 	t.Parallel()
 	images := []Image{
@@ -23,8 +87,8 @@ func TestUpdateInputDiscardsEveryNonCanonicalDerivedImage(t *testing.T) {
 		SelectionInputSHA256:    strings.Repeat("d", 64),
 		SelectedInventorySHA256: strings.Repeat("b", 64),
 		Files: []KubesprayFile{{
-			ID:     "kubeadm",
-			Source: "https://dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
+			ID:             "kubeadm",
+			Source:         "https://dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
 			RepositoryPath: "dl.k8s.io/release/v1.35.2/bin/linux/amd64/kubeadm",
 			CacheFile: ".atum/cache/kubespray-offline/sha256/" +
 				strings.Repeat("c", 64),

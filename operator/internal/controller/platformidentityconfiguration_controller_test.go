@@ -234,7 +234,7 @@ func validSpec() platformv1alpha1.PlatformIdentityConfigurationSpec {
 			Administrator: platformv1alpha1.Administrator{
 				Username: "atum", Group: "atum-admins", RealmRole: "admin",
 			},
-			GroupsScope: platformv1alpha1.GroupsScope{Name: "atum-groups", ClaimName: "groups"},
+			GroupsScope: platformv1alpha1.GroupsScope{ClaimName: "groups"},
 			Scopes:      []string{"openid", "profile", "email", "groups"},
 			Clients: []platformv1alpha1.KeycloakClient{{
 				ID: "atum-vault", Kind: platformv1alpha1.ClientConfidential,

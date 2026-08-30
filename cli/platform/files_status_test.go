@@ -26,8 +26,8 @@ func TestFileProjectionObserverRejectsNonBastionEndpoint(t *testing.T) {
 				Kubespray: []config.KubesprayArtifactInventory{{
 					Files: []config.KubesprayFile{{
 						RepositoryPath: "dl.k8s.io/release",
-						SHA256: config.SHA256([]byte("blob")),
-						Size: 4,
+						SHA256:         config.SHA256([]byte("blob")),
+						Size:           4,
 					}},
 				}},
 			},

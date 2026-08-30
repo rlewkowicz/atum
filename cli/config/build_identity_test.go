@@ -162,6 +162,32 @@ func TestMirrorTargetTagsPreserveFluxBootstrapNames(t *testing.T) {
 	}
 }
 
+func TestMirrorTargetTagsPreserveKubesprayNames(t *testing.T) {
+	const tag = "v3.31.5"
+	image := Image{
+		ID:        "kubespray-node-77c1a7981006",
+		Family:    "kubernetes",
+		Version:   "3.31.5",
+		Target:    "registry.example/atum/kubespray/quay.io/calico/node:" + tag,
+		Scopes:    []string{"kubespray"},
+		Runtime:   true,
+		Consumers: []string{"kubespray"},
+		Discovery: "kubespray",
+		Delivery: ImageDelivery{Default: DeliveryChoice{
+			Type:   "mirror",
+			Source: "quay.io/calico/node:" + tag,
+			Digest: "sha256:" + strings.Repeat("a", 64),
+		}},
+	}
+	tags, err := MirrorTargetTags([]Image{image})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tags[image.ID] != tag {
+		t.Fatalf("%s target tag = %q, want %q", image.ID, tags[image.ID], tag)
+	}
+}
+
 func TestBuildGraphIdentityNormalizesOnlyCanonicalTargetTags(t *testing.T) {
 	left := []byte(`target "one" {
   tags       = ["registry.example/atum/one:1"]

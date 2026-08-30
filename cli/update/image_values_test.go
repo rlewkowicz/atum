@@ -93,6 +93,37 @@ func TestOfficialRedisModulePathsAreProjected(t *testing.T) {
 	}
 }
 
+func TestPublicHarborRemovesChartExposedRegistry1PullSecrets(t *testing.T) {
+	t.Parallel()
+
+	generated := make(map[string]any)
+	if err := projectPublicHarborPullSecrets(generated); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range [][]string{
+		{"addons", "metricsServer", "values", "upstream"},
+		{"packages", "cloudnative-pg", "values", "upstream"},
+	} {
+		upstream := mapAt(generated, path...)
+		secrets, exists := upstream["imagePullSecrets"].([]any)
+		if !exists || len(secrets) != 0 {
+			t.Fatalf("%v imagePullSecrets = %#v", path, upstream["imagePullSecrets"])
+		}
+	}
+	redis := mapAt(
+		generated,
+		"packages",
+		"redis",
+		"values",
+		"upstream",
+		"global",
+	)
+	secrets, exists := redis["imagePullSecrets"].([]any)
+	if !exists || len(secrets) != 0 {
+		t.Fatalf("Redis imagePullSecrets = %#v", redis["imagePullSecrets"])
+	}
+}
+
 func TestKialiImageNameAndVersionAreProjectedSeparately(t *testing.T) {
 	t.Parallel()
 

@@ -39,7 +39,7 @@ func TestProjectSeedKubesprayFilesOwnsExactBastionIdentity(t *testing.T) {
 	want := config.SeedKubesprayFiles{
 		URL: config.SeedKubesprayFilesURL,
 		Image: config.SeedImage{
-			ID: config.SeedKubesprayFilesImageID,
+			ID:     config.SeedKubesprayFilesImageID,
 			Source: config.SeedKubesprayFilesImageSource,
 			Digest: digest,
 		},

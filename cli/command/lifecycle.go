@@ -31,10 +31,13 @@ func (a *app) destroyCommand() *cobra.Command {
 func (a *app) destroyCommandWithMutation(mutate func(context.Context, []string) error) *cobra.Command {
 	var force, keepBastion bool
 	command := &cobra.Command{
-		Use:         "destroy",
-		Short:       "Remove local access and destroy the active infrastructure target",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{"atum.dev/allow-stale": "true"},
+		Use:   "destroy",
+		Short: "Remove local access and destroy the active infrastructure target",
+		Args:  cobra.NoArgs,
+		Annotations: map[string]string{
+			"atum.dev/allow-stale":      "true",
+			projectLockBypassAnnotation: "true",
+		},
 		RunE: a.withProjectUnlock(func(cmd *cobra.Command, _ []string) error {
 			if !force && !a.dryRun {
 				prompt := destroyConfirmationPrompt
@@ -84,6 +87,8 @@ func destroyTerraformArgs(keepBastion bool) []string {
 		"-target=libvirt_domain.node",
 		"-target=libvirt_volume.load_balancer",
 		"-target=libvirt_volume.node",
+		"-target=libvirt_volume.node_data",
+		"-target=terraform_data.node_storage_ready",
 	}
 }
 

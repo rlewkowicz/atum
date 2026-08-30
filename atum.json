@@ -18,6 +18,9 @@
         "directory": "infra/libvirt",
         "autoApprove": true,
         "platformProfile": "local",
+        "ssh": {
+          "privateKeyPath": "~/.ssh/id_ed25519"
+        },
         "localAccess": {
           "domain": "atum.test",
           "dnsServer": "10.77.0.1",
@@ -38,32 +41,6 @@
     "forks": 8,
     "automaticUpgrade": true,
     "releases": [
-      {
-        "kubernetes": "1.33.5",
-        "kubespray": {
-          "url": "https://github.com/kubernetes-sigs/kubespray.git",
-          "version": "v2.29.1",
-          "commit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29"
-        },
-        "checksums": {
-          "kubelet": "sha256:8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
-          "kubeadm": "sha256:6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
-          "kubectl": "sha256:6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc"
-        }
-      },
-      {
-        "kubernetes": "1.34.3",
-        "kubespray": {
-          "url": "https://github.com/kubernetes-sigs/kubespray.git",
-          "version": "v2.30.0",
-          "commit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a"
-        },
-        "checksums": {
-          "kubelet": "sha256:0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
-          "kubeadm": "sha256:f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
-          "kubectl": "sha256:ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212"
-        }
-      },
       {
         "kubernetes": "1.35.4",
         "kubespray": {
@@ -638,952 +615,125 @@
             "digest": "sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0"
           }
         ]
+      },
+      "kubesprayFiles": {
+        "url": "http://10.77.0.9:8080",
+        "image": {
+          "id": "kubespray-files-nginx",
+          "source": "docker.io/library/nginx:1.28.2-alpine",
+          "digest": "sha256:0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c469d507095dd2c77e"
+        }
       }
     },
     "kubespray": [
       {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
-        "kubernetesVersion": "1.33.5",
-        "kubesprayCommit": "0c6a29553f90c55cba5e0e359470321dc7cf7d29",
-        "officialScript": "contrib/offline/generate_list.sh",
-        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
-        "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "b300342418db36a306649419e6729df48a15c95cf19cb8e821979ef902a03364",
-        "officialImages": [
-          "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
-          "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
-          "quay.io/coreos/etcd:v3.5.25",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator:v1.19.4",
-          "quay.io/cilium/hubble-relay:v1.19.4",
-          "quay.io/cilium/certgen:v0.2.4",
-          "quay.io/cilium/hubble-ui:v0.13.3",
-          "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
-          "docker.io/flannel/flannel:v0.27.3",
-          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
-          "quay.io/calico/node:v3.30.5",
-          "quay.io/calico/cni:v3.30.5",
-          "quay.io/calico/kube-controllers:v3.30.5",
-          "quay.io/calico/typha:v3.30.5",
-          "quay.io/calico/apiserver:v3.30.5",
-          "docker.io/kubeovn/kube-ovn:v1.12.21",
-          "docker.io/cloudnativelabs/kube-router:v2.1.1",
-          "registry.k8s.io/pause:3.10",
-          "ghcr.io/kube-vip/kube-vip:v0.8.9",
-          "docker.io/library/nginx:1.28.0-alpine",
-          "docker.io/library/haproxy:3.2.4-alpine",
-          "registry.k8s.io/coredns/coredns:v1.12.0",
-          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
-          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
-          "docker.io/library/registry:2.8.1",
-          "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
-          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
-          "docker.io/rancher/local-path-provisioner:v0.0.32",
-          "registry.k8s.io/ingress-nginx/controller:v1.13.3",
-          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
-          "quay.io/jetstack/cert-manager-controller:v1.15.3",
-          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
-          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
-          "registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
-          "registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
-          "registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
-          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
-          "registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
-          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
-          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
-          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
-          "docker.io/kubernetesui/dashboard:v2.7.0",
-          "docker.io/kubernetesui/metrics-scraper:v1.0.8",
-          "quay.io/metallb/speaker:v0.13.9",
-          "quay.io/metallb/controller:v0.13.9",
-          "registry.k8s.io/kube-apiserver:v1.33.5",
-          "registry.k8s.io/kube-controller-manager:v1.33.5",
-          "registry.k8s.io/kube-scheduler:v1.33.5",
-          "registry.k8s.io/kube-proxy:v1.33.5"
-        ],
-        "runtimeImages": [
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator-generic:v1.19.4"
-        ],
-        "files": [
-          {
-            "variable": "calico_crds_download_url",
-            "source": "https://github.com/projectcalico/calico/archive/v3.30.5.tar.gz",
-            "localPath": "github.com/projectcalico/calico/archive/v3.30.5.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/3a38f91596c204b43c70f642a3e686d8c3fbfdfa5caa7824b716aa2f4a4e568b",
-            "sha256": "3a38f91596c204b43c70f642a3e686d8c3fbfdfa5caa7824b716aa2f4a4e568b",
-            "size": 5917779
-          },
-          {
-            "variable": "calicoctl_download_url",
-            "source": "https://github.com/projectcalico/calico/releases/download/v3.30.5/calicoctl-linux-amd64",
-            "localPath": "github.com/projectcalico/calico/releases/download/v3.30.5/calicoctl-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/6cdfb17b0276f648f4fdb051a5d75617a50b3c328d4cccfc40d087b96c361d80",
-            "sha256": "6cdfb17b0276f648f4fdb051a5d75617a50b3c328d4cccfc40d087b96c361d80",
-            "size": 81774144
-          },
-          {
-            "variable": "ciliumcli_download_url",
-            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "size": 62892239
-          },
-          {
-            "variable": "cni_download_url",
-            "source": "https://github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
-            "localPath": "github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
-            "sha256": "ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
-            "size": 55350615
-          },
-          {
-            "variable": "containerd_download_url",
-            "source": "https://github.com/containerd/containerd/releases/download/v2.1.5/containerd-2.1.5-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/containerd/releases/download/v2.1.5/containerd-2.1.5-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/403af72d9f956ed8a5ad5b0ac0f1e8e371a1488f2b9edf9b4ba13db0653936ea",
-            "sha256": "403af72d9f956ed8a5ad5b0ac0f1e8e371a1488f2b9edf9b4ba13db0653936ea",
-            "size": 33995053
-          },
-          {
-            "variable": "cri_dockerd_download_url",
-            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd-0.3.21.amd64.tgz",
-            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd-0.3.21.amd64.tgz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/6c35838bc4b1aef74f9113670e114ca729a5f295f9457b226791e18e86e91698",
-            "sha256": "6c35838bc4b1aef74f9113670e114ca729a5f295f9457b226791e18e86e91698",
-            "size": 15974505
-          },
-          {
-            "variable": "crictl_download_url",
-            "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.33.0/crictl-v1.33.0-linux-amd64.tar.gz",
-            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.33.0/crictl-v1.33.0-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8307399e714626e69d1213a4cd18c8dec3d0201ecdac009b1802115df8973f0f",
-            "sha256": "8307399e714626e69d1213a4cd18c8dec3d0201ecdac009b1802115df8973f0f",
-            "size": 20370694
-          },
-          {
-            "variable": "crio_download_url",
-            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.33.7.tar.gz",
-            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.33.7.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/e2999436a272c77370241a4f962c80737698dd8c2400fe75e5c7cf2142c96001",
-            "sha256": "e2999436a272c77370241a4f962c80737698dd8c2400fe75e5c7cf2142c96001",
-            "size": 114416327
-          },
-          {
-            "variable": "crun_download_url",
-            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "size": 2943736
-          },
-          {
-            "variable": "etcd_download_url",
-            "source": "https://github.com/etcd-io/etcd/releases/download/v3.5.25/etcd-v3.5.25-linux-amd64.tar.gz",
-            "localPath": "github.com/etcd-io/etcd/releases/download/v3.5.25/etcd-v3.5.25-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/168af82b59772e1811a9af7b358d42f5c6df44e0d9767afb006ecf12c4bbd607",
-            "sha256": "168af82b59772e1811a9af7b358d42f5c6df44e0d9767afb006ecf12c4bbd607",
-            "size": 22337715
-          },
-          {
-            "variable": "gateway_api_crds_download_url",
-            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml",
-            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/97598bf6ab3b33b9b5c5432bdd24de091e4e9c3aa0575ebb0710a2a19cd64d64",
-            "sha256": "97598bf6ab3b33b9b5c5432bdd24de091e4e9c3aa0575ebb0710a2a19cd64d64",
-            "size": 598441
-          },
-          {
-            "variable": "gvisor_containerd_shim_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/containerd-shim-runsc-v1",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/containerd-shim-runsc-v1",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8e41b283300450de24de24d4794f4e957cc116184690d8691dd28946f99bb113",
-            "sha256": "8e41b283300450de24de24d4794f4e957cc116184690d8691dd28946f99bb113",
-            "size": 14152700
-          },
-          {
-            "variable": "gvisor_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/runsc",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20251201.0/x86_64/runsc",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/4a83c4e3515bf1baee49d1a30f4452ca7386d767668c8c650ca3f8ec94a0ba58",
-            "sha256": "4a83c4e3515bf1baee49d1a30f4452ca7386d767668c8c650ca3f8ec94a0ba58",
-            "size": 64266402
-          },
-          {
-            "variable": "helm_download_url",
-            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "size": 17831569
-          },
-          {
-            "variable": "kata_containers_download_url",
-            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "size": 425067276
-          },
-          {
-            "variable": "kubeadm_download_url",
-            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubeadm",
-            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubeadm",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
-            "sha256": "6761219749c6c67a56a5668dfe65d669e0c1f34d4b280b72de6d74d47c601f1e",
-            "size": 74547384
-          },
-          {
-            "variable": "kubectl_download_url",
-            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl",
-            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc",
-            "sha256": "6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc",
-            "size": 60133560
-          },
-          {
-            "variable": "kubelet_download_url",
-            "source": "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubelet",
-            "localPath": "dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubelet",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
-            "sha256": "8f6106b970259486c5af5cbee404d4f23406d96d99dfb92a6965b299c2a4db0e",
-            "size": 81715492
-          },
-          {
-            "variable": "nerdctl_download_url",
-            "source": "https://github.com/containerd/nerdctl/releases/download/v2.1.6/nerdctl-2.1.6-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/nerdctl/releases/download/v2.1.6/nerdctl-2.1.6-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/22857b373edea479a4534ba62cae1c77f2af38f0aac4c91c1c68cf09e29d6f9e",
-            "sha256": "22857b373edea479a4534ba62cae1c77f2af38f0aac4c91c1c68cf09e29d6f9e",
-            "size": 11096277
-          },
-          {
-            "variable": "prometheus_operator_crds_download_url",
-            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
-            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
-            "sha256": "8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
-            "size": 1447589
-          },
-          {
-            "variable": "runc_download_url",
-            "source": "https://github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
-            "localPath": "github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
-            "sha256": "5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
-            "size": 13031032
-          },
-          {
-            "variable": "skopeo_download_url",
-            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "size": 39225704
-          },
-          {
-            "variable": "youki_download_url",
-            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "size": 2766029
-          },
-          {
-            "variable": "yq_download_url",
-            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "size": 9928856
-          }
-        ],
-        "images": [
-          "kubespray-apiserver-85ba6a8d3824",
-          "kubespray-aws-alb-ingress-controller-29b987dd4951",
-          "kubespray-aws-ebs-csi-driver-61044fd4e148",
-          "kubespray-cert-manager-cainjector-142b028ec4b1",
-          "kubespray-cert-manager-controller-aa76aaadadd6",
-          "kubespray-cert-manager-webhook-05059ded9a52",
-          "kubespray-certgen-e453d89b438f",
-          "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-cec4be30caef",
-          "kubespray-cinder-csi-plugin-fafe59d0f62e",
-          "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
-          "kubespray-cni-2a722760a7e1",
-          "kubespray-controller-27840469ef8d",
-          "kubespray-controller-74a944e7ad97",
-          "kubespray-coredns-19e9472ad36d",
-          "kubespray-csi-attacher-c020451f8db4",
-          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
-          "kubespray-csi-provisioner-b1c0015e8797",
-          "kubespray-csi-resizer-cbf66a4bf48d",
-          "kubespray-csi-snapshotter-9b1b230f4947",
-          "kubespray-dashboard-d40878c7d46f",
-          "kubespray-etcd-3c5d6be819ca",
-          "kubespray-flannel-4a66f2488d69",
-          "kubespray-flannel-cni-plugin-628a10cfbf92",
-          "kubespray-haproxy-e759b61b7326",
-          "kubespray-hubble-relay-af135d8ceffb",
-          "kubespray-hubble-ui-aa9daec9d667",
-          "kubespray-hubble-ui-backend-80373e4df8f7",
-          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
-          "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
-          "kubespray-k8s-netchecker-server-0648e3074092",
-          "kubespray-kube-apiserver-7a7a5e018a18",
-          "kubespray-kube-controller-manager-200d516fa1b9",
-          "kubespray-kube-controllers-569b5b422819",
-          "kubespray-kube-ovn-d5b7e3e6a128",
-          "kubespray-kube-proxy-2a95f8e3469a",
-          "kubespray-kube-router-a15345e0ac99",
-          "kubespray-kube-scheduler-98ff489f17d0",
-          "kubespray-kube-vip-f8a2ed10eb61",
-          "kubespray-local-path-provisioner-bea410f5d32c",
-          "kubespray-local-volume-provisioner-647b2d0ec790",
-          "kubespray-metrics-scraper-411975044da7",
-          "kubespray-metrics-server-78a748c4b508",
-          "kubespray-multus-cni-da567c68368a",
-          "kubespray-nginx-4fbf2a6c1299",
-          "kubespray-node-f33bf95c654d",
-          "kubespray-operator-7c35bff2c3cc",
-          "kubespray-operator-generic-c6b4e2064d8e",
-          "kubespray-pause-6f731803067f",
-          "kubespray-registry-8a454201835a",
-          "kubespray-snapshot-controller-714b107c1ee8",
-          "kubespray-speaker-665977c8efe1",
-          "kubespray-typha-e994ea476f5f"
-        ]
-      },
-      {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
-        "kubernetesVersion": "1.34.3",
-        "kubesprayCommit": "f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a",
-        "officialScript": "contrib/offline/generate_list.sh",
-        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
-        "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "64eb55f155b83fc03687400f6c790f7797bdf319a1f8fe46d32fd97b68f8bdbb",
-        "officialImages": [
-          "docker.io/mirantis/k8s-netchecker-server:v1.2.2",
-          "docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
-          "quay.io/coreos/etcd:v3.5.26",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator:v1.19.4",
-          "quay.io/cilium/hubble-relay:v1.19.4",
-          "quay.io/cilium/certgen:v0.2.4",
-          "quay.io/cilium/hubble-ui:v0.13.3",
-          "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
-          "docker.io/flannel/flannel:v0.27.3",
-          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
-          "quay.io/calico/node:v3.30.6",
-          "quay.io/calico/cni:v3.30.6",
-          "quay.io/calico/kube-controllers:v3.30.6",
-          "quay.io/calico/typha:v3.30.6",
-          "quay.io/calico/apiserver:v3.30.6",
-          "docker.io/kubeovn/kube-ovn:v1.12.21",
-          "docker.io/cloudnativelabs/kube-router:v2.1.1",
-          "registry.k8s.io/pause:3.10.1",
-          "ghcr.io/kube-vip/kube-vip:v1.0.3",
-          "docker.io/library/nginx:1.28.0-alpine",
-          "docker.io/library/haproxy:3.2.4-alpine",
-          "registry.k8s.io/coredns/coredns:v1.12.1",
-          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
-          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
-          "docker.io/library/registry:2.8.1",
-          "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
-          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
-          "docker.io/rancher/local-path-provisioner:v0.0.32",
-          "registry.k8s.io/ingress-nginx/controller:v1.13.3",
-          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
-          "quay.io/jetstack/cert-manager-controller:v1.15.3",
-          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
-          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
-          "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
-          "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
-          "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
-          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
-          "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
-          "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
-          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
-          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
-          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
-          "docker.io/kubernetesui/dashboard:v2.7.0",
-          "docker.io/kubernetesui/metrics-scraper:v1.0.8",
-          "quay.io/metallb/speaker:v0.13.9",
-          "quay.io/metallb/controller:v0.13.9",
-          "registry.k8s.io/kube-apiserver:v1.34.3",
-          "registry.k8s.io/kube-controller-manager:v1.34.3",
-          "registry.k8s.io/kube-scheduler:v1.34.3",
-          "registry.k8s.io/kube-proxy:v1.34.3"
-        ],
-        "runtimeImages": [
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator-generic:v1.19.4"
-        ],
-        "files": [
-          {
-            "variable": "calico_crds_download_url",
-            "source": "https://github.com/projectcalico/calico/archive/v3.30.6.tar.gz",
-            "localPath": "github.com/projectcalico/calico/archive/v3.30.6.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/d61aa5bcddfc78b0094acd54e0358009fa79e1cbe6d8c23bdacb34ff7a2c6c82",
-            "sha256": "d61aa5bcddfc78b0094acd54e0358009fa79e1cbe6d8c23bdacb34ff7a2c6c82",
-            "size": 5947333
-          },
-          {
-            "variable": "calicoctl_download_url",
-            "source": "https://github.com/projectcalico/calico/releases/download/v3.30.6/calicoctl-linux-amd64",
-            "localPath": "github.com/projectcalico/calico/releases/download/v3.30.6/calicoctl-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/2017e19727dca689d8bb73a9d8dff3c6a8ba7d8c75049f99ee207272161b5749",
-            "sha256": "2017e19727dca689d8bb73a9d8dff3c6a8ba7d8c75049f99ee207272161b5749",
-            "size": 81844219
-          },
-          {
-            "variable": "ciliumcli_download_url",
-            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "size": 62892239
-          },
-          {
-            "variable": "cni_download_url",
-            "source": "https://github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
-            "localPath": "github.com/containernetworking/plugins/releases/download/v1.8.0/cni-plugins-linux-amd64-v1.8.0.tgz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
-            "sha256": "ab3bda535f9d90766cccc90d3dddb5482003dd744d7f22bcf98186bf8eea8be6",
-            "size": 55350615
-          },
-          {
-            "variable": "containerd_download_url",
-            "source": "https://github.com/containerd/containerd/releases/download/v2.2.1/containerd-2.2.1-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/containerd/releases/download/v2.2.1/containerd-2.2.1-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f5d8e90ecb6c1c7e33ecddf8cc268a93b9e5b54e0e850320d765511d76624f41",
-            "sha256": "f5d8e90ecb6c1c7e33ecddf8cc268a93b9e5b54e0e850320d765511d76624f41",
-            "size": 35057737
-          },
-          {
-            "variable": "cri_dockerd_download_url",
-            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-dockerd-0.3.23.amd64.tgz",
-            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.23/cri-dockerd-0.3.23.amd64.tgz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/c7fe5db7f9396186193b58ded0e62a31eca7b3c58ad8691d57017986f96482ee",
-            "sha256": "c7fe5db7f9396186193b58ded0e62a31eca7b3c58ad8691d57017986f96482ee",
-            "size": 15665638
-          },
-          {
-            "variable": "crictl_download_url",
-            "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.34.0/crictl-v1.34.0-linux-amd64.tar.gz",
-            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.34.0/crictl-v1.34.0-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/a8ff2a3edb37a98daf3aba7c3b284fe0aa5bff24166d896ab9ef64c8913c9f51",
-            "sha256": "a8ff2a3edb37a98daf3aba7c3b284fe0aa5bff24166d896ab9ef64c8913c9f51",
-            "size": 19610258
-          },
-          {
-            "variable": "crio_download_url",
-            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.34.4.tar.gz",
-            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.34.4.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f6348a781c34b433fe1c5150da3408e51e828b610eacbe734405e9c31136d810",
-            "sha256": "f6348a781c34b433fe1c5150da3408e51e828b610eacbe734405e9c31136d810",
-            "size": 113896815
-          },
-          {
-            "variable": "crun_download_url",
-            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "size": 2943736
-          },
-          {
-            "variable": "etcd_download_url",
-            "source": "https://github.com/etcd-io/etcd/releases/download/v3.5.26/etcd-v3.5.26-linux-amd64.tar.gz",
-            "localPath": "github.com/etcd-io/etcd/releases/download/v3.5.26/etcd-v3.5.26-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/0a682a91201dc8351d507210bc30b021a11e254eab806f03224b51e8fad29abb",
-            "sha256": "0a682a91201dc8351d507210bc30b021a11e254eab806f03224b51e8fad29abb",
-            "size": 22349782
-          },
-          {
-            "variable": "gateway_api_crds_download_url",
-            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml",
-            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/73b91b77f6be023a8c92c969fc664e5bd3b1a28aea59eac9ebc904607354dad2",
-            "sha256": "73b91b77f6be023a8c92c969fc664e5bd3b1a28aea59eac9ebc904607354dad2",
-            "size": 696473
-          },
-          {
-            "variable": "gvisor_containerd_shim_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/containerd-shim-runsc-v1",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/containerd-shim-runsc-v1",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/392284202c14ad273e06312d17778d4227a6568054facab4777d5dadc9be2991",
-            "sha256": "392284202c14ad273e06312d17778d4227a6568054facab4777d5dadc9be2991",
-            "size": 13857159
-          },
-          {
-            "variable": "gvisor_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/runsc",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20260112.0/x86_64/runsc",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/0cc6a64b6cc7d6bd468a2c7c1080dc9da527204827ccf2f2d40ba2571f63981f",
-            "sha256": "0cc6a64b6cc7d6bd468a2c7c1080dc9da527204827ccf2f2d40ba2571f63981f",
-            "size": 62595997
-          },
-          {
-            "variable": "helm_download_url",
-            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "size": 17831569
-          },
-          {
-            "variable": "kata_containers_download_url",
-            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "size": 425067276
-          },
-          {
-            "variable": "kubeadm_download_url",
-            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubeadm",
-            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubeadm",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
-            "sha256": "f9ce265434d306e59d800b26f3049b8430ba71f815947f4bacdcdc33359417fb",
-            "size": 74027192
-          },
-          {
-            "variable": "kubectl_download_url",
-            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubectl",
-            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubectl",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212",
-            "sha256": "ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212",
-            "size": 60563640
-          },
-          {
-            "variable": "kubelet_download_url",
-            "source": "https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubelet",
-            "localPath": "dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubelet",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
-            "sha256": "0e759f40bbc717c05227ae3994b77786f58f59ffa0137a34958c6b26fa5bcbbd",
-            "size": 59203876
-          },
-          {
-            "variable": "nerdctl_download_url",
-            "source": "https://github.com/containerd/nerdctl/releases/download/v2.2.1/nerdctl-2.2.1-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/nerdctl/releases/download/v2.2.1/nerdctl-2.2.1-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/34144de7f12756aa4b9dc42a907fd95b0c5eb82a63566a650ca10c8abe7a26a0",
-            "sha256": "34144de7f12756aa4b9dc42a907fd95b0c5eb82a63566a650ca10c8abe7a26a0",
-            "size": 11362531
-          },
-          {
-            "variable": "prometheus_operator_crds_download_url",
-            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
-            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.84.0/stripped-down-crds.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
-            "sha256": "8990f6837ccff4461df9abe19d31d532fef11386d85d861b392249fff2502255",
-            "size": 1447589
-          },
-          {
-            "variable": "runc_download_url",
-            "source": "https://github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
-            "localPath": "github.com/opencontainers/runc/releases/download/v1.3.4/runc.amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
-            "sha256": "5966ca40b6187b30e33bfc299c5f1fe72e8c1aa01cf3fefdadf391668f47f103",
-            "size": 13031032
-          },
-          {
-            "variable": "skopeo_download_url",
-            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "size": 39225704
-          },
-          {
-            "variable": "youki_download_url",
-            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "size": 2766029
-          },
-          {
-            "variable": "yq_download_url",
-            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "size": 9928856
-          }
-        ],
-        "images": [
-          "kubespray-apiserver-1d7c4ffd1961",
-          "kubespray-aws-alb-ingress-controller-29b987dd4951",
-          "kubespray-aws-ebs-csi-driver-61044fd4e148",
-          "kubespray-cert-manager-cainjector-142b028ec4b1",
-          "kubespray-cert-manager-controller-aa76aaadadd6",
-          "kubespray-cert-manager-webhook-05059ded9a52",
-          "kubespray-certgen-e453d89b438f",
-          "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-cec4be30caef",
-          "kubespray-cinder-csi-plugin-fafe59d0f62e",
-          "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
-          "kubespray-cni-255e166abdb6",
-          "kubespray-controller-27840469ef8d",
-          "kubespray-controller-74a944e7ad97",
-          "kubespray-coredns-eb936e6d1fb6",
-          "kubespray-csi-attacher-54214cd5c68a",
-          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
-          "kubespray-csi-provisioner-c95b16a748c1",
-          "kubespray-csi-resizer-17c09eac50f2",
-          "kubespray-csi-snapshotter-0eecf4b68dbb",
-          "kubespray-dashboard-d40878c7d46f",
-          "kubespray-etcd-303eba369353",
-          "kubespray-flannel-4a66f2488d69",
-          "kubespray-flannel-cni-plugin-628a10cfbf92",
-          "kubespray-haproxy-e759b61b7326",
-          "kubespray-hubble-relay-af135d8ceffb",
-          "kubespray-hubble-ui-aa9daec9d667",
-          "kubespray-hubble-ui-backend-80373e4df8f7",
-          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
-          "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
-          "kubespray-k8s-netchecker-server-0648e3074092",
-          "kubespray-kube-apiserver-35a4e8593b81",
-          "kubespray-kube-controller-manager-cb79eac61c34",
-          "kubespray-kube-controllers-b9b25dbd1bb6",
-          "kubespray-kube-ovn-d5b7e3e6a128",
-          "kubespray-kube-proxy-01d2fe37ba1b",
-          "kubespray-kube-router-a15345e0ac99",
-          "kubespray-kube-scheduler-21faa420e1ed",
-          "kubespray-kube-vip-d0dc4887640c",
-          "kubespray-livenessprobe-3f00aa1aa37d",
-          "kubespray-local-path-provisioner-bea410f5d32c",
-          "kubespray-local-volume-provisioner-647b2d0ec790",
-          "kubespray-metrics-scraper-411975044da7",
-          "kubespray-metrics-server-78a748c4b508",
-          "kubespray-multus-cni-da567c68368a",
-          "kubespray-nginx-4fbf2a6c1299",
-          "kubespray-node-117e4c2a0fbf",
-          "kubespray-operator-7c35bff2c3cc",
-          "kubespray-operator-generic-c6b4e2064d8e",
-          "kubespray-pause-6bafff9caf95",
-          "kubespray-registry-8a454201835a",
-          "kubespray-snapshot-controller-714b107c1ee8",
-          "kubespray-speaker-665977c8efe1",
-          "kubespray-typha-a2c9cbcbd89b"
-        ]
-      },
-      {
-        "schemaVersion": "atum.dev/kubespray-artifacts/v7",
+        "schemaVersion": "atum.dev/kubespray-artifacts/v8",
         "kubernetesVersion": "1.35.4",
         "kubesprayCommit": "1c9add48975060f45396b34d8e022c30d7f80dab",
-        "officialScript": "contrib/offline/generate_list.sh",
-        "officialScriptSha256": "c6bf0abe11a7174fefed07a776b01dc50b4a52273c374e894481e34794caad76",
-        "inventoryScope": "full-upstream-offline",
-        "inventorySha256": "74a7761420d0cca95d331955653fd092da25b09c1e0c9e425bb552a9e01398c8",
-        "officialImages": [
-          "quay.io/coreos/etcd:v3.6.10",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator:v1.19.4",
-          "quay.io/cilium/hubble-relay:v1.19.4",
-          "quay.io/cilium/certgen:v0.2.4",
-          "quay.io/cilium/hubble-ui:v0.13.3",
-          "quay.io/cilium/hubble-ui-backend:v0.13.3",
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
-          "docker.io/flannel/flannel:v0.28.4",
-          "docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
-          "quay.io/calico/node:v3.31.5",
-          "quay.io/calico/cni:v3.31.5",
-          "quay.io/calico/kube-controllers:v3.31.5",
-          "quay.io/calico/typha:v3.31.5",
-          "quay.io/calico/apiserver:v3.31.5",
-          "docker.io/kubeovn/kube-ovn:v1.12.21",
-          "docker.io/cloudnativelabs/kube-router:v2.1.1",
-          "registry.k8s.io/pause:3.10.1",
-          "ghcr.io/kube-vip/kube-vip:v1.0.3",
-          "docker.io/library/nginx:1.28.2-alpine",
-          "docker.io/library/haproxy:3.2.13-alpine",
-          "registry.k8s.io/coredns/coredns:v1.12.4",
-          "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
-          "registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
-          "docker.io/library/registry:2.8.1",
-          "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
-          "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
-          "docker.io/rancher/local-path-provisioner:v0.0.32",
-          "docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
-          "quay.io/jetstack/cert-manager-controller:v1.15.3",
-          "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
-          "quay.io/jetstack/cert-manager-webhook:v1.15.3",
-          "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
-          "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
-          "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
-          "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
-          "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
-          "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
-          "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
-          "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
-          "docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
-          "quay.io/metallb/speaker:v0.13.9",
-          "quay.io/metallb/controller:v0.13.9",
-          "registry.k8s.io/kube-apiserver:v1.35.4",
-          "registry.k8s.io/kube-controller-manager:v1.35.4",
-          "registry.k8s.io/kube-scheduler:v1.35.4",
-          "registry.k8s.io/kube-proxy:v1.35.4"
-        ],
-        "runtimeImages": [
-          "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-          "quay.io/cilium/cilium:v1.19.4",
-          "quay.io/cilium/operator-generic:v1.19.4"
-        ],
+        "inventoryScope": "selected-runtime",
+        "selectionInputSha256": "bc4361af1825877027671d31409f1bee0b9e0592481ea6770c3d3d2283534b4a",
+        "selectedInventorySha256": "3560fd9e2451c2d0474366833e7aee5639d87fcafa39671e1abf9e64a6f784af",
         "files": [
           {
-            "variable": "calico_crds_download_url",
+            "id": "calico_crds",
             "source": "https://github.com/projectcalico/calico/raw/v3.31.5/manifests/crds.yaml",
-            "localPath": "github.com/projectcalico/calico/raw/v3.31.5/manifests/crds.yaml",
+            "repositoryPath": "github.com/projectcalico/calico/raw/v3.31.5/manifests/crds.yaml",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/1d6d5e523f92ee1e8227a48c016229c668f94035431b82f19139affeb45dbeff",
             "sha256": "1d6d5e523f92ee1e8227a48c016229c668f94035431b82f19139affeb45dbeff",
             "size": 305670
           },
           {
-            "variable": "calicoctl_download_url",
+            "id": "calicoctl",
             "source": "https://github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64",
-            "localPath": "github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64",
+            "repositoryPath": "github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/d1dd3a3fb2f5640987eab589dc1dcb03c47c11b32bc19a65c45c39421cd887d2",
             "sha256": "d1dd3a3fb2f5640987eab589dc1dcb03c47c11b32bc19a65c45c39421cd887d2",
             "size": 82760842
           },
           {
-            "variable": "ciliumcli_download_url",
-            "source": "https://github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "localPath": "github.com/cilium/cilium-cli/releases/download/v0.18.9/cilium-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "sha256": "15978aaf82373b0682aa87ab217848b3fb6e3cd80adad365d34696fe92543923",
-            "size": 62892239
-          },
-          {
-            "variable": "cni_download_url",
+            "id": "cni",
             "source": "https://github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-amd64-v1.9.1.tgz",
-            "localPath": "github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-amd64-v1.9.1.tgz",
+            "repositoryPath": "github.com/containernetworking/plugins/releases/download/v1.9.1/cni-plugins-linux-amd64-v1.9.1.tgz",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/b98f74a0f8522f0a83867178729c1aa70f2158f90c45a2ca8fa791db1c76b303",
             "sha256": "b98f74a0f8522f0a83867178729c1aa70f2158f90c45a2ca8fa791db1c76b303",
             "size": 55418181
           },
           {
-            "variable": "containerd_download_url",
+            "id": "containerd",
             "source": "https://github.com/containerd/containerd/releases/download/v2.2.3/containerd-2.2.3-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/containerd/releases/download/v2.2.3/containerd-2.2.3-linux-amd64.tar.gz",
+            "repositoryPath": "github.com/containerd/containerd/releases/download/v2.2.3/containerd-2.2.3-linux-amd64.tar.gz",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/ca26ef5138f17b847bbeeec36d4bf5e002b54d25858197a870c125d57f44d32f",
             "sha256": "ca26ef5138f17b847bbeeec36d4bf5e002b54d25858197a870c125d57f44d32f",
             "size": 35352990
           },
           {
-            "variable": "cri_dockerd_download_url",
-            "source": "https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.24/cri-dockerd-0.3.24.amd64.tgz",
-            "localPath": "github.com/Mirantis/cri-dockerd/releases/download/v0.3.24/cri-dockerd-0.3.24.amd64.tgz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/dd4b7f514c248a3aaca398f467430a4c58aae9a77ea8b96a2f5b5d6fba0948d1",
-            "sha256": "dd4b7f514c248a3aaca398f467430a4c58aae9a77ea8b96a2f5b5d6fba0948d1",
-            "size": 15672652
-          },
-          {
-            "variable": "crictl_download_url",
+            "id": "crictl",
             "source": "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.35.0/crictl-v1.35.0-linux-amd64.tar.gz",
-            "localPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.35.0/crictl-v1.35.0-linux-amd64.tar.gz",
+            "repositoryPath": "github.com/kubernetes-sigs/cri-tools/releases/download/v1.35.0/crictl-v1.35.0-linux-amd64.tar.gz",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/2e141e5b22cb189c40365a11807d69b76b9b3caced89fac2f4ec879408ce2177",
             "sha256": "2e141e5b22cb189c40365a11807d69b76b9b3caced89fac2f4ec879408ce2177",
             "size": 19185064
           },
           {
-            "variable": "crio_download_url",
-            "source": "https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.35.0.tar.gz",
-            "localPath": "storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.35.0.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/55b6d3e9fc9a5864ab5cdf0b24d54b1dcbaf6d4919274b3b9eb37bfc4b0b8cb5",
-            "sha256": "55b6d3e9fc9a5864ab5cdf0b24d54b1dcbaf6d4919274b3b9eb37bfc4b0b8cb5",
-            "size": 114410470
-          },
-          {
-            "variable": "crun_download_url",
-            "source": "https://github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "localPath": "github.com/containers/crun/releases/download/1.17/crun-1.17-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "sha256": "e9512a3e034e781b2396d068fd24eafcd5788e410403da886df9dc8871d504a5",
-            "size": 2943736
-          },
-          {
-            "variable": "etcd_download_url",
+            "id": "etcd",
             "source": "https://github.com/etcd-io/etcd/releases/download/v3.6.10/etcd-v3.6.10-linux-amd64.tar.gz",
-            "localPath": "github.com/etcd-io/etcd/releases/download/v3.6.10/etcd-v3.6.10-linux-amd64.tar.gz",
+            "repositoryPath": "github.com/etcd-io/etcd/releases/download/v3.6.10/etcd-v3.6.10-linux-amd64.tar.gz",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/ed579fafab5701e3aaa95509969e7bc74776a4ae5269d32e3928408b406456ec",
             "sha256": "ed579fafab5701e3aaa95509969e7bc74776a4ae5269d32e3928408b406456ec",
             "size": 24798802
           },
           {
-            "variable": "gateway_api_crds_download_url",
-            "source": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml",
-            "localPath": "github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8",
-            "sha256": "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8",
-            "size": 1024333
-          },
-          {
-            "variable": "gvisor_containerd_shim_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/containerd-shim-runsc-v1",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/containerd-shim-runsc-v1",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/34f115376316c8c052d4a281f9c1a27ef062b804ce84de2183f9341a6ccd530d",
-            "sha256": "34f115376316c8c052d4a281f9c1a27ef062b804ce84de2183f9341a6ccd530d",
-            "size": 13884088
-          },
-          {
-            "variable": "gvisor_runsc_download_url",
-            "source": "https://storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/runsc",
-            "localPath": "storage.googleapis.com/gvisor/releases/release/20260323.0/x86_64/runsc",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/df61fefa05237aa7aa549e776071abfa947b19fbe5908393f5902257a2961ca9",
-            "sha256": "df61fefa05237aa7aa549e776071abfa947b19fbe5908393f5902257a2961ca9",
-            "size": 63517161
-          },
-          {
-            "variable": "helm_download_url",
-            "source": "https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "localPath": "get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "sha256": "f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1",
-            "size": 17831569
-          },
-          {
-            "variable": "kata_containers_download_url",
-            "source": "https://github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "localPath": "github.com/kata-containers/kata-containers/releases/download/3.7.0/kata-static-3.7.0-amd64.tar.xz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "sha256": "bebf218cafdc082476c7dabbcc5439aee6a41d6dda24dd3cfffbe0a6ae94e23d",
-            "size": 425067276
-          },
-          {
-            "variable": "kubeadm_download_url",
+            "id": "kubeadm",
             "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
-            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
+            "repositoryPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubeadm",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
             "sha256": "0c0497da793f8897c14e45340da919534b615294a1aab69dc1998896c0f11145",
             "size": 72413368
           },
           {
-            "variable": "kubectl_download_url",
+            "id": "kubectl",
             "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl",
-            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl",
+            "repositoryPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubectl",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd",
             "sha256": "b529430df69a688fd61b64ad2299edb5fd71cb58be2a4779dba624c7d3510efd",
             "size": 58613944
           },
           {
-            "variable": "kubelet_download_url",
+            "id": "kubelet",
             "source": "https://dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubelet",
-            "localPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubelet",
+            "repositoryPath": "dl.k8s.io/release/v1.35.4/bin/linux/amd64/kubelet",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
             "sha256": "983a6ba5a49823dcdd745c674e5e2416377dd27d6ad1b42d2befa0fb961a19f6",
             "size": 58138916
           },
           {
-            "variable": "nerdctl_download_url",
+            "id": "nerdctl",
             "source": "https://github.com/containerd/nerdctl/releases/download/v2.2.2/nerdctl-2.2.2-linux-amd64.tar.gz",
-            "localPath": "github.com/containerd/nerdctl/releases/download/v2.2.2/nerdctl-2.2.2-linux-amd64.tar.gz",
+            "repositoryPath": "github.com/containerd/nerdctl/releases/download/v2.2.2/nerdctl-2.2.2-linux-amd64.tar.gz",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/6f637760fb2875e3454e97c3de7438fd17281b5996908cbd8ee1c872b0653cc8",
             "sha256": "6f637760fb2875e3454e97c3de7438fd17281b5996908cbd8ee1c872b0653cc8",
             "size": 11373900
           },
           {
-            "variable": "prometheus_operator_crds_download_url",
-            "source": "https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.88.1/stripped-down-crds.yaml",
-            "localPath": "github.com/prometheus-operator/prometheus-operator/releases/download/v0.88.1/stripped-down-crds.yaml",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/b827b8ec478e6b31cc1b85c1736570a3575953fe9f470fc29d0ffdb2803d94c4",
-            "sha256": "b827b8ec478e6b31cc1b85c1736570a3575953fe9f470fc29d0ffdb2803d94c4",
-            "size": 1514974
-          },
-          {
-            "variable": "runc_download_url",
+            "id": "runc",
             "source": "https://github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64",
-            "localPath": "github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64",
+            "repositoryPath": "github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64",
             "cacheFile": ".atum/cache/kubespray-offline/sha256/ac8a90f9e225bb9322189937b230cdc5478d5753f0e31e1bda98a5cf06bd9539",
             "sha256": "ac8a90f9e225bb9322189937b230cdc5478d5753f0e31e1bda98a5cf06bd9539",
             "size": 12233104
-          },
-          {
-            "variable": "skopeo_download_url",
-            "source": "https://github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "localPath": "github.com/lework/skopeo-binary/releases/download/v1.16.1/skopeo-linux-amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "sha256": "8813fb7fcd7a723196ac287683dd929d280f6fe7f0782eace452fe1e3ff2b7eb",
-            "size": 39225704
-          },
-          {
-            "variable": "youki_download_url",
-            "source": "https://github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "localPath": "github.com/youki-dev/youki/releases/download/v0.5.7/youki-0.5.7-x86_64-gnu.tar.gz",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "sha256": "10077b1a4f013990a416acf15e6b397cf64b5d62008516a9711abc22730d8203",
-            "size": 2766029
-          },
-          {
-            "variable": "yq_download_url",
-            "source": "https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "localPath": "github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64",
-            "cacheFile": ".atum/cache/kubespray-offline/sha256/1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "sha256": "1a95960dddd426321354d58d2beac457717f7c49a9ec0806749a5a9e400eb45e",
-            "size": 9928856
           }
         ],
         "images": [
-          "kubespray-apiserver-ffd3bba1be1d",
-          "kubespray-aws-alb-ingress-controller-29b987dd4951",
-          "kubespray-aws-ebs-csi-driver-61044fd4e148",
-          "kubespray-cert-manager-cainjector-142b028ec4b1",
-          "kubespray-cert-manager-controller-aa76aaadadd6",
-          "kubespray-cert-manager-webhook-05059ded9a52",
-          "kubespray-certgen-e453d89b438f",
-          "kubespray-cilium-5651485d8c29",
-          "kubespray-cilium-envoy-cec4be30caef",
-          "kubespray-cinder-csi-plugin-fafe59d0f62e",
           "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
           "kubespray-cni-1e7d398d64e9",
-          "kubespray-controller-27840469ef8d",
           "kubespray-coredns-c0a1763e2e8b",
-          "kubespray-csi-attacher-54214cd5c68a",
-          "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
-          "kubespray-csi-provisioner-c95b16a748c1",
-          "kubespray-csi-resizer-17c09eac50f2",
-          "kubespray-csi-snapshotter-0eecf4b68dbb",
-          "kubespray-etcd-ca5f72edf851",
-          "kubespray-flannel-05cceee7aa3e",
-          "kubespray-flannel-cni-plugin-628a10cfbf92",
-          "kubespray-haproxy-c627c8545636",
-          "kubespray-hubble-relay-af135d8ceffb",
-          "kubespray-hubble-ui-aa9daec9d667",
-          "kubespray-hubble-ui-backend-80373e4df8f7",
-          "kubespray-k8s-dns-node-cache-eaa2f69f0965",
           "kubespray-kube-apiserver-a41c80c0ea0e",
           "kubespray-kube-controller-manager-6380ebf00c81",
           "kubespray-kube-controllers-ab24c787861c",
-          "kubespray-kube-ovn-d5b7e3e6a128",
           "kubespray-kube-proxy-f41a80af8ea3",
-          "kubespray-kube-router-a15345e0ac99",
           "kubespray-kube-scheduler-ec5cf060af83",
-          "kubespray-kube-vip-d0dc4887640c",
-          "kubespray-livenessprobe-3f00aa1aa37d",
-          "kubespray-local-path-provisioner-bea410f5d32c",
-          "kubespray-local-volume-provisioner-647b2d0ec790",
-          "kubespray-metrics-server-96c8158a4a11",
-          "kubespray-multus-cni-da567c68368a",
-          "kubespray-nginx-7167e4ebc08b",
           "kubespray-node-77c1a7981006",
-          "kubespray-operator-7c35bff2c3cc",
-          "kubespray-operator-generic-c6b4e2064d8e",
-          "kubespray-pause-6bafff9caf95",
-          "kubespray-registry-8a454201835a",
-          "kubespray-snapshot-controller-714b107c1ee8",
-          "kubespray-speaker-665977c8efe1",
-          "kubespray-typha-32be33bfb81f"
+          "kubespray-pause-6bafff9caf95"
         ]
       }
     ],
@@ -1641,7 +791,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-8785233865f8240169874f8239a9439a243cb6b17568a07b81dc6eb713ceaa8b",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-dac2936d25fbf72c010280d05c15532626418b1c840c82e9b1f0da189096332a",
         "scopes": [
           "bigbang"
         ],
@@ -2033,7 +1183,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-98981d271463b61bcb441ef510b0db00682813855966332836319539f6501ed9",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6bd9355a89295ef272a7c13916c4f054f6d6f7d0cb3eec286f97229d95d50e8e",
         "scopes": [
           "bigbang"
         ],
@@ -2532,7 +1682,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-031b0c258f8e298ab39e1766b378c224a1e800c8c24d8c3aca403aebd4e6c507",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-6088f61692dadfd36e5c559f0924fff21122b784d0487d3d27d43487dd8f8622",
         "scopes": [
           "bigbang"
         ],
@@ -3078,304 +2228,16 @@
         }
       },
       {
-        "id": "kubespray-apiserver-1d7c4ffd1961",
-        "family": "kubernetes",
-        "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/apiserver:v3.30.6",
-            "digest": "sha256:955d0c0b2e46dfb64f675ea6fd7ca58b102ffc9af6bbe386bdb0d4f3c672e944"
-          }
-        }
-      },
-      {
-        "id": "kubespray-apiserver-85ba6a8d3824",
-        "family": "kubernetes",
-        "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/apiserver:v3.30.5",
-            "digest": "sha256:7ee459630a68fc6872773033b6b9d281c4d5804950e3d054fe423376d4f695cf"
-          }
-        }
-      },
-      {
-        "id": "kubespray-apiserver-ffd3bba1be1d",
-        "family": "kubernetes",
-        "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/apiserver:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/apiserver:v3.31.5",
-            "digest": "sha256:8a487c14daa06afaf11695fdd5556e493a21288131742c8a5114d3b0860677b7"
-          }
-        }
-      },
-      {
-        "id": "kubespray-aws-alb-ingress-controller-29b987dd4951",
-        "family": "kubernetes",
-        "version": "1.1.9",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9-mirror-43d732b96fd96ec4b5a42878df648cf805d3677eba8277e6",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/amazon/aws-alb-ingress-controller:v1.1.9",
-            "digest": "sha256:43d732b96fd96ec4b5a42878df648cf805d3677eba8277e616972302caf9a14f"
-          }
-        }
-      },
-      {
-        "id": "kubespray-aws-ebs-csi-driver-61044fd4e148",
-        "family": "kubernetes",
-        "version": "0.5.0",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0-mirror-eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/amazon/aws-ebs-csi-driver:v0.5.0",
-            "digest": "sha256:eca84d329a1c9a7221df466dc9fd51bf4fd8fd194bbc567f540a29a070362c66"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cert-manager-cainjector-142b028ec4b1",
-        "family": "kubernetes",
-        "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-cainjector:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/jetstack/cert-manager-cainjector:v1.15.3",
-            "digest": "sha256:6802c6afea2da91f5782880b79008179bb98147a23ce00f3cab5ba799807b5d6"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cert-manager-controller-aa76aaadadd6",
-        "family": "kubernetes",
-        "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-controller:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/jetstack/cert-manager-controller:v1.15.3",
-            "digest": "sha256:631ba2b3bf7be0bd0d446b8bfcbeb56f8fe735cd02a267567a8d94682d03165b"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cert-manager-webhook-05059ded9a52",
-        "family": "kubernetes",
-        "version": "1.15.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/jetstack/cert-manager-webhook:v1.15.3-mirror-set-7947dead3e3db796c741d580711ceda5fbbde7a5900268fd",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/jetstack/cert-manager-webhook:v1.15.3",
-            "digest": "sha256:373e3acd7b96c87a574f9234bb4fbfd576e3205c502d6da5dade41165c9dc828"
-          }
-        }
-      },
-      {
-        "id": "kubespray-certgen-e453d89b438f",
-        "family": "kubernetes",
-        "version": "0.2.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/certgen:v0.2.4-mirror-cf231218850d22ee160347a67483860e85606d6d3ad0649b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/certgen:v0.2.4",
-            "digest": "sha256:cf231218850d22ee160347a67483860e85606d6d3ad0649b5b7daef168cc84da"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cilium-5651485d8c29",
-        "family": "kubernetes",
-        "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/cilium:v1.19.4",
-            "digest": "sha256:2eb67991eaa9368ba199c2fac2c573cb0ffdeb79184533344f42fc9a7ff6af3c"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cilium-envoy-cec4be30caef",
-        "family": "kubernetes",
-        "version": "1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496-mirror-71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/cilium-envoy:v1.36.6-1778235340-b87d1e32f522b33bd51701c6476d199326f01496",
-            "digest": "sha256:71d4fa0ec45e8d546dbd5604e169dc77fe92be63b799313bff031d00d89762e3"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cinder-csi-plugin-fafe59d0f62e",
-        "family": "kubernetes",
-        "version": "1.30.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0-mirror-cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4e",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/provider-os/cinder-csi-plugin:v1.30.0",
-            "digest": "sha256:cde902be32398a0637c247e70aae7bc079c0b32cbcf3ac4ea246c54e753e82d6"
-          }
-        }
-      },
-      {
         "id": "kubespray-cluster-proportional-autoscaler-3040b7500ee3",
         "family": "kubernetes",
         "version": "1.8.8",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8-mirror-93dc3d84636a5d7e45a44b1bef118f3181fded4c202fd183",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.8",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -3393,13 +2255,13 @@
         "id": "kubespray-cni-1e7d398d64e9",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.31.5",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -3414,136 +2276,16 @@
         }
       },
       {
-        "id": "kubespray-cni-255e166abdb6",
-        "family": "kubernetes",
-        "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/cni:v3.30.6",
-            "digest": "sha256:6ab06560b689151ad2ed24f01d6bf18661881627babcd47b2e1463529ed22005"
-          }
-        }
-      },
-      {
-        "id": "kubespray-cni-2a722760a7e1",
-        "family": "kubernetes",
-        "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/cni:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/cni:v3.30.5",
-            "digest": "sha256:5f00517832659c081467fc1cf768510d368eb6b0a8ffd71e4e2ae84b3f7ce2a7"
-          }
-        }
-      },
-      {
-        "id": "kubespray-controller-27840469ef8d",
-        "family": "kubernetes",
-        "version": "0.13.9",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/controller:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/metallb/controller:v0.13.9",
-            "digest": "sha256:3fb6daa527ccd65db369f02cb1a6aa52523f406adda33244fac1b4e1f983f088"
-          }
-        }
-      },
-      {
-        "id": "kubespray-controller-74a944e7ad97",
-        "family": "kubernetes",
-        "version": "1.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/ingress-nginx/controller:v1.13.3-mirror-7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/ingress-nginx/controller:v1.13.3",
-            "digest": "sha256:7b4073fc95e078d863c0b0b08deb72e01d2cf629e2156822bcd394fc2bcd8e83"
-          }
-        }
-      },
-      {
-        "id": "kubespray-coredns-19e9472ad36d",
-        "family": "kubernetes",
-        "version": "1.12.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.0-mirror-2324f485c8db937628a18c293d946327f3a7229b9f77213e",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/coredns/coredns:v1.12.0",
-            "digest": "sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee"
-          }
-        }
-      },
-      {
         "id": "kubespray-coredns-c0a1763e2e8b",
         "family": "kubernetes",
         "version": "1.12.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4-mirror-5fe4ce2f40fba78ebd7941f205d5ba21058e6aebff008783",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.4",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -3558,664 +2300,16 @@
         }
       },
       {
-        "id": "kubespray-coredns-eb936e6d1fb6",
-        "family": "kubernetes",
-        "version": "1.12.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/coredns/coredns:v1.12.1-mirror-4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ec",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/coredns/coredns:v1.12.1",
-            "digest": "sha256:4f7a57135719628cf2070c5e3cbde64b013e90d4c560c5ecbf14004181f91998"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-attacher-54214cd5c68a",
-        "family": "kubernetes",
-        "version": "4.4.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v4.4.2-mirror-304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f9",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-attacher:v4.4.2",
-            "digest": "sha256:304e8bfd8e59f2ef77b950aa4e812866b29b74412ed481f92645d898757db1e0"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-attacher-c020451f8db4",
-        "family": "kubernetes",
-        "version": "3.3.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-attacher:v3.3.0-mirror-ac8d4216d1684f5469319f9d665f91c5582bf32d063d037e",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-attacher:v3.3.0",
-            "digest": "sha256:ac8d4216d1684f5469319f9d665f91c5582bf32d063d037ec8666173407e4db1"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-node-driver-registrar-04c47ff6b3ae",
-        "family": "kubernetes",
-        "version": "2.4.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0-mirror-0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.4.0",
-            "digest": "sha256:0174bf20d7ad8e9f131a045802ef1c43b4592a2ebc18ba07972b1ce8858d9cb7"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-provisioner-b1c0015e8797",
-        "family": "kubernetes",
-        "version": "3.0.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.0.0-mirror-875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d4",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.0.0",
-            "digest": "sha256:875f37d4b0b2bfb5399657ec55848777bd74ac2a3a1b55d402ee1e2efdf70450"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-provisioner-c95b16a748c1",
-        "family": "kubernetes",
-        "version": "3.6.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-provisioner:v3.6.2-mirror-ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-provisioner:v3.6.2",
-            "digest": "sha256:ee68f59f5c183abee8c866cb2ab3c40d0b90c89c8526b59a709fbf3e16a782ca"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-resizer-17c09eac50f2",
-        "family": "kubernetes",
-        "version": "1.9.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.9.2-mirror-8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-resizer:v1.9.2",
-            "digest": "sha256:8b9354b49c04564d9902e9b1ae6b323ba8f6ecd2d4a8e0bd4870192d1c586bd0"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-resizer-cbf66a4bf48d",
-        "family": "kubernetes",
-        "version": "1.3.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-resizer:v1.3.0-mirror-35ec0c736ec8266bd4a46f9e942315f148f3139beed99879",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-resizer:v1.3.0",
-            "digest": "sha256:35ec0c736ec8266bd4a46f9e942315f148f3139beed99879d0ad8b8e5074d641"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-snapshotter-0eecf4b68dbb",
-        "family": "kubernetes",
-        "version": "6.3.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2-mirror-651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406d",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-snapshotter:v6.3.2",
-            "digest": "sha256:651fa888ed4bdd708d4ec430d958db8fa870f4156f2f406da659878729d799db"
-          }
-        }
-      },
-      {
-        "id": "kubespray-csi-snapshotter-9b1b230f4947",
-        "family": "kubernetes",
-        "version": "5.0.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0-mirror-640e0275af6df4ad84339d4c449ea52559c25ae11c92ea46",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/csi-snapshotter:v5.0.0",
-            "digest": "sha256:640e0275af6df4ad84339d4c449ea52559c25ae11c92ea4655252bed789a3bb3"
-          }
-        }
-      },
-      {
-        "id": "kubespray-dashboard-d40878c7d46f",
-        "family": "kubernetes",
-        "version": "2.7.0",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/dashboard:v2.7.0-mirror-ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/kubernetesui/dashboard:v2.7.0",
-            "digest": "sha256:ca93706ef4e400542202d620b8094a7e4e568ca9b1869c71b053cdf8b5dc3029"
-          }
-        }
-      },
-      {
-        "id": "kubespray-etcd-303eba369353",
-        "family": "kubernetes",
-        "version": "3.5.26",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.26-mirror-8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/coreos/etcd:v3.5.26",
-            "digest": "sha256:8457eeaa43da563b9bbc02ed82221be6c778d367d12d29cc4cde280aec910c33"
-          }
-        }
-      },
-      {
-        "id": "kubespray-etcd-3c5d6be819ca",
-        "family": "kubernetes",
-        "version": "3.5.25",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.5.25-mirror-dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/coreos/etcd:v3.5.25",
-            "digest": "sha256:dc2bdc588d2adc5272204a1fff7f1d89f31e8caacea78fdf509fd409d7162a9d"
-          }
-        }
-      },
-      {
-        "id": "kubespray-etcd-ca5f72edf851",
-        "family": "kubernetes",
-        "version": "3.6.10",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/coreos/etcd:v3.6.10-mirror-8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43e",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/coreos/etcd:v3.6.10",
-            "digest": "sha256:8820feb533fccb2bfaff581261a0f508a4ec3e56f38ed43efae659d882999e32"
-          }
-        }
-      },
-      {
-        "id": "kubespray-flannel-05cceee7aa3e",
-        "family": "kubernetes",
-        "version": "0.28.4",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.28.4-mirror-e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/flannel/flannel:v0.28.4",
-            "digest": "sha256:e1ec0114644cf38deb76ef749c15dc4af86e0eae631de22e94096687858db111"
-          }
-        }
-      },
-      {
-        "id": "kubespray-flannel-4a66f2488d69",
-        "family": "kubernetes",
-        "version": "0.27.3",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel:v0.27.3-mirror-0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/flannel/flannel:v0.27.3",
-            "digest": "sha256:0db626e4c276650c88f889dc6dfff18f89b69fa2e0a2ecbd156fcbf6d2f083d1"
-          }
-        }
-      },
-      {
-        "id": "kubespray-flannel-cni-plugin-628a10cfbf92",
-        "family": "kubernetes",
-        "version": "1.7.1-flannel1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1-mirror-003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/flannel/flannel-cni-plugin:v1.7.1-flannel1",
-            "digest": "sha256:003f55acb6f8bbc8c95549b234b0e137b0b2296814ef596a58d0421d721305ea"
-          }
-        }
-      },
-      {
-        "id": "kubespray-haproxy-c627c8545636",
-        "family": "kubernetes",
-        "version": "3.2.13-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.13-alpine-mirror-4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/library/haproxy:3.2.13-alpine",
-            "digest": "sha256:4280fa58b384ad17a483541565a8f4ff246cc4087a9de6b5bc874e89b9554a71"
-          }
-        }
-      },
-      {
-        "id": "kubespray-haproxy-e759b61b7326",
-        "family": "kubernetes",
-        "version": "3.2.4-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/haproxy:3.2.4-alpine-mirror-1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/library/haproxy:3.2.4-alpine",
-            "digest": "sha256:1cbc82126de93c9548a7fc31141c361961ec93a8badf77c8c3e8e211d007790d"
-          }
-        }
-      },
-      {
-        "id": "kubespray-hubble-relay-af135d8ceffb",
-        "family": "kubernetes",
-        "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-relay:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/hubble-relay:v1.19.4",
-            "digest": "sha256:5da3a57ae08c6e85816e93cb4cd44abe7021b319da2a21d2c6e4e6560ac21135"
-          }
-        }
-      },
-      {
-        "id": "kubespray-hubble-ui-aa9daec9d667",
-        "family": "kubernetes",
-        "version": "0.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/hubble-ui:v0.13.3",
-            "digest": "sha256:e1fd0debd32db200273ed3f98afa358dd19870dea14f03945714d079cea8101c"
-          }
-        }
-      },
-      {
-        "id": "kubespray-hubble-ui-backend-80373e4df8f7",
-        "family": "kubernetes",
-        "version": "0.13.3",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/hubble-ui-backend:v0.13.3-mirror-set-1c942caf06847c6546a1d18457bb7c5f54f9ba78f63242ee",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/hubble-ui-backend:v0.13.3",
-            "digest": "sha256:c05242a910241a6d0aa46e9d7409dc5e9a8a505a38d4849802a9d7b406b56367"
-          }
-        }
-      },
-      {
-        "id": "kubespray-k8s-dns-node-cache-eaa2f69f0965",
-        "family": "kubernetes",
-        "version": "1.25.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/dns/k8s-dns-node-cache:1.25.0-mirror-926add157b0563f30bdf49a6299f4401a1a4b007814fc41f",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/dns/k8s-dns-node-cache:1.25.0",
-            "digest": "sha256:926add157b0563f30bdf49a6299f4401a1a4b007814fc41fe903a685166cfc0a"
-          }
-        }
-      },
-      {
-        "id": "kubespray-k8s-netchecker-agent-a8d0e7f81bc0",
-        "family": "kubernetes",
-        "version": "1.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/mirantis/k8s-netchecker-agent:v1.2.2",
-            "digest": "sha256:a7c6fcc0700c394583ed0cb61410ee399f7fc0c2fdec1a5495c583f136846067"
-          }
-        }
-      },
-      {
-        "id": "kubespray-k8s-netchecker-server-0648e3074092",
-        "family": "kubernetes",
-        "version": "1.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/mirantis/k8s-netchecker-server:v1.2.2-mirror-set-59d30b919de72f8ba5701e2ef202f190bd638a5f0d0c8acf",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/mirantis/k8s-netchecker-server:v1.2.2",
-            "digest": "sha256:f33c8071ee1a3333213a6a7bee80cbc75675dc465ccc1491cbe558d0823b46be"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-apiserver-35a4e8593b81",
-        "family": "kubernetes",
-        "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-apiserver:v1.34.3",
-            "digest": "sha256:9b2e9bae4dc94991e51c601ba6a00369b45064243ba7822143b286edb9d41f9e"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-apiserver-7a7a5e018a18",
-        "family": "kubernetes",
-        "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-apiserver:v1.33.5",
-            "digest": "sha256:9a6035a846ee85e400b68183b82194157c2717851a067ac8ec99fe4eaadcd540"
-          }
-        }
-      },
-      {
         "id": "kubespray-kube-apiserver-a41c80c0ea0e",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-apiserver:v1.35.4",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4230,40 +2324,16 @@
         }
       },
       {
-        "id": "kubespray-kube-controller-manager-200d516fa1b9",
-        "family": "kubernetes",
-        "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-controller-manager:v1.33.5",
-            "digest": "sha256:b29bb573acfc2d9b9b1e777be2c32ab2711e3384dcccbdd652a1519cde47b9ef"
-          }
-        }
-      },
-      {
         "id": "kubespray-kube-controller-manager-6380ebf00c81",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.35.4",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4278,64 +2348,16 @@
         }
       },
       {
-        "id": "kubespray-kube-controller-manager-cb79eac61c34",
-        "family": "kubernetes",
-        "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-controller-manager:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-controller-manager:v1.34.3",
-            "digest": "sha256:90ceecee64b3dac0e619928b9b21522bde1a120bb039971110ab68d830c1f1a2"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-controllers-569b5b422819",
-        "family": "kubernetes",
-        "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/kube-controllers:v3.30.5",
-            "digest": "sha256:ec80d7515ed843483cf0895781bc1fbbc44c750953a84c2073c1de8adc60fee5"
-          }
-        }
-      },
-      {
         "id": "kubespray-kube-controllers-ab24c787861c",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.31.5",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4350,112 +2372,16 @@
         }
       },
       {
-        "id": "kubespray-kube-controllers-b9b25dbd1bb6",
-        "family": "kubernetes",
-        "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/kube-controllers:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/kube-controllers:v3.30.6",
-            "digest": "sha256:424441c7d5e6b78ee8800f645b08a3c0174096dca33234bbac1a716c6e336df1"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-ovn-d5b7e3e6a128",
-        "family": "kubernetes",
-        "version": "1.12.21",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubeovn/kube-ovn:v1.12.21-mirror-b24bf383511da382c928de8b69df518b3d4375684a477204",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/kubeovn/kube-ovn:v1.12.21",
-            "digest": "sha256:b24bf383511da382c928de8b69df518b3d4375684a477204fc7e7f3a7e7bcb4b"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-proxy-01d2fe37ba1b",
-        "family": "kubernetes",
-        "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-proxy:v1.34.3",
-            "digest": "sha256:aee44d152c9eaa4f3e10584e61ee501a094880168db257af1201c806982a0945"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-proxy-2a95f8e3469a",
-        "family": "kubernetes",
-        "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-proxy:v1.33.5",
-            "digest": "sha256:1a1a228e08acc4129edb1798dc7eff54bbd129aecc82a1642e1737ef19297354"
-          }
-        }
-      },
-      {
         "id": "kubespray-kube-proxy-f41a80af8ea3",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-proxy:v1.35.4",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4470,88 +2396,16 @@
         }
       },
       {
-        "id": "kubespray-kube-router-a15345e0ac99",
-        "family": "kubernetes",
-        "version": "2.1.1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/cloudnativelabs/kube-router:v2.1.1-mirror-6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/cloudnativelabs/kube-router:v2.1.1",
-            "digest": "sha256:6936c6031600d4901a39d82afa3a2fa5336694ba7eb9591c151a461bec02b706"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-scheduler-21faa420e1ed",
-        "family": "kubernetes",
-        "version": "1.34.3",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.34.3-mirror-set-05b095146de5927f165c1497e392f189f29f00cbe8ea097b",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-scheduler:v1.34.3",
-            "digest": "sha256:490ff7b484d67db4a77e8d4bba9f12da68f6a3cae8da3b977522b60c8b5092c9"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-scheduler-98ff489f17d0",
-        "family": "kubernetes",
-        "version": "1.33.5",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.33.5-mirror-set-5e36c1e44533b37785c2fe6f18b22d57b808a1c7433181ff",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/kube-scheduler:v1.33.5",
-            "digest": "sha256:a0eb16738760343f3b81dab6154de066695a41c6a27a2f5632954121729bb8a1"
-          }
-        }
-      },
-      {
         "id": "kubespray-kube-scheduler-ec5cf060af83",
         "family": "kubernetes",
         "version": "1.35.4",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4-mirror-set-b52b87fa49810bc8dbd2108521345d9d6d41a7171f523294",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/kube-scheduler:v1.35.4",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4566,304 +2420,16 @@
         }
       },
       {
-        "id": "kubespray-kube-vip-d0dc4887640c",
-        "family": "kubernetes",
-        "version": "1.0.3",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v1.0.3-mirror-682e231fd0759906b65ed56ac124cc8ae093b9506aac0006",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "ghcr.io/kube-vip/kube-vip:v1.0.3",
-            "digest": "sha256:682e231fd0759906b65ed56ac124cc8ae093b9506aac00063c66c2ffa7fb5d9e"
-          }
-        }
-      },
-      {
-        "id": "kubespray-kube-vip-f8a2ed10eb61",
-        "family": "kubernetes",
-        "version": "0.8.9",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/kube-vip/kube-vip:v0.8.9-mirror-0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931ac",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "ghcr.io/kube-vip/kube-vip:v0.8.9",
-            "digest": "sha256:0b4d9e0f17b00bb7514ab19ea268cec1c80529b4a81931acb5c5729dcf094345"
-          }
-        }
-      },
-      {
-        "id": "kubespray-livenessprobe-3f00aa1aa37d",
-        "family": "kubernetes",
-        "version": "2.11.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/livenessprobe:v2.11.0-mirror-4a1e22167d03746e6748cdc41b6374262c666bc85999e901",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/livenessprobe:v2.11.0",
-            "digest": "sha256:4a1e22167d03746e6748cdc41b6374262c666bc85999e90112edc236dfb2c95a"
-          }
-        }
-      },
-      {
-        "id": "kubespray-local-path-provisioner-bea410f5d32c",
-        "family": "kubernetes",
-        "version": "0.0.32",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/rancher/local-path-provisioner:v0.0.32-mirror-64975a72cb31bda96fea61f4b59e6cca4545e531487a13fa",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/rancher/local-path-provisioner:v0.0.32",
-            "digest": "sha256:64975a72cb31bda96fea61f4b59e6cca4545e531487a13fab7ba1b7aba95bd6c"
-          }
-        }
-      },
-      {
-        "id": "kubespray-local-volume-provisioner-647b2d0ec790",
-        "family": "kubernetes",
-        "version": "2.5.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0-mirror-19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3f",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/local-volume-provisioner:v2.5.0",
-            "digest": "sha256:19c132333b14ee367c71dc2d7c1a4fdb5e394eba83f9fa3fd84a2e42023aba22"
-          }
-        }
-      },
-      {
-        "id": "kubespray-metrics-scraper-411975044da7",
-        "family": "kubernetes",
-        "version": "1.0.8",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/kubernetesui/metrics-scraper:v1.0.8-mirror-43227e8286fd379ee0415a5e2156a9439c4056807e3caa38",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/kubernetesui/metrics-scraper:v1.0.8",
-            "digest": "sha256:43227e8286fd379ee0415a5e2156a9439c4056807e3caa38e1dd413b0644807a"
-          }
-        }
-      },
-      {
-        "id": "kubespray-metrics-server-78a748c4b508",
-        "family": "kubernetes",
-        "version": "0.8.0",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.0-mirror-5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.0",
-            "digest": "sha256:5dd31abb8093690d9624a53277a00d2257e7e57e6766be3f9f54cf9f54cddbc1"
-          }
-        }
-      },
-      {
-        "id": "kubespray-metrics-server-96c8158a4a11",
-        "family": "kubernetes",
-        "version": "0.8.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/metrics-server/metrics-server:v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
-            "digest": "sha256:6231fb0a1ffab76c92ab880f51a0d11b290f688373647bcedff85af025dfd8a9"
-          }
-        }
-      },
-      {
-        "id": "kubespray-multus-cni-da567c68368a",
-        "family": "kubernetes",
-        "version": "4.2.2",
-        "target": "10.77.0.9:32443/atum/kubespray/ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2-mirror-9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc9",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.2.2",
-            "digest": "sha256:9ff248dab2bbc7962b8774a444ea5a307154c6b721b07cc951ab06d0a0144be8"
-          }
-        }
-      },
-      {
-        "id": "kubespray-nginx-4fbf2a6c1299",
-        "family": "kubernetes",
-        "version": "1.28.0-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.0-alpine-mirror-09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b74",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/library/nginx:1.28.0-alpine",
-            "digest": "sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c"
-          }
-        }
-      },
-      {
-        "id": "kubespray-nginx-7167e4ebc08b",
-        "family": "kubernetes",
-        "version": "1.28.2-alpine",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/nginx:1.28.2-alpine-mirror-0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c4",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/library/nginx:1.28.2-alpine",
-            "digest": "sha256:0c8a74b863b202a8e9ce8b2f97cc8bf96bc573206d46c2c469d507095dd2c77e"
-          }
-        }
-      },
-      {
-        "id": "kubespray-node-117e4c2a0fbf",
-        "family": "kubernetes",
-        "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/node:v3.30.6",
-            "digest": "sha256:3a1cdf9512ca47555fd450fd26444ab35d4c77081c25e4ab0699375e9d1651ff"
-          }
-        }
-      },
-      {
         "id": "kubespray-node-77c1a7981006",
         "family": "kubernetes",
         "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
+        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.31.5",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4878,88 +2444,16 @@
         }
       },
       {
-        "id": "kubespray-node-f33bf95c654d",
-        "family": "kubernetes",
-        "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/node:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/node:v3.30.5",
-            "digest": "sha256:71c8c021c6aa8fbf70bb3cfaedc01bdcc4a4b493e52efd1a18112c6f1b1e58ad"
-          }
-        }
-      },
-      {
-        "id": "kubespray-operator-7c35bff2c3cc",
-        "family": "kubernetes",
-        "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/operator:v1.19.4",
-            "digest": "sha256:f4e6d781137b6709cccc2c9f8e18528a6a05559c04cae419b9ced30c818f082a"
-          }
-        }
-      },
-      {
-        "id": "kubespray-operator-generic-c6b4e2064d8e",
-        "family": "kubernetes",
-        "version": "1.19.4",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/cilium/operator-generic:v1.19.4-mirror-set-12c8891f2010ee51819551dfebcdec09228f1a0e9e17b866",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/cilium/operator-generic:v1.19.4",
-            "digest": "sha256:1aa2b62735e7d8ab49ee840ae59c346932024c88901579121395c1271b435f71"
-          }
-        }
-      },
-      {
         "id": "kubespray-pause-6bafff9caf95",
         "family": "kubernetes",
         "version": "3.10.1",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1-mirror-e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd",
+        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10.1",
         "scopes": [
           "kubespray"
         ],
         "runtime": true,
         "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
+        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / evaluated roles/kubespray_defaults and roles/download",
         "consumers": [
           "kubespray"
         ],
@@ -4970,174 +2464,6 @@
             "type": "mirror",
             "source": "registry.k8s.io/pause:3.10.1",
             "digest": "sha256:e5b941ef8f71de54dc3a13398226c269ba217d06650a21bd3afcf9d890cf1f41"
-          }
-        }
-      },
-      {
-        "id": "kubespray-pause-6f731803067f",
-        "family": "kubernetes",
-        "version": "3.10",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/pause:3.10-mirror-7c38f24774e3cbd906d2d33c38354ccf787635581c122965",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/pause:3.10",
-            "digest": "sha256:7c38f24774e3cbd906d2d33c38354ccf787635581c122965132c9bd309754d4a"
-          }
-        }
-      },
-      {
-        "id": "kubespray-registry-8a454201835a",
-        "family": "kubernetes",
-        "version": "2.8.1",
-        "target": "10.77.0.9:32443/atum/kubespray/index.docker.io/library/registry:2.8.1-mirror-85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507ad",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "index.docker.io/library/registry:2.8.1",
-            "digest": "sha256:85d4cd48754d4e8e4d4fe933bbde017d969e0e20775507add9faca39064bf9b0"
-          }
-        }
-      },
-      {
-        "id": "kubespray-snapshot-controller-714b107c1ee8",
-        "family": "kubernetes",
-        "version": "7.0.2",
-        "target": "10.77.0.9:32443/atum/kubespray/registry.k8s.io/sig-storage/snapshot-controller:v7.0.2-mirror-fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "registry.k8s.io/sig-storage/snapshot-controller:v7.0.2",
-            "digest": "sha256:fbfccd702f03ff2a1e6178c57bc9ea99f24bdde1a080d919747d1c83204d2684"
-          }
-        }
-      },
-      {
-        "id": "kubespray-speaker-665977c8efe1",
-        "family": "kubernetes",
-        "version": "0.13.9",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/metallb/speaker:v0.13.9-mirror-set-3bb9c9c298817222557df8e987941eb3d4e3f17e0235d7b0",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/metallb/speaker:v0.13.9",
-            "digest": "sha256:d314a4140a5b2341718d7185f4129f8776141ce64874487743ebe42ec9cf275f"
-          }
-        }
-      },
-      {
-        "id": "kubespray-typha-32be33bfb81f",
-        "family": "kubernetes",
-        "version": "3.31.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.31.5-mirror-set-db0f665b755dabeb73a0cc4188339addc67d0f2f47dc8feb",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 1c9add48975060f45396b34d8e022c30d7f80dab / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/typha:v3.31.5",
-            "digest": "sha256:edd3c5b8ba1af10a77a21865bdbbbd8584eba84e20feceb99645aa6b48c31e99"
-          }
-        }
-      },
-      {
-        "id": "kubespray-typha-a2c9cbcbd89b",
-        "family": "kubernetes",
-        "version": "3.30.6",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.6-mirror-set-045c21db0378dab4a0fa0aae9639d1918aa67c3902863568",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ f4ccdb5e72395eaf9f3444056ebd1a6625ddb89a / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/typha:v3.30.6",
-            "digest": "sha256:47e9f0eac793d3c122a761b1c47ac699882737085e095a22d90372535cfc000b"
-          }
-        }
-      },
-      {
-        "id": "kubespray-typha-e994ea476f5f",
-        "family": "kubernetes",
-        "version": "3.30.5",
-        "target": "10.77.0.9:32443/atum/kubespray/quay.io/calico/typha:v3.30.5-mirror-set-199ba1e8a90268cdd373b259020d84ba22e82e412efa08be",
-        "scopes": [
-          "kubespray"
-        ],
-        "runtime": true,
-        "license": "upstream project license",
-        "provenance": "https://github.com/kubernetes-sigs/kubespray.git @ 0c6a29553f90c55cba5e0e359470321dc7cf7d29 / contrib/offline/generate_list.sh",
-        "consumers": [
-          "kubespray"
-        ],
-        "bigBangRefs": [],
-        "discovery": "kubespray",
-        "delivery": {
-          "default": {
-            "type": "mirror",
-            "source": "quay.io/calico/typha:v3.30.5",
-            "digest": "sha256:c8ed836f43aa3b7a13582c7d7dfdc21ad338b9fc62e77ca360a0c01ee123737c"
           }
         }
       },
@@ -5663,7 +2989,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-0f1aabd5a0781ed2b937fa9ffdffecc4318c73ed6b088e556dd248f8aeda6d79",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf",
         "scopes": [
           "bigbang"
         ],
@@ -6135,7 +3461,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-aca0bab517e1cd364605da89697d47166c90894ab2cf9b098a7a76ee6f6535ae",
+        "target": "10.77.0.9:32443/atum/vault:build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6",
         "scopes": [
           "bigbang"
         ],

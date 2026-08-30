@@ -167,6 +167,9 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	if err := projectChartGlobalImageRegistries(generated, images); err != nil {
 		return err
 	}
+	if err := projectPublicHarborPullSecrets(generated); err != nil {
+		return err
+	}
 	if err := projectMonitoringBlackboxImage(generated, images); err != nil {
 		return err
 	}
@@ -180,7 +183,26 @@ func projectSelectedImageValues(generated map[string]any, desired config.Documen
 	); err != nil {
 		return err
 	}
-	return projectKyvernoWatchListCompatibility(generated, desired, images)
+	return nil
+}
+
+// projectPublicHarborPullSecrets removes selected-package defaults that refer
+// to Big Bang's Registry1 credential. Atum publishes every runtime image to
+// its public, immutable Harbor project, so retaining these references produces
+// FailedToRetrieveImagePullSecret warnings without participating in image
+// authentication. Garage's init Job hard-codes the same Secret name in its
+// template and intentionally remains package-owned rather than post-rendered.
+func projectPublicHarborPullSecrets(generated map[string]any) error {
+	for _, path := range [...]string{
+		"addons.metricsServer.values.upstream.imagePullSecrets",
+		"packages.cloudnative-pg.values.upstream.imagePullSecrets",
+		"packages.redis.values.upstream.global.imagePullSecrets",
+	} {
+		if err := setNestedValue(generated, path, []any{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 const (
@@ -358,71 +380,6 @@ func projectRedisModuleCompatibility(
 		generated,
 		"packages.redis.values.upstream.commonConfiguration",
 		redisModuleConfiguration,
-	)
-}
-
-const (
-	kyvernoWatchListPackageVersion     = "3.8.2-bb.2"
-	kyvernoWatchListApplicationVersion = "1.18.2"
-	kyvernoWatchListKubernetesMinor    = "1.35."
-)
-
-// projectKyvernoWatchListCompatibility disables only client-go's streaming
-// list optimization for the exact release boundary that hung every Kyverno
-// controller before its ConfigMap informer warmed. Ordinary LIST+WATCH remains
-// enabled. The exact guards stop the updater at the next package, application,
-// or Kubernetes-minor boundary so this fallback cannot silently become a
-// permanent platform default.
-func projectKyvernoWatchListCompatibility(
-	generated map[string]any,
-	desired config.Document,
-	images selectedImageIndex,
-) error {
-	kyverno, err := selectedArtifactImage(
-		images,
-		kyvernoArtifact,
-		"registry1.dso.mil/ironbank/opensource/kyverno",
-	)
-	if err != nil {
-		return err
-	}
-	target, err := desired.Orchestration.TargetRelease()
-	if err != nil {
-		return err
-	}
-	packageVersion := ""
-	for _, selected := range desired.Platform.Packages {
-		if selected.ID != "kyverno" {
-			continue
-		}
-		if packageVersion != "" {
-			return errors.New("selected platform contains duplicate Kyverno packages")
-		}
-		packageVersion = selected.Source.Version
-	}
-	if packageVersion == "" {
-		return errors.New("selected platform has no Kyverno package")
-	}
-	if packageVersion != kyvernoWatchListPackageVersion ||
-		kyverno.Version != kyvernoWatchListApplicationVersion ||
-		!strings.HasPrefix(target.Kubernetes, kyvernoWatchListKubernetesMinor) {
-		return fmt.Errorf(
-			"Kyverno WatchListClient fallback requires review outside package %s, application %s, Kubernetes %sx (selected %s, %s, %s)",
-			kyvernoWatchListPackageVersion,
-			kyvernoWatchListApplicationVersion,
-			kyvernoWatchListKubernetesMinor,
-			packageVersion,
-			kyverno.Version,
-			target.Kubernetes,
-		)
-	}
-	return setNestedValue(
-		generated,
-		"kyverno.values.upstream.global.extraEnvVars",
-		[]any{map[string]any{
-			"name":  "KUBE_FEATURE_WatchListClient",
-			"value": "false",
-		}},
 	)
 }
 

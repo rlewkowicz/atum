@@ -1,6 +1,7 @@
 locals {
   disk_size_bytes         = var.disk_size_gib * 1024 * 1024 * 1024
   bastion_data_size_bytes = var.bastion_data_disk_size_gib * 1024 * 1024 * 1024
+  node_data_size_bytes    = var.node_data_disk_size_gib * 1024 * 1024 * 1024
   load_balancer_name      = "${var.name_prefix}-lb"
   load_balancer_mac       = "52:54:00:61:74:0a"
   bastion_name            = "${var.name_prefix}-bastion"

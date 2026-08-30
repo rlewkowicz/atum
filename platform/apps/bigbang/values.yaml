@@ -57,12 +57,13 @@ fluentbit:
           [OUTPUT]
               Name                opensearch
               Match               kube.*
-              Host                opensearch-cluster-master.opensearch.svc.cluster.local
+              Host                opensearch-cluster-master.opensearch
               Port                9200
               Suppress_Type_Name  On
               Logstash_Format     On
               Logstash_Prefix     kubernetes
               Retry_Limit         False
+              Buffer_Size         1M
               HTTP_User           ${OPENSEARCH_USER}
               HTTP_Passwd         ${OPENSEARCH_PASSWORD}
               tls                 On
@@ -71,12 +72,13 @@ fluentbit:
           [OUTPUT]
               Name                opensearch
               Match               host.*
-              Host                opensearch-cluster-master.opensearch.svc.cluster.local
+              Host                opensearch-cluster-master.opensearch
               Port                9200
               Suppress_Type_Name  On
               Logstash_Format     On
               Logstash_Prefix     node
               Retry_Limit         False
+              Buffer_Size         1M
               HTTP_User           ${OPENSEARCH_USER}
               HTTP_Passwd         ${OPENSEARCH_PASSWORD}
               tls                 On
@@ -375,6 +377,8 @@ packages:
                   - port: 9200
                     protocol: TCP
     values:
+      service:
+        httpPortName: https
       config:
         opensearch.yml: |
           plugins.security.ssl.transport.pemcert_filepath: certificates/tls.crt
@@ -411,7 +415,6 @@ packages:
       - name: opensearch
         namespace: opensearch
     values:
-      opensearchHosts: https://opensearch-cluster-master.opensearch.svc.cluster.local:9200
       opensearchAccount:
         secret: opensearch-dashboards-credentials
       secretMounts:

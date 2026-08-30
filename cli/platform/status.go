@@ -569,10 +569,10 @@ func (service Service) observeSeedPublication(
 	defer credentials.Clear()
 	sources := service.Project.Desired.Platform.Sources
 	forgejo := &forgejoControl{
-		url: strings.TrimSuffix(sources.ExternalURL, "/"),
-		username: credentials.Forgejo.Username,
+		url:           strings.TrimSuffix(sources.ExternalURL, "/"),
+		username:      credentials.Forgejo.Username,
 		adminPassword: credentials.Forgejo.AdminPassword.Clone(),
-		root: service.Project.Root,
+		root:          service.Project.Root,
 	}
 	api, forgejoErr := forgejo.apiClient(ctx)
 	if forgejoErr == nil {

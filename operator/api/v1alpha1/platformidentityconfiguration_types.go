@@ -57,8 +57,6 @@ type Administrator struct {
 }
 
 type GroupsScope struct {
-	// +kubebuilder:validation:Enum=atum-groups
-	Name string `json:"name"`
 	// +kubebuilder:validation:Enum=groups
 	ClaimName string `json:"claimName"`
 }

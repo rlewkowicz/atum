@@ -50,6 +50,8 @@ var atumRenderPlaceholderPattern = regexp.MustCompile(`\$\{(ATUM_[A-Z0-9_]+)\}`)
 type identityRenderContext struct {
 	Values                 string
 	OperatorConfiguration  string
+	OperatorImage          string
+	OperatorVersion        string
 	PublicIngressCIDR      string
 	PassthroughIngressCIDR string
 	Namespace              string
@@ -84,6 +86,13 @@ func identityValues(
 	}
 	if localAccess == nil {
 		return nil, errors.New("local access is required for identity values")
+	}
+	vaultEndpointCIDR, err := ipv4HostCIDR(
+		"local public ingress VIP",
+		localAccess.PublicIngressVIP,
+	)
+	if err != nil {
+		return nil, err
 	}
 	ssoEndpointCIDR, err := ipv4HostCIDR(
 		"local passthrough ingress VIP",
@@ -147,9 +156,8 @@ func identityValues(
 	keycloakServiceEntries := []any{map[string]any{
 		"name": "keycloak",
 		"spec": map[string]any{
-			"hosts":      []any{keycloakHost},
-			"location":   "MESH_EXTERNAL",
-			"resolution": "DNS",
+			"hosts":    []any{keycloakHost},
+			"location": "MESH_EXTERNAL",
 			"ports": []any{map[string]any{
 				"number": 443, "name": "tls-keycloak", "protocol": "TLS",
 			}},
@@ -208,11 +216,45 @@ func identityValues(
 		},
 		"networkPolicies": map[string]any{
 			"egress": map[string]any{"definitions": map[string]any{
+				"vaultIngress": map[string]any{
+					"to": []any{
+						map[string]any{
+							"ipBlock": map[string]any{"cidr": vaultEndpointCIDR},
+						},
+						map[string]any{
+							"namespaceSelector": map[string]any{"matchLabels": map[string]any{
+								"kubernetes.io/metadata.name": "istio-gateway",
+							}},
+							"podSelector": map[string]any{"matchLabels": map[string]any{
+								"app.kubernetes.io/name": "public-ingressgateway",
+								"istio":                  "ingressgateway",
+							}},
+						},
+					},
+					"ports": []any{
+						map[string]any{"port": 443, "protocol": "TCP"},
+						map[string]any{"port": 8443, "protocol": "TCP"},
+					},
+				},
 				"sso": map[string]any{
-					"to": []any{map[string]any{
-						"ipBlock": map[string]any{"cidr": ssoEndpointCIDR},
-					}},
-					"ports": []any{map[string]any{"port": 443, "protocol": "TCP"}},
+					"to": []any{
+						map[string]any{
+							"ipBlock": map[string]any{"cidr": ssoEndpointCIDR},
+						},
+						map[string]any{
+							"namespaceSelector": map[string]any{"matchLabels": map[string]any{
+								"kubernetes.io/metadata.name": "istio-gateway",
+							}},
+							"podSelector": map[string]any{"matchLabels": map[string]any{
+								"app.kubernetes.io/name": "passthrough-ingressgateway",
+								"istio":                  "ingressgateway",
+							}},
+						},
+					},
+					"ports": []any{
+						map[string]any{"port": 443, "protocol": "TCP"},
+						map[string]any{"port": 8443, "protocol": "TCP"},
+					},
 				},
 			}},
 		},
@@ -231,15 +273,24 @@ func identityValues(
 					admin.Group, grafana.AdministratorMapping),
 			},
 		}},
-		"monitoring": map[string]any{"sso": map[string]any{
-			"enabled": true,
-			"prometheus": map[string]any{
-				"client_id": prometheus.ID, "client_secret": secret(prometheus),
+		"monitoring": map[string]any{
+			"sso": map[string]any{
+				"enabled": true,
+				"prometheus": map[string]any{
+					"client_id": prometheus.ID, "client_secret": secret(prometheus),
+				},
+				"alertmanager": map[string]any{
+					"client_id": alertmanager.ID, "client_secret": secret(alertmanager),
+				},
 			},
-			"alertmanager": map[string]any{
-				"client_id": alertmanager.ID, "client_secret": secret(alertmanager),
-			},
-		}},
+			"values": map[string]any{"networkPolicies": map[string]any{
+				"egress": map[string]any{"from": map[string]any{
+					"prometheus": map[string]any{"to": map[string]any{
+						"definition": map[string]any{"vaultIngress": true},
+					}},
+				}},
+			}},
+		},
 		"kyvernoReporter": map[string]any{
 			"sso": map[string]any{
 				"enabled": true, "client_id": reporter.ID, "client_secret": secret(reporter),
@@ -572,6 +623,12 @@ func renderIdentityManifests(
 	if err != nil {
 		return err
 	}
+	operatorImage, err := selectedOperatorImage(desired.Delivery.Images)
+	if err != nil {
+		return err
+	}
+	context.OperatorImage = operatorImage.Target
+	context.OperatorVersion = operatorImage.Version
 	context.Cluster = desired.Project.Cluster
 	clusterRoot := filepath.Join(desired.Platform.Directory, "clusters", desired.Project.Cluster)
 	for _, name := range [...]string{"prep.yaml"} {
@@ -627,6 +684,8 @@ func renderIdentityManifests(
 		{"identity-certificate.yaml.tmpl", "platform/profiles/local/prep/certificates/identity-certificate.yaml", nil},
 		{"identity-values.yaml.tmpl", "platform/profiles/local/prep/identity-values.yaml", nil},
 		{"local-access-kustomization.yaml.tmpl", "platform/profiles/local/access/kustomization.yaml", nil},
+		{"operator-service-account.yaml.tmpl", "platform/apps/atum-operator/service-account.yaml", nil},
+		{"operator-deployment.yaml.tmpl", "platform/apps/atum-operator/deployment.yaml", nil},
 		{"operator-configuration.yaml.tmpl", "platform/apps/atum-operator/configuration.yaml", nil},
 		{"operator-network-policy.yaml.tmpl", "platform/apps/atum-operator/network-policy.yaml", nil},
 	}
@@ -828,7 +887,7 @@ func operatorConfiguration(contract *identity.Contract) ([]byte, error) {
 				Administrator: platformv1alpha1.Administrator{
 					Username: admin.Username, Group: admin.Group, RealmRole: admin.ServerRole,
 				},
-				GroupsScope: platformv1alpha1.GroupsScope{Name: "atum-groups", ClaimName: contract.GroupClaim()},
+				GroupsScope: platformv1alpha1.GroupsScope{ClaimName: contract.GroupClaim()},
 				Scopes:      contract.Scopes(),
 				Clients:     projected,
 			},

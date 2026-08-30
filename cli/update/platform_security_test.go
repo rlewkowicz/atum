@@ -93,6 +93,11 @@ func TestValidateOpenSearchMeshContractRejectsDrift(t *testing.T) {
 			x.Security.Services[0].Ports[0].TargetPort = 9300
 			v["chart/opensearch"] = x
 		}},
+		{"service plaintext protocol name", func(v map[string]chartInspection) {
+			x := v["chart/opensearch"]
+			x.Security.Services[0].Ports[0].Name = "http"
+			v["chart/opensearch"] = x
+		}},
 		{"permissive peer authentication", func(v map[string]chartInspection) {
 			x := v["wrapper/wrapper"]
 			x.Security.PeerAuthentications[0].Mode = "PERMISSIVE"
@@ -841,6 +846,7 @@ func validMeshInspections() map[string]chartInspection {
 					"opensearch-cluster-master", "opensearch/templates/service.yaml#0"),
 				Selector: exactTestSelector(openSearchLabels),
 				Ports: []servicePortObservation{{
+					Name: "https", NameValid: true,
 					Port: 9200, PortValid: true, TargetPort: 9200, TargetPortValid: true,
 				}},
 			}},

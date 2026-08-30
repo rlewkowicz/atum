@@ -14,6 +14,7 @@ const (
 	ScopeInfrastructure Scope = 1 << iota
 	ScopeOrchestration
 	ScopePlatform
+	ScopeUpdates
 	ScopeAll = ScopeInfrastructure | ScopeOrchestration | ScopePlatform
 )
 
@@ -47,6 +48,21 @@ var displayNames = map[string]string{
 }
 
 func projectPhases(project *config.Project, scope Scope) []phaseSpec {
+	if scope&ScopeUpdates != 0 {
+		return []phaseSpec{{
+			id: progress.Updates, label: "Updates",
+			items: []itemSpec{
+				{id: "update-releases", label: "Upstream releases"},
+				{id: "update-render", label: "Candidate rendering"},
+				{id: "kubespray-artifacts", label: "Kubespray artifacts"},
+				{id: "update-exact-render", label: "Exact applied rendering"},
+				{id: "update-charts", label: "Chart packaging"},
+				{id: "update-packaged-render", label: "Packaged chart rendering"},
+				{id: "update-images", label: "Image admission"},
+				{id: "update-state", label: "Declarative state"},
+			},
+		}}
+	}
 	phases := make([]phaseSpec, 0, 5)
 	phases = append(phases, phaseSpec{id: progress.Preflight, label: "Preflight"})
 	phases = append(phases, phaseSpec{

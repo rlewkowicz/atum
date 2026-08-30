@@ -182,6 +182,7 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	}
 	outputs, _ := mapAt(operational, "fluentbit", "values", "upstream", "config")["outputs"].(string)
 	for _, required := range []string{
+		"Host                opensearch-cluster-master.opensearch",
 		"HTTP_User           ${OPENSEARCH_USER}",
 		"HTTP_Passwd         ${OPENSEARCH_PASSWORD}",
 		"tls                 On",
@@ -193,6 +194,9 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	}
 	if strings.Contains(outputs, "$${OPENSEARCH_") {
 		t.Fatal("Fluent Bit output escapes a runtime environment reference")
+	}
+	if strings.Contains(outputs, "opensearch.svc.cluster.local") {
+		t.Fatal("Fluent Bit output uses an ndots-sensitive OpenSearch FQDN")
 	}
 	if !strings.Contains(access, "name: atum-platform-stateful") ||
 		!strings.Contains(access, "name: platform-certificates") {
@@ -373,6 +377,13 @@ func TestNativeOpenSearchShapeRejectsSecurityDrift(t *testing.T) {
 			},
 		},
 		{
+			name: "plaintext HTTP service protocol",
+			mutate: func(values map[string]any, _ map[string]any, _ []map[string]any, _ []map[string]any, _ map[string]any) {
+				mapAt(values, "packages", "opensearch", "values", "service")["httpPortName"] =
+					"http"
+			},
+		},
+		{
 			name: "node identity",
 			mutate: func(values map[string]any, _ map[string]any, _ []map[string]any, _ []map[string]any, _ map[string]any) {
 				config := mapAt(values, "packages", "opensearch", "values", "config")
@@ -416,11 +427,11 @@ func TestNativeOpenSearchShapeRejectsSecurityDrift(t *testing.T) {
 			},
 		},
 		{
-			name: "Dashboards HTTP endpoint",
+			name: "Dashboards endpoint override",
 			mutate: func(values map[string]any, _ map[string]any, _ []map[string]any, _ []map[string]any, _ map[string]any) {
 				dashboards := mapAt(values, "packages", "opensearch-dashboards", "values")
 				dashboards["opensearchHosts"] =
-					"http://opensearch-cluster-master.opensearch.svc.cluster.local:9200"
+					"http://opensearch-cluster-master:9200"
 			},
 		},
 		{
@@ -506,7 +517,7 @@ func TestNativeOpenSearchShapeRejectsSecurityDrift(t *testing.T) {
 				config := mapAt(values, "fluentbit", "values", "upstream", "config")
 				config["outputs"] = strings.ReplaceAll(
 					config["outputs"].(string),
-					"opensearch-cluster-master.opensearch.svc.cluster.local", "other.opensearch",
+					"opensearch-cluster-master.opensearch", "other.opensearch",
 				)
 			},
 		},
@@ -569,6 +580,9 @@ func validateNativeOpenSearchShape(
 	}
 	if !exactStrings(configValues["plugins.security.nodes_dn"], "CN=opensearch-node") {
 		return errors.New("OpenSearch node identity drifted")
+	}
+	if mapAt(openSearch, "service")["httpPortName"] != "https" {
+		return errors.New("OpenSearch HTTPS endpoint is exposed with a plaintext service protocol")
 	}
 	mounts, _ := openSearch["secretMounts"].([]any)
 	if len(mounts) != 1 ||
@@ -725,11 +739,12 @@ func validateNativeOpenSearchShape(
 	}
 
 	dashboards := mapAt(operational, "packages", "opensearch-dashboards", "values")
-	if dashboards["opensearchHosts"] !=
-		"https://opensearch-cluster-master.opensearch.svc.cluster.local:9200" ||
-		mapAt(dashboards, "opensearchAccount")["secret"] !=
-			"opensearch-dashboards-credentials" {
-		return errors.New("OpenSearch Dashboards endpoint or credential Secret drifted")
+	if _, overridden := dashboards["opensearchHosts"]; overridden {
+		return errors.New("OpenSearch Dashboards overrides the selected chart's native endpoint")
+	}
+	if mapAt(dashboards, "opensearchAccount")["secret"] !=
+		"opensearch-dashboards-credentials" {
+		return errors.New("OpenSearch Dashboards credential Secret drifted")
 	}
 	dashboardMounts, _ := dashboards["secretMounts"].([]any)
 	if len(dashboardMounts) != 1 ||
@@ -780,18 +795,22 @@ func validateNativeOpenSearchShape(
 	}
 	outputs, _ := mapAt(fluentBit, "config")["outputs"].(string)
 	for line, count := range map[string]int{
-		"Name                opensearch":                                             2,
-		"Host                opensearch-cluster-master.opensearch.svc.cluster.local": 2,
-		"Port                9200":                                                   2,
-		"HTTP_User           ${OPENSEARCH_USER}":                                     2,
-		"HTTP_Passwd         ${OPENSEARCH_PASSWORD}":                                 2,
-		"tls                 On":                                                     2,
-		"tls.verify          On":                                                     2,
-		"tls.ca_file         /fluent-bit/tls/ca.crt":                                 2,
+		"Name                opensearch":                           2,
+		"Host                opensearch-cluster-master.opensearch": 2,
+		"Port                9200":                                 2,
+		"Buffer_Size         1M":                                   2,
+		"HTTP_User           ${OPENSEARCH_USER}":                   2,
+		"HTTP_Passwd         ${OPENSEARCH_PASSWORD}":               2,
+		"tls                 On":                                   2,
+		"tls.verify          On":                                   2,
+		"tls.ca_file         /fluent-bit/tls/ca.crt":               2,
 	} {
 		if strings.Count(outputs, line) != count {
 			return fmt.Errorf("Fluent Bit OpenSearch output line %q drifted", line)
 		}
+	}
+	if strings.Contains(outputs, "opensearch.svc.cluster.local") {
+		return errors.New("Fluent Bit OpenSearch endpoint is vulnerable to ndots search expansion")
 	}
 	if strings.Contains(outputs, "$${OPENSEARCH_") {
 		return errors.New("Fluent Bit runtime credential reference is escaped")

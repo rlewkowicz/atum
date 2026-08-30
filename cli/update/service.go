@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -56,13 +57,20 @@ type chartArtifact struct {
 	Sources   []map[string]any
 }
 
-func NewService(root string, logger *slog.Logger) *Service {
+func NewService(
+	root string,
+	logger *slog.Logger,
+	runner process.Runner,
+) *Service {
+	if runner == nil {
+		runner = process.ExecRunner{}
+	}
 	return &Service{
 		root:   root,
 		cache:  gitcache.New(root),
 		charts: newChartClient(root),
 		logger: logger,
-		runner: process.ExecRunner{},
+		runner: runner,
 	}
 }
 
@@ -87,6 +95,9 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	mirrorReceipts := updateInput.MirrorReceipts
 	desired, lock, err := cloneState(project.Desired, project.Lock)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := service.retireCompletedUpgradeSteps(ctx, &desired); err != nil {
 		return Result{}, err
 	}
 	if options.Parallelism < 0 || options.Parallelism > 24 {
@@ -225,7 +236,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		return Result{}, err
 	}
 	service.logger.InfoContext(ctx, "resolving stable upstream Git releases")
-	progress.Update(ctx, progress.Platform, "update-releases", "Upstream releases",
+	progress.Update(ctx, progress.Updates, "update-releases", "Upstream releases",
 		"resolving stable release candidates", 0, 3)
 	var bigBang, kubespray, flux resolvedGit
 	group, groupContext := errgroup.WithContext(ctx)
@@ -233,7 +244,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	var resolvedSources atomic.Int64
 	reportResolvedSource := func(id string) {
 		completed := int(resolvedSources.Add(1))
-		progress.Update(ctx, progress.Platform, "update-releases", "Upstream releases",
+		progress.Update(ctx, progress.Updates, "update-releases", "Upstream releases",
 			"resolved stable source "+id, completed, 3)
 	}
 	group.Go(func() error {
@@ -569,7 +580,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	service.logger.InfoContext(ctx, "rendering exact applied Helm contracts",
 		"completed", 0, "total", len(artifacts), "parallelism", parallelism)
-	progress.Update(ctx, progress.Platform, "update-exact-render", "Exact applied rendering",
+	progress.Update(ctx, progress.Updates, "update-exact-render", "Exact applied rendering",
 		"rendering exact applied Helm contracts", 0, len(artifacts))
 	finalArtifacts, finalInspections, err := inspectAppliedArtifacts(
 		ctx,
@@ -589,7 +600,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 				"artifact", id, "completed", completed, "total", total)
 			progress.Update(
 				ctx,
-				progress.Platform,
+				progress.Updates,
 				"update-exact-render",
 				"Exact applied rendering",
 				"rendered exact applied chart "+id,
@@ -609,7 +620,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	service.logger.InfoContext(ctx, "packaging immutable Helm chart inventory",
 		"completed", 0, "total", len(chartInputs), "parallelism", parallelism)
-	progress.Update(ctx, progress.Platform, "update-charts", "Chart packaging",
+	progress.Update(ctx, progress.Updates, "update-charts", "Chart packaging",
 		"packaging immutable Helm charts", 0, len(chartInputs))
 	lockedCharts, err := packageChartInventory(
 		ctx,
@@ -620,7 +631,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		func(completed, total int) {
 			service.logger.InfoContext(ctx, "packaged immutable Helm chart inventory",
 				"completed", completed, "total", total)
-			progress.Update(ctx, progress.Platform, "update-charts", "Chart packaging",
+			progress.Update(ctx, progress.Updates, "update-charts", "Chart packaging",
 				"packaged immutable Helm charts", completed, total)
 		},
 	)
@@ -647,7 +658,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 	}
 	service.logger.InfoContext(ctx, "rendering exact packaged Helm contracts",
 		"completed", 0, "total", len(finalArtifacts), "parallelism", parallelism)
-	progress.Update(ctx, progress.Platform, "update-packaged-render", "Packaged chart rendering",
+	progress.Update(ctx, progress.Updates, "update-packaged-render", "Packaged chart rendering",
 		"rendering exact packaged Helm contracts", 0, len(finalArtifacts))
 	finalArtifacts, finalInspections, err = inspectAppliedArtifacts(
 		ctx,
@@ -667,7 +678,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 				"artifact", id, "completed", completed, "total", total)
 			progress.Update(
 				ctx,
-				progress.Platform,
+				progress.Updates,
 				"update-packaged-render",
 				"Packaged chart rendering",
 				"rendered exact packaged chart "+id,
@@ -720,7 +731,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 		"parallelism", parallelism,
 		"reuse", renderContractsUnchanged,
 	)
-	progress.Update(ctx, progress.Platform, "update-images", "Image admission",
+	progress.Update(ctx, progress.Updates, "update-images", "Image admission",
 		"verifying official image runtime contracts", 0, len(desired.Delivery.Images))
 	lastAdmissionProgress := 0
 	if err := admitFinalRenderedImages(
@@ -743,7 +754,7 @@ func (service *Service) Pull(ctx context.Context, options Options) (Result, erro
 				"completed", completed,
 				"total", total,
 			)
-			progress.Update(ctx, progress.Platform, "update-images", "Image admission",
+			progress.Update(ctx, progress.Updates, "update-images", "Image admission",
 				"verified official image runtime contracts", completed, total)
 		},
 	); err != nil {
@@ -1285,11 +1296,11 @@ func buildReleaseLadder(
 		return result, nil
 	}
 	if candidate.Major() == terminal.Major() && candidate.Minor() == terminal.Minor() {
-		result = append(result, config.ClusterRelease{
+		result[len(result)-1] = config.ClusterRelease{
 			Kubernetes: selected.kubernetes.Version,
 			Kubespray:  selected.kubespray.Source,
 			Checksums:  selected.kubernetes.Checksums,
-		})
+		}
 		return result, nil
 	}
 	if candidate.Major() != terminal.Major() {
@@ -1332,6 +1343,111 @@ func buildReleaseLadder(
 		})
 	}
 	return result, nil
+}
+
+func (service *Service) retireCompletedUpgradeSteps(
+	ctx context.Context,
+	desired *config.Document,
+) error {
+	if desired == nil || len(desired.Orchestration.Releases) <= 1 {
+		return nil
+	}
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		kubeconfig = filepath.Join(
+			service.root,
+			desired.Orchestration.Inventory,
+			"artifacts",
+			"admin.conf",
+		)
+	}
+	observer, err := kube.New(kubeconfig)
+	if errors.Is(err, kube.ErrKubeconfigAbsent) {
+		service.logger.InfoContext(
+			ctx,
+			"retaining active Kubernetes upgrade plan; cluster kubeconfig is absent",
+			"releases",
+			len(desired.Orchestration.Releases),
+		)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("observe active Kubernetes upgrade plan: %w", err)
+	}
+	observationContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	live, err := observer.ServerVersion(observationContext)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		service.logger.WarnContext(
+			ctx,
+			"retaining active Kubernetes upgrade plan; live version is unavailable",
+			"error",
+			err,
+		)
+		return nil
+	}
+	releases, err := retireCompletedReleaseSteps(
+		desired.Orchestration.Releases,
+		live,
+	)
+	if err != nil {
+		return err
+	}
+	if len(releases) == len(desired.Orchestration.Releases) {
+		return nil
+	}
+	service.logger.InfoContext(
+		ctx,
+		"retired completed Kubernetes upgrade steps",
+		"liveKubernetes",
+		releases[0].Kubernetes,
+		"remaining",
+		len(releases),
+	)
+	desired.Orchestration.Releases = releases
+	return nil
+}
+
+func retireCompletedReleaseSteps(
+	releases []config.ClusterRelease,
+	live string,
+) ([]config.ClusterRelease, error) {
+	if len(releases) <= 1 {
+		return releases, nil
+	}
+	liveVersion, err := semver.NewVersion(strings.TrimPrefix(live, "v"))
+	if err != nil || liveVersion.Prerelease() != "" ||
+		liveVersion.Metadata() != "" {
+		return nil, fmt.Errorf(
+			"live Kubernetes version %q is not a stable semantic release",
+			live,
+		)
+	}
+	for index := range releases {
+		releaseVersion, parseErr := semver.NewVersion(
+			releases[index].Kubernetes,
+		)
+		if parseErr != nil {
+			return nil, fmt.Errorf(
+				"parse committed Kubernetes release %s: %w",
+				releases[index].Kubernetes,
+				parseErr,
+			)
+		}
+		if !liveVersion.Equal(releaseVersion) {
+			continue
+		}
+		result := make([]config.ClusterRelease, len(releases)-index)
+		copy(result, releases[index:])
+		return result, nil
+	}
+	return nil, fmt.Errorf(
+		"live Kubernetes %s is absent from the active release plan",
+		liveVersion,
+	)
 }
 
 func (service *Service) resolveKubernetesCandidates(
@@ -1682,7 +1798,7 @@ func (service *Service) selectCompatiblePlatform(
 				"attempt", attempt,
 				"candidates", len(artifacts),
 			)
-			progress.Update(ctx, progress.Platform, "update-render", "Candidate rendering",
+			progress.Update(ctx, progress.Updates, "update-render", "Candidate rendering",
 				"rendering candidate Helm contracts", 0, len(artifacts))
 			inspections, err := inspectArtifacts(
 				ctx,
@@ -1692,7 +1808,7 @@ func (service *Service) selectCompatiblePlatform(
 				func(id string, completed, total int) {
 					progress.Update(
 						ctx,
-						progress.Platform,
+						progress.Updates,
 						"update-render",
 						"Candidate rendering",
 						"rendered candidate chart "+id,

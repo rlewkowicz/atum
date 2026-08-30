@@ -233,21 +233,31 @@ func matchingImageReplacement(
 	return matched, found, nil
 }
 
-func projectOperatorImage(tree *candidateTree, images []config.Image) error {
-	target := ""
+func selectedOperatorImage(images []config.Image) (config.Image, error) {
 	for _, image := range images {
 		if image.ID == "atum-operator" {
-			target = image.Target
-			break
+			if image.Target == "" || image.Version == "" {
+				return config.Image{}, errors.New(
+					"delivery inventory has an incomplete atum-operator image",
+				)
+			}
+			return image, nil
 		}
 	}
-	if target == "" {
-		return errors.New("delivery inventory has no atum-operator image")
+	return config.Image{}, errors.New(
+		"delivery inventory has no atum-operator image",
+	)
+}
+
+func projectOperatorImage(tree *candidateTree, images []config.Image) error {
+	image, err := selectedOperatorImage(images)
+	if err != nil {
+		return err
 	}
 	const relative = "platform/apps/atum-operator/deployment.yaml"
-	current, err := tree.YAML(relative)
+	current, err := tree.CandidateYAML(relative)
 	if err != nil {
-		return fmt.Errorf("read Atum operator deployment: %w", err)
+		return fmt.Errorf("read candidate Atum operator deployment: %w", err)
 	}
 	candidate := cloneMap(current)
 	spec, ok := candidate["spec"].(map[string]any)
@@ -270,7 +280,7 @@ func projectOperatorImage(tree *candidateTree, images []config.Image) error {
 	if !ok || container["name"] != "manager" {
 		return errors.New("Atum operator manager container is invalid")
 	}
-	container["image"] = target
+	container["image"] = image.Target
 	return setCandidateYAML(tree, relative, current, candidate)
 }
 

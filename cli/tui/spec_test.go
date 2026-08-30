@@ -9,6 +9,29 @@ import (
 	"atum/cli/progress"
 )
 
+func TestUpdateScopeContainsOnlyUpdaterState(t *testing.T) {
+	t.Parallel()
+
+	phases := projectPhases(&config.Project{Root: t.TempDir()}, ScopeUpdates)
+	if len(phases) != 1 || phases[0].id != progress.Updates {
+		t.Fatalf("update phases = %#v, want one updates phase", phases)
+	}
+	got := phaseItemIDs(t, phases, progress.Updates)
+	want := []string{
+		"update-releases",
+		"update-render",
+		"kubespray-artifacts",
+		"update-exact-render",
+		"update-charts",
+		"update-packaged-render",
+		"update-images",
+		"update-state",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("update items = %v, want %v", got, want)
+	}
+}
+
 func TestProjectPhasesAreDeterministicAndLocalScoped(t *testing.T) {
 	t.Parallel()
 

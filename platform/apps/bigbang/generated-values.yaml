@@ -109,7 +109,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-0f1aabd5a0781ed2b937fa9ffdffecc4318c73ed6b088e556dd248f8aeda6d79
+                    tag: build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf
             redis-bb:
                 upstream:
                     image:
@@ -169,7 +169,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-0f1aabd5a0781ed2b937fa9ffdffecc4318c73ed6b088e556dd248f8aeda6d79
+                    tag: build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
@@ -185,6 +185,7 @@ addons:
                 image:
                     repository: 10.77.0.9:32443/atum/metrics-server
                     tag: v0.8.1-mirror-6231fb0a1ffab76c92ab880f51a0d11b290f688373647bce
+                imagePullSecrets: []
     vault:
         helmRepo:
             chartName: vault
@@ -196,14 +197,14 @@ addons:
                 injector:
                     agentImage:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-aca0bab517e1cd364605da89697d47166c90894ab2cf9b098a7a76ee6f6535ae
+                        tag: build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
                         tag: 1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06
                 server:
                     image:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-aca0bab517e1cd364605da89697d47166c90894ab2cf9b098a7a76ee6f6535ae
+                        tag: build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6
 fluentbit:
     helmRepo:
         chartName: fluentbit
@@ -228,7 +229,7 @@ grafana:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: build-031b0c258f8e298ab39e1766b378c224a1e800c8c24d8c3aca403aebd4e6c507
+                tag: build-6088f61692dadfd36e5c559f0924fff21122b784d0487d3d27d43487dd8f8622
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
@@ -317,10 +318,6 @@ kyverno:
                         defaultRegistry: 10.77.0.9:32443
                         repository: atum/kyverno-cli
                         tag: v1.18.2-mirror-set-47996fb195eda93c4d01de4e752645e01d178aa4f6cafb81
-            global:
-                extraEnvVars:
-                    - name: KUBE_FEATURE_WatchListClient
-                      value: "false"
             reportsController:
                 image:
                     defaultRegistry: 10.77.0.9:32443
@@ -464,6 +461,7 @@ packages:
                 image:
                     repository: 10.77.0.9:32443/atum/cloudnative-pg
                     tag: 1.30.0-mirror-091d306935cfdf646debfe78010d59ebfb572150eb6eb922
+                imagePullSecrets: []
     garage:
         helmRepo:
             chartName: garage
@@ -474,7 +472,7 @@ packages:
             garageInit:
                 image:
                     repository: 10.77.0.9:32443/atum/garage-init-helper
-                    tag: build-98981d271463b61bcb441ef510b0db00682813855966332836319539f6501ed9
+                    tag: build-6bd9355a89295ef272a7c13916c4f054f6d6f7d0cb3eec286f97229d95d50e8e
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/garage
@@ -524,6 +522,8 @@ packages:
                     loadmodule /usr/local/lib/redis/modules/redisbloom.so
                     loadmodule /usr/local/lib/redis/modules/redistimeseries.so
                     loadmodule /usr/local/lib/redis/modules/rejson.so
+                global:
+                    imagePullSecrets: []
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/redis-8-8-0

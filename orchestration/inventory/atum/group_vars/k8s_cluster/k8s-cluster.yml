@@ -2,6 +2,8 @@
 kubeconfig_localhost: true
 kubectl_localhost: true
 container_manager: containerd
+containerd_storage_dir: /var/lib/atum/containerd
+etcd_data_dir: /var/lib/atum/etcd
 kube_network_plugin: calico
 enable_nodelocaldns: false
 dns_mode: coredns

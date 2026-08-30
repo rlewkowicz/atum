@@ -83,10 +83,15 @@ func TestSelectedKubesprayImagesExactlyJoinHarborProjection(t *testing.T) {
 		}
 		inventory.Images[index] = id
 		image := Image{
-			ID: id, Version: strings.TrimPrefix(imageReferenceTag(source), "v"),
+			ID: id, Family: "kubernetes",
+			Version:   strings.TrimPrefix(imageReferenceTag(source), "v"),
 			Discovery: "kubespray",
 			Scopes:    []string{"kubespray"},
 			Runtime:   true,
+			Consumers: []string{"kubespray"},
+			Target: targetPrefix + "kubespray/" +
+				imageReferenceRepository(source) + ":" +
+				imageReferenceTag(source),
 			Delivery: ImageDelivery{Default: DeliveryChoice{
 				Type: "mirror", Source: source,
 				Digest: "sha256:" + strings.Repeat("b", 64),

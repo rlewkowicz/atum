@@ -3,6 +3,7 @@ kind: Deployment
 metadata:
     labels:
         app.kubernetes.io/name: atum-operator
+        app.kubernetes.io/version: 0.1.1
     name: atum-operator
     namespace: atum-system
 spec:
@@ -16,9 +17,11 @@ spec:
         metadata:
             labels:
                 app.kubernetes.io/name: atum-operator
+                app.kubernetes.io/version: 0.1.1
         spec:
+            automountServiceAccountToken: false
             containers:
-                - image: 10.77.0.9:32443/atum/atum-operator:build-8785233865f8240169874f8239a9439a243cb6b17568a07b81dc6eb713ceaa8b
+                - image: 10.77.0.9:32443/atum/atum-operator:build-dac2936d25fbf72c010280d05c15532626418b1c840c82e9b1f0da189096332a
                   imagePullPolicy: IfNotPresent
                   livenessProbe:
                     httpGet:
@@ -47,8 +50,31 @@ spec:
                     readOnlyRootFilesystem: true
                     runAsNonRoot: true
                     runAsUser: 65532
+                  volumeMounts:
+                    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+                      name: kube-api-access
+                      readOnly: true
             securityContext:
                 runAsNonRoot: true
                 seccompProfile:
                     type: RuntimeDefault
             serviceAccountName: atum-operator
+            volumes:
+                - name: kube-api-access
+                  projected:
+                    defaultMode: 420
+                    sources:
+                        - serviceAccountToken:
+                            expirationSeconds: 3600
+                            path: token
+                        - configMap:
+                            items:
+                                - key: ca.crt
+                                  path: ca.crt
+                            name: kube-root-ca.crt
+                        - downwardAPI:
+                            items:
+                                - fieldRef:
+                                    apiVersion: v1
+                                    fieldPath: metadata.namespace
+                                  path: namespace

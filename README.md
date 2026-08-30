@@ -83,6 +83,11 @@ atum pull updates
 git diff -- atum.json atum.lock.json platform
 ```
 
+`pull updates` writes only declarative state and updater-local caches. It uses
+the pinned Kubespray Ansible environment against one synthetic local host to
+derive the exact selected downloads; it does not contact cluster nodes. Press
+`l` in the dashboard to stream its private raw log, or use `--raw`.
+
 ## Secrets
 
 For a shared SOPS document:

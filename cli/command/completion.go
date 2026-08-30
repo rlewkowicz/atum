@@ -25,9 +25,8 @@ func (a *app) platformCompletion(
 	if a.dryRun {
 		return tui.Completion{}, nil
 	}
-	if !status.Reconciliation.Complete() || !status.Delivery.Compliant() ||
-		!status.Local.Exact() {
-		return tui.Completion{}, errors.New("local access is not exact; completion withheld")
+	if err := platformExactnessError(status); err != nil {
+		return tui.Completion{}, fmt.Errorf("completion withheld: %w", err)
 	}
 	relative, required := a.project.Desired.ActiveIdentityContractPath()
 	if !required {

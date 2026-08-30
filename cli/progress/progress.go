@@ -17,6 +17,7 @@ const (
 	Infrastructure Phase = "infrastructure"
 	Orchestration  Phase = "orchestration"
 	Platform       Phase = "platform"
+	Updates        Phase = "updates"
 )
 
 type State uint8

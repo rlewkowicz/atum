@@ -51,6 +51,7 @@ func SelectionInventory() []byte {
 	builder.WriteString("      ansible_host: 127.0.0.1\n")
 	builder.WriteString("      ip: 127.0.0.1\n")
 	builder.WriteString("      access_ip: 127.0.0.1\n")
+	builder.WriteString("      main_access_ip: 127.0.0.1\n")
 	builder.WriteString("      ansible_system: Linux\n")
 	builder.WriteString("      ansible_architecture: x86_64\n")
 	builder.WriteString("      host_architecture: amd64\n")

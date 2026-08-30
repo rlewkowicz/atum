@@ -155,7 +155,6 @@ locals {
   EOT
 
   bastion_docker_config = jsonencode({
-    "data-root"  = "/data/docker"
     "log-driver" = "local"
     "log-opts" = {
       "max-file" = "5"
@@ -179,6 +178,20 @@ locals {
         shell               = "/bin/bash"
         ssh_authorized_keys = [local.ssh_public_key]
       }]
+      disk_setup = {
+        "/dev/vdb" = {
+          layout     = true
+          overwrite  = false
+          table_type = "gpt"
+        }
+      }
+      fs_setup = [{
+        device     = "/dev/vdb"
+        filesystem = "ext4"
+        label      = "atum-k8s-data"
+        partition  = "auto"
+      }]
+      mounts = [["LABEL=atum-k8s-data", "/var/lib/atum", "ext4", "defaults,noatime", "0", "2"]]
       write_files = [
         {
           content     = local.apt_force_ipv4
@@ -207,6 +220,8 @@ locals {
         },
       ]
       runcmd = [
+        "mountpoint -q /var/lib/atum",
+        "install -d -m 0755 /var/lib/atum/containerd /var/lib/atum/etcd /var/lib/atum/local-path-provisioner",
         "while read -r module; do [ -z \"$module\" ] && continue; modprobe \"$module\" || true; done < /etc/modules-load.d/k8s.conf",
         "/usr/local/sbin/atum-node-tune.sh",
         "systemctl enable --now qemu-guest-agent",
@@ -258,7 +273,7 @@ locals {
         },
       ]
       runcmd = [
-        "install -d -m 0755 /data/docker /data/harbor /data/forgejo /data/kubespray-files /opt/atum-seed",
+        "install -d -m 0755 /data/harbor /data/forgejo /data/kubespray-files /opt/atum-seed",
         "chown -R 1000:1000 /data/forgejo",
         "systemctl enable --now qemu-guest-agent",
         "systemctl enable docker",

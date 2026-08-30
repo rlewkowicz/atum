@@ -1,6 +1,7 @@
 package provider
 
 import (
+	platformv1alpha1 "atum/operator/api/v1alpha1"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,40 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestKeycloakClientBodyRequiresPKCEOnlyForPublicClients(t *testing.T) {
+	t.Parallel()
+
+	public, err := keycloakClientBody(platformv1alpha1.KeycloakClient{
+		ID:   "atum-headlamp",
+		Kind: platformv1alpha1.ClientPublicPKCE,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicAttributes := public["attributes"].(map[string]string)
+	if publicAttributes["pkce.code.challenge.method"] != "S256" || public["publicClient"] != true {
+		t.Fatalf("public client body = %#v", public)
+	}
+	if _, exists := public["secret"]; exists {
+		t.Fatalf("public client has secret: %#v", public)
+	}
+
+	confidential, err := keycloakClientBody(platformv1alpha1.KeycloakClient{
+		ID:   "atum-grafana",
+		Kind: platformv1alpha1.ClientConfidential,
+	}, map[string][]byte{CredentialKey("atum-grafana"): []byte("fixed-secret")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confidentialAttributes := confidential["attributes"].(map[string]string)
+	if _, exists := confidentialAttributes["pkce.code.challenge.method"]; exists {
+		t.Fatalf("confidential client requires PKCE: %#v", confidential)
+	}
+	if confidential["publicClient"] != false || confidential["secret"] != "fixed-secret" {
+		t.Fatalf("confidential client body = %#v", confidential)
+	}
+}
 
 func TestKeycloakCleanupRetainsUnownedBootstrapAdministrator(t *testing.T) {
 	var lock sync.Mutex
@@ -279,20 +314,26 @@ func TestKeycloakRejectsUnownedOwnershipProfileAttribute(t *testing.T) {
 	}
 }
 
-func TestKeycloakUserListsRequestOwnershipAttributes(t *testing.T) {
+func TestKeycloakOwnershipListsRequestFullRepresentations(t *testing.T) {
 	t.Parallel()
 
-	var query string
+	queries := make(map[string]string)
 	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		query = request.URL.RawQuery
+		queries[request.URL.Path] = request.URL.RawQuery
 		_, _ = response.Write([]byte(`[]`))
 	}))
 	keycloak := &Keycloak{client: client, realm: "master"}
 	if _, err := keycloak.list(context.Background(), realmCollection(realmUsers), "exact=true&username=atum"); err != nil {
 		t.Fatal(err)
 	}
-	if query != "briefRepresentation=false&exact=true&first=0&max=100&username=atum" {
+	if _, err := keycloak.list(context.Background(), realmCollection(realmGroups), "exact=true&search=atum-admins"); err != nil {
+		t.Fatal(err)
+	}
+	if query := queries["/admin/realms/master/users"]; query != "briefRepresentation=false&exact=true&first=0&max=100&username=atum" {
 		t.Fatalf("user query = %q", query)
+	}
+	if query := queries["/admin/realms/master/groups"]; query != "briefRepresentation=false&exact=true&first=0&max=100&search=atum-admins" {
+		t.Fatalf("group query = %q", query)
 	}
 }
 
@@ -338,6 +379,45 @@ func TestKeycloakCollectionTraversalPreservesFixedFilters(t *testing.T) {
 	}
 	if query != "clientId=realm-management&first=0&max=100" {
 		t.Fatalf("filtered page query = %q", query)
+	}
+}
+
+func TestKeycloakGrantsAdministratorRoleBeforeEnablingCredential(t *testing.T) {
+	t.Parallel()
+
+	var operations []string
+	client, _ := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/admin/realms/master/roles/admin":
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"id":   "realm-admin-id",
+				"name": "admin",
+			})
+		case request.Method == http.MethodPost &&
+			request.URL.Path == "/admin/realms/master/users/administrator-id/role-mappings/realm":
+			operations = append(operations, "role")
+			response.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPut &&
+			request.URL.Path == "/admin/realms/master/users/administrator-id/reset-password":
+			operations = append(operations, "password")
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %s", request.Method, request.URL.RequestURI())
+			response.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	keycloak := &Keycloak{client: client, realm: "master"}
+	if err := keycloak.reconcileAdministratorAuthority(
+		context.Background(),
+		"administrator-id",
+		"admin",
+		[]byte("fixed-password"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(operations, []string{"role", "password"}) {
+		t.Fatalf("administrator authority operations = %v", operations)
 	}
 }
 
@@ -442,6 +522,13 @@ func TestAudienceMapperCreateAndUpdatePayloads(t *testing.T) {
 			config, ok := payload["config"].(map[string]any)
 			if !ok {
 				t.Fatalf("mapper config = %#v", payload["config"])
+			}
+			if test.wantMethod == http.MethodPut {
+				if got := payload["id"]; got != "mapper-uuid" {
+					t.Errorf("mapper id = %#v, want mapper-uuid", got)
+				}
+			} else if _, exists := payload["id"]; exists {
+				t.Errorf("create mapper unexpectedly contains id: %#v", payload["id"])
 			}
 			for key, want := range map[string]string{
 				"access.token.claim": "true",

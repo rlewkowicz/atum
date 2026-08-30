@@ -48,7 +48,7 @@ The local target owns this explicit `10.77.0.0/24` allocation:
 | other `LoadBalancer` Services | `10.77.0.22-10.77.0.39` | kube-vip cloud-provider allocator |
 | dynamic VM DHCP leases | `10.77.0.100-10.77.0.199` | Terraform/libvirt |
 
-Terraform validates that every declared address belongs to the network, that static addresses are unique, and that the Service allocator and dynamic DHCP ranges cannot overlap static infrastructure or each other. Each Kubernetes node defaults to 12 vCPU, 24 GiB RAM, and an 80 GiB disk. The 4 GiB bastion, 1 GiB load balancer, and nodes consume 77 GiB in total. The bastion also has a separate 100 GiB data disk for Docker, Forgejo, Harbor, and the verified seed payload. This reserves enough allocatable capacity for a singleton Big Bang deployment to reschedule local-volume workloads during serial node upgrades.
+Terraform validates that every declared address belongs to the network, that static addresses are unique, and that the Service allocator and dynamic DHCP ranges cannot overlap static infrastructure or each other. Each Kubernetes node defaults to 12 vCPU, 24 GiB RAM, an 80 GiB root disk, and a separate 100 GiB raw data disk. The 4 GiB bastion, 1 GiB load balancer, and nodes consume 77 GiB of memory in total. The bastion also has a separate 100 GiB data disk for Forgejo and Harbor application data plus the verified seed payload. Docker and containerd keep their coupled engine state on the bastion root disk. This reserves enough allocatable capacity for a singleton Big Bang deployment to reschedule local-volume workloads during serial node upgrades.
 
 For the local profile, Atum passes the active target's access settings into Terraform explicitly. Terraform owns the libvirt dnsmasq service and emits one `atum.test` wildcard rule for the public gateway plus sorted exact rules such as `keycloak.atum.test` for the passthrough gateway. The internal libvirt domain remains `atum.local`; it is independent from the application domain.
 
@@ -75,11 +75,22 @@ disabled so Big Bang network policies allow DNS through the CoreDNS Service
 instead of a link-local host-network cache. Kubespray's default CoreDNS replica
 floor remains intact.
 
-Node disks use uncached native QEMU I/O so etcd durability does not contend
-with a second host page cache while containerd expands the initial platform
-image set. Node cloud-init applies the kernel modules, sysctls, file and
-locked-memory limits, systemd service limits, and virtio disk queue tuning
-during first boot before Kubespray runs.
+The Ubuntu root disks remain qcow2 overlays, but every node's high-write
+Kubernetes state uses a Terraform-owned raw virtio data disk with uncached
+native QEMU I/O. Node cloud-init formats it as ext4, mounts it at
+`/var/lib/atum`, and Terraform waits for cloud-init and verifies the exact
+mount before handing the nodes to Kubespray. Kubespray stores etcd at
+`/var/lib/atum/etcd` and containerd at `/var/lib/atum/containerd`; the
+Flux-owned local-path provisioner already stores persistent volumes at
+`/var/lib/atum/local-path-provisioner`. This removes the qcow2 backing chain
+from etcd, image expansion, and application volume I/O on copy-on-write host
+filesystems.
+
+Node cloud-init also applies the kernel modules, sysctls, file and locked-memory
+limits, systemd service limits, and virtio disk queue tuning during first boot
+before Kubespray runs.
 It installs and enables containerd for the Kubernetes nodes; the matching Kubespray inventory selects containerd rather than Docker as the CRI.
 
 When Atum supplies a lock-bound seed payload, Terraform verifies its SHA-256 and reconciles Forgejo at `http://10.77.0.9:3000`, Harbor at `http://10.77.0.9:32443`, and the retained Kubespray files repository at `http://10.77.0.9:8080` as ordinary Docker Compose services on the bastion. Their images are loaded from the payload, so deployment does not pull mutable image tags. Atum publishes only updater-selected Kubespray files, preserving their original domain-root paths; each node downloads them through Kubespray's native checksum-verified path. This private HTTP traffic remains inside the isolated local libvirt network and does not use a workstation listener or forwarding rule. `terraform destroy` removes the bastion domain and its root/data volumes along with every other VM, cloud-init volume, and the Atum network.
+
+`atum destroy --keep-bastion` retains the bastion root, Harbor cache, active Kubespray file projection, and persistent seed-service data disk while removing the cluster VMs. The next publication streams only missing content-addressed file blobs and atomically activates the complete selected manifest. If the configured SSH public key or another first-boot setting changes before the next apply, Terraform replaces the bastion VM and disposable root disk so cloud-init applies the current specification, then reattaches the unchanged application-data disk and reloads the exact seed images from the verified payload. Docker engine metadata is deliberately not split across the replaceable root and retained data disks.

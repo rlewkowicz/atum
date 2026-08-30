@@ -184,8 +184,10 @@ func projectSSHIdentitySchemaData(data []byte) ([]byte, error) {
 	const newProperty = `        "platformProfile": {"const": "local"},
         "ssh": {"$ref": "#/$defs/sshKeyPair"},
         "localAccess": {"$ref": "#/$defs/localAccess"}`
-	const definitionAnchor = `    "localAccess": {`
-	const definition = `    "sshKeyPair": {
+	const definitionAnchor = `
+    "localAccess": {`
+	const definition = `
+    "sshKeyPair": {
       "type": "object",
       "additionalProperties": false,
       "required": ["privateKeyPath"],

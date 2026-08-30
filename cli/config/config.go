@@ -1135,11 +1135,12 @@ func contentAddressedMirrorTag(version, kind, identity string) (string, error) {
 	return tag, nil
 }
 
-// MirrorTargetTags returns the Harbor tag owned by every direct mirror. Flux
-// bootstrap controllers retain their upstream version tags because
-// `flux bootstrap git` is the authoritative generator of those manifests.
-// Their locked digest and the Harbor project's tag immutability make that
-// native name exact. Every other mirror receives a content-derived tag.
+// MirrorTargetTags returns the Harbor tag owned by every direct mirror. Native
+// upstream engines retain the version tags that form part of their public
+// configuration contract: Flux bootstrap generates its controller manifests,
+// while Kubespray derives image references from version variables and registry
+// prefixes. Their locked digests and the Harbor project's tag immutability make
+// those native names exact. Every other mirror receives a content-derived tag.
 //
 // Images with the same Harbor hub and application version share one derived
 // tag from their complete repository/digest set because some official charts
@@ -1180,7 +1181,7 @@ func MirrorTargetTags(images []Image) (map[string]string, error) {
 				image.ID,
 			)
 		}
-		nativeTag, err := fluxBootstrapTargetTag(*image)
+		nativeTag, err := nativeMirrorTargetTag(*image)
 		if err != nil {
 			return nil, err
 		}
@@ -1244,7 +1245,30 @@ func MirrorTargetTags(images []Image) (map[string]string, error) {
 	return result, nil
 }
 
-func fluxBootstrapTargetTag(image Image) (string, error) {
+func nativeMirrorTargetTag(image Image) (string, error) {
+	if image.Discovery == "kubespray" {
+		sourceRepository := imageReferenceRepository(image.Delivery.Default.Source)
+		targetRepository := imageReferenceRepository(image.Target)
+		tag := imageReferenceTag(image.Delivery.Default.Source)
+		if image.Family != "kubernetes" ||
+			len(image.Scopes) != 1 ||
+			image.Scopes[0] != "kubespray" ||
+			len(image.Consumers) != 1 ||
+			image.Consumers[0] != "kubespray" ||
+			!image.Runtime ||
+			sourceRepository == "" ||
+			!strings.HasSuffix(
+				targetRepository,
+				"/kubespray/"+sourceRepository,
+			) ||
+			tag == "" {
+			return "", fmt.Errorf(
+				"Kubespray mirror %s does not match its native image contract",
+				image.ID,
+			)
+		}
+		return tag, nil
+	}
 	switch image.ID {
 	case FluxSourceController,
 		FluxKustomizeController,
@@ -1319,8 +1343,9 @@ func LoadWithOptions(rootHint string, options LoadOptions) (*Project, error) {
 }
 
 // LoadUpdateInput is the updater's one-way stale-state acquisition boundary.
-// Updater-owned derived images are discarded before semantic validation; they
-// are never recognized, converted, or retained as supported desired input.
+// Updater-owned derived images and Kubespray inventories are discarded before
+// semantic validation; they are never converted or retained as supported
+// desired input.
 func LoadUpdateInput(rootHint string, options LoadOptions) (*UpdateInput, error) {
 	return load(rootHint, options, true)
 }
@@ -1355,8 +1380,26 @@ func load(
 			return nil, err
 		}
 	}
+	desiredDecodeData := desiredData
+	lockDecodeData := lockData
+	if discardDerivedImages {
+		desiredDecodeData, err = discardUpdaterKubesprayProjection(
+			desiredData,
+			"delivery",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("discard updater-owned desired Kubespray projection: %w", err)
+		}
+		lockDecodeData, err = discardUpdaterKubesprayProjection(
+			lockData,
+			"resolved",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("discard updater-owned resolved Kubespray projection: %w", err)
+		}
+	}
 	var desired Document
-	if err := DecodeJSON(desiredData, &desired); err != nil {
+	if err := DecodeJSON(desiredDecodeData, &desired); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", DesiredFilename, err)
 	}
 	desiredIdentity, err := desired.DesiredSHA256()
@@ -1368,7 +1411,7 @@ func load(
 		return nil, fmt.Errorf("resolve desired delivery identity: %w", err)
 	}
 	var lock Lock
-	if err := DecodeJSON(lockData, &lock); err != nil {
+	if err := DecodeJSON(lockDecodeData, &lock); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", LockFilename, err)
 	}
 	receipts := map[string]Image(nil)
@@ -1415,6 +1458,38 @@ func load(
 		CompatibilityReceipts: receipts,
 		MirrorReceipts:        mirrorReceipts,
 	}, nil
+}
+
+func discardUpdaterKubesprayProjection(
+	data []byte,
+	sectionName string,
+) ([]byte, error) {
+	var document map[string]json.RawMessage
+	if err := DecodeJSON(data, &document); err != nil {
+		return nil, err
+	}
+	sectionData, exists := document[sectionName]
+	if !exists {
+		return data, nil
+	}
+	var section map[string]json.RawMessage
+	if err := DecodeJSON(sectionData, &section); err != nil {
+		return nil, fmt.Errorf("decode %s section: %w", sectionName, err)
+	}
+	if _, exists := section["kubespray"]; !exists {
+		return data, nil
+	}
+	delete(section, "kubespray")
+	sectionData, err := json.Marshal(section)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s section: %w", sectionName, err)
+	}
+	document[sectionName] = sectionData
+	result, err := json.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func updateInputImages(images []Image) []Image {

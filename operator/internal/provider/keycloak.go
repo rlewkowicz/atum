@@ -177,7 +177,7 @@ func (k *Keycloak) list(ctx context.Context, collection keycloakCollection, quer
 	if filter.Has("first") || filter.Has("max") {
 		return nil, fmt.Errorf("Keycloak %s collection filter cannot set first or max", collectionPath)
 	}
-	if collection.kind == realmUsers {
+	if collection.kind == realmUsers || collection.kind == realmGroups {
 		filter.Set("briefRepresentation", "false")
 	}
 	if !paginated {
@@ -463,10 +463,13 @@ func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platform
 	if err != nil {
 		return fmt.Errorf("administrator: %w", err)
 	}
-	if err := k.client.JSON(ctx, http.MethodPut, k.admin("/users/"+url.PathEscape(userID)+"/reset-password"), map[string]any{
-		"type": "password", "value": string(secrets["ATUM_IDENTITY_ADMIN_PASSWORD"]), "temporary": false,
-	}, nil); err != nil {
-		return fmt.Errorf("administrator password: %w", err)
+	if err := k.reconcileAdministratorAuthority(
+		ctx,
+		userID,
+		admin.RealmRole,
+		secrets["ATUM_IDENTITY_ADMIN_PASSWORD"],
+	); err != nil {
+		return err
 	}
 	groupID, err := k.upsert(ctx, realmCollection(realmGroups), "exact=true&search="+url.QueryEscape(admin.Group), "name", admin.Group, map[string]any{
 		"name":       admin.Group,
@@ -478,11 +481,8 @@ func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platform
 	if err := k.client.JSON(ctx, http.MethodPut, k.admin("/users/"+url.PathEscape(userID)+"/groups/"+url.PathEscape(groupID)), nil, nil); err != nil {
 		return fmt.Errorf("administrator group membership: %w", err)
 	}
-	if err := k.reconcileRealmRole(ctx, userID, admin.RealmRole); err != nil {
-		return err
-	}
-	scopeID, err := k.upsert(ctx, realmCollection(realmClientScopes), "", "name", intent.GroupsScope.Name, map[string]any{
-		"name":     intent.GroupsScope.Name,
+	scopeID, err := k.upsert(ctx, realmCollection(realmClientScopes), "", "name", intent.GroupsScope.ClaimName, map[string]any{
+		"name":     intent.GroupsScope.ClaimName,
 		"protocol": "openid-connect",
 		"attributes": map[string]string{
 			"include.in.token.scope":    "true",
@@ -496,7 +496,7 @@ func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platform
 	if err := k.upsertGroupsMapper(ctx, scopeID, intent.GroupsScope); err != nil {
 		return err
 	}
-	scopeIDs, err := k.defaultScopeIDs(ctx, intent.Scopes, scopeID, intent.GroupsScope.Name)
+	scopeIDs, err := k.defaultScopeIDs(ctx, intent.Scopes, scopeID, intent.GroupsScope.ClaimName)
 	if err != nil {
 		return err
 	}
@@ -508,24 +508,29 @@ func (k *Keycloak) Reconcile(ctx context.Context, domain string, intent platform
 	return k.prune(ctx, intent)
 }
 
-func (k *Keycloak) reconcileRealmRole(ctx context.Context, userID, realmRole string) error {
-	clients, err := k.list(ctx, realmCollection(realmClients), "clientId=realm-management")
-	if err != nil {
-		return fmt.Errorf("realm-management client: %w", err)
-	}
-	management, exists, err := exact(clients, "clientId", "realm-management")
-	if err != nil {
+func (k *Keycloak) reconcileAdministratorAuthority(
+	ctx context.Context,
+	userID string,
+	realmRole string,
+	password []byte,
+) error {
+	if err := k.reconcileRealmRole(ctx, userID, realmRole); err != nil {
 		return err
 	}
-	if !exists {
-		return errors.New("realm-management client is absent")
+	if err := k.client.JSON(ctx, http.MethodPut, k.admin("/users/"+url.PathEscape(userID)+"/reset-password"), map[string]any{
+		"type": "password", "value": string(password), "temporary": false,
+	}, nil); err != nil {
+		return fmt.Errorf("administrator password: %w", err)
 	}
-	roleName := "realm-" + realmRole
+	return nil
+}
+
+func (k *Keycloak) reconcileRealmRole(ctx context.Context, userID, realmRole string) error {
 	var role map[string]any
-	if err := k.client.JSON(ctx, http.MethodGet, k.admin("/clients/"+url.PathEscape(management.ID)+"/roles/"+url.PathEscape(roleName)), nil, &role); err != nil {
-		return fmt.Errorf("realm-management role %s: %w", roleName, err)
+	if err := k.client.JSON(ctx, http.MethodGet, k.admin("/roles/"+url.PathEscape(realmRole)), nil, &role); err != nil {
+		return fmt.Errorf("realm role %s: %w", realmRole, err)
 	}
-	if err := k.client.JSON(ctx, http.MethodPost, k.admin("/users/"+url.PathEscape(userID)+"/role-mappings/clients/"+url.PathEscape(management.ID)), []any{role}, nil); err != nil {
+	if err := k.client.JSON(ctx, http.MethodPost, k.admin("/users/"+url.PathEscape(userID)+"/role-mappings/realm"), []any{role}, nil); err != nil {
 		return fmt.Errorf("administrator realm role: %w", err)
 	}
 	return nil
@@ -572,12 +577,12 @@ func (k *Keycloak) upsertGroupsMapper(ctx context.Context, scopeID string, scope
 	if err != nil {
 		return err
 	}
-	current, exists, err := exact(mappers, "name", scope.Name)
+	current, exists, err := exact(mappers, "name", scope.ClaimName)
 	if err != nil {
 		return err
 	}
 	body := map[string]any{
-		"name":           scope.Name,
+		"name":           scope.ClaimName,
 		"protocol":       "openid-connect",
 		"protocolMapper": "oidc-group-membership-mapper",
 		"config": map[string]string{
@@ -593,34 +598,16 @@ func (k *Keycloak) upsertGroupsMapper(ctx context.Context, scopeID string, scope
 		return k.client.JSON(ctx, http.MethodPost, k.admin(collectionPath), body, nil)
 	}
 	if !objectMarked(current) {
-		return Conflict("groups mapper %q exists without Atum ownership", scope.Name)
+		return Conflict("groups mapper %q exists without Atum ownership", scope.ClaimName)
 	}
+	body["id"] = current.ID
 	return k.client.JSON(ctx, http.MethodPut, k.admin(collectionPath+"/"+url.PathEscape(current.ID)), body, nil)
 }
 
 func (k *Keycloak) reconcileClient(ctx context.Context, scopeIDs []string, desired platformv1alpha1.KeycloakClient, secrets map[string][]byte) error {
-	confidential := desired.Kind == platformv1alpha1.ClientConfidential
-	body := map[string]any{
-		"clientId":                  desired.ID,
-		"enabled":                   true,
-		"protocol":                  "openid-connect",
-		"publicClient":              !confidential,
-		"standardFlowEnabled":       true,
-		"directAccessGrantsEnabled": false,
-		"redirectUris":              desired.RedirectURIs,
-		"webOrigins":                desired.WebOrigins,
-		"attributes": map[string]string{
-			ownerMarkerKey:               ownerMarkerValue,
-			"pkce.code.challenge.method": "S256",
-		},
-	}
-	if confidential {
-		key := CredentialKey(desired.ID)
-		secret := secrets[key]
-		if len(secret) == 0 {
-			return fmt.Errorf("fixed credential key %q is empty", key)
-		}
-		body["secret"] = string(secret)
+	body, err := keycloakClientBody(desired, secrets)
+	if err != nil {
+		return err
 	}
 	clientID, err := k.upsert(ctx, realmCollection(realmClients), "clientId="+url.QueryEscape(desired.ID), "clientId", desired.ID, body)
 	if err != nil {
@@ -635,6 +622,34 @@ func (k *Keycloak) reconcileClient(ctx context.Context, scopeIDs []string, desir
 		return k.upsertAudienceMapper(ctx, clientID, desired.ID)
 	}
 	return k.deleteAudienceMapper(ctx, clientID, desired.ID)
+}
+
+func keycloakClientBody(desired platformv1alpha1.KeycloakClient, secrets map[string][]byte) (map[string]any, error) {
+	confidential := desired.Kind == platformv1alpha1.ClientConfidential
+	attributes := map[string]string{ownerMarkerKey: ownerMarkerValue}
+	if !confidential {
+		attributes["pkce.code.challenge.method"] = "S256"
+	}
+	body := map[string]any{
+		"clientId":                  desired.ID,
+		"enabled":                   true,
+		"protocol":                  "openid-connect",
+		"publicClient":              !confidential,
+		"standardFlowEnabled":       true,
+		"directAccessGrantsEnabled": false,
+		"redirectUris":              desired.RedirectURIs,
+		"webOrigins":                desired.WebOrigins,
+		"attributes":                attributes,
+	}
+	if confidential {
+		key := CredentialKey(desired.ID)
+		secret := secrets[key]
+		if len(secret) == 0 {
+			return nil, fmt.Errorf("fixed credential key %q is empty", key)
+		}
+		body["secret"] = string(secret)
+	}
+	return body, nil
 }
 
 func (k *Keycloak) clientMappers(ctx context.Context, clientUUID string) ([]keycloakObject, string, error) {
@@ -693,6 +708,7 @@ func (k *Keycloak) upsertAudienceMapper(ctx context.Context, clientUUID, audienc
 	if !objectMarked(current) {
 		return Conflict("audience mapper %q exists without Atum ownership", name)
 	}
+	body["id"] = current.ID
 	return k.client.JSON(ctx, http.MethodPut, k.admin(collection+"/"+url.PathEscape(current.ID)), body, nil)
 }
 
@@ -710,7 +726,7 @@ func (k *Keycloak) prune(ctx context.Context, intent platformv1alpha1.KeycloakIn
 	if err := k.pruneCollection(ctx, realmCollection(realmGroups), "name", map[string]struct{}{intent.Administrator.Group: {}}); err != nil {
 		return fmt.Errorf("prune groups: %w", err)
 	}
-	if err := k.pruneCollection(ctx, realmCollection(realmClientScopes), "name", map[string]struct{}{intent.GroupsScope.Name: {}}); err != nil {
+	if err := k.pruneCollection(ctx, realmCollection(realmClientScopes), "name", map[string]struct{}{intent.GroupsScope.ClaimName: {}}); err != nil {
 		return fmt.Errorf("prune client scopes: %w", err)
 	}
 	return nil
