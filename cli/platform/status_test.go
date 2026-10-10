@@ -118,4 +118,43 @@ func TestResourceStatusRejectsStaleNativeGeneration(t *testing.T) {
 	if status.Ready || !strings.Contains(status.Message, "stale") {
 		t.Fatalf("stale native generation was reported as current: %#v", status)
 	}
+	if status.Reason != "" {
+		t.Fatalf("stale native generation retained terminal reason: %#v", status)
+	}
+}
+
+func TestReconciliationReportsCurrentKustomizationBuildFailure(t *testing.T) {
+	t.Parallel()
+
+	object := &kube.Object{
+		Name:       "platform-profile-access",
+		Namespace:  "flux-system",
+		Generation: 2,
+		Object: map[string]any{
+			"status": map[string]any{
+				"observedGeneration": int64(-1),
+				"conditions": []any{
+					map[string]any{
+						"type":               "Ready",
+						"status":             "False",
+						"reason":             "BuildFailed",
+						"message":            "kustomize build failed\nsecond line",
+						"observedGeneration": int64(2),
+					},
+				},
+			},
+		},
+	}
+	status := resourceStatus(object)
+	if status.Reason != "BuildFailed" ||
+		status.Message != "BuildFailed: kustomize build failed" {
+		t.Fatalf("current native failure was not preserved: %#v", status)
+	}
+	reconciliation := ReconciliationStatus{
+		Kustomizations: []ResourceStatus{status},
+	}
+	failures := reconciliation.terminalFailures()
+	if len(failures) != 1 || failures[0].Name != "flux-system/platform-profile-access" {
+		t.Fatalf("terminal failures = %#v", failures)
+	}
 }

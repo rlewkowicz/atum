@@ -109,7 +109,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf
+                    tag: build-2abadc0c651c8f7d4a1de92cf24b2a728cf5108aa1867d822920ea2bf8e566ee
             redis-bb:
                 upstream:
                     image:
@@ -169,7 +169,7 @@ addons:
                 image:
                     registry: 10.77.0.9:32443
                     repository: atum/postgresql-18
-                    tag: build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf
+                    tag: build-2abadc0c651c8f7d4a1de92cf24b2a728cf5108aa1867d822920ea2bf8e566ee
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/keycloak
@@ -197,14 +197,14 @@ addons:
                 injector:
                     agentImage:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6
+                        tag: build-4ebacafa85231ac264ab5c29b567a41c17658dfb3375a6a413222bd2c9c3bd59
                     image:
                         repository: 10.77.0.9:32443/atum/vault-k8s
                         tag: 1.7.5-mirror-cfe8ede0a6e738826ef5038b2c65c30fc4edd8e5b971dc06
                 server:
                     image:
                         repository: 10.77.0.9:32443/atum/vault
-                        tag: build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6
+                        tag: build-4ebacafa85231ac264ab5c29b567a41c17658dfb3375a6a413222bd2c9c3bd59
 fluentbit:
     helmRepo:
         chartName: fluentbit
@@ -229,7 +229,7 @@ grafana:
             image:
                 registry: 10.77.0.9:32443
                 repository: atum/grafana-plugins
-                tag: build-6088f61692dadfd36e5c559f0924fff21122b784d0487d3d27d43487dd8f8622
+                tag: build-5c5095e20bf03511563bd70c46c8324c6685109cb9d92c1792cb91c4f4f6a38b
             sidecar:
                 image:
                     registry: 10.77.0.9:32443
@@ -472,7 +472,7 @@ packages:
             garageInit:
                 image:
                     repository: 10.77.0.9:32443/atum/garage-init-helper
-                    tag: build-6bd9355a89295ef272a7c13916c4f054f6d6f7d0cb3eec286f97229d95d50e8e
+                    tag: build-8b155c83513bd2f92e2e017cab3b3f6956bb2a202729cd03f7db751c30cbbf74
             upstream:
                 image:
                     repository: 10.77.0.9:32443/atum/garage

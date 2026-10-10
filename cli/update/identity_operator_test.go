@@ -82,6 +82,25 @@ func TestIdentityValuesRetainSupportedUpstreamLogoutDefaults(t *testing.T) {
 	}
 }
 
+func TestIdentityValuesNameKeycloakAsIdentityProvider(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	sso := mapAt(values, "sso")
+	if sso["name"] != identityProviderName {
+		t.Fatalf("global SSO provider name = %#v", sso["name"])
+	}
+
+	core := mapAt(values, "addons", "harbor", "values", "upstream", "core")
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(core["configureUserSettings"].(string)), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["oidc_name"] != identityProviderName {
+		t.Fatalf("Harbor OIDC provider name = %#v", settings["oidc_name"])
+	}
+}
+
 func TestIdentityValuesRetainBigBangSSOCASecretDefault(t *testing.T) {
 	t.Parallel()
 
@@ -97,7 +116,7 @@ func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 
 	values := loadLocalIdentityValues(t)
 	kiali := values["kiali"].(map[string]any)
-	if len(kiali) != 1 {
+	if len(kiali) != 2 {
 		t.Fatalf("Kiali identity values bypass Big Bang's SSO contract: %#v", kiali)
 	}
 	sso := kiali["sso"].(map[string]any)
@@ -105,6 +124,131 @@ func TestIdentityValuesUseBigBangKialiSSOContract(t *testing.T) {
 		sso["client_id"] != "atum-kiali" ||
 		sso["client_secret"] != "${ATUM_KIALI_CLIENT_SECRET}" {
 		t.Fatalf("Kiali SSO values = %#v", sso)
+	}
+}
+
+func TestIdentityValuesUseNamespaceLocalKeycloakRoutes(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+	cases := []struct {
+		name    string
+		path    []string
+		declare bool
+	}{
+		{name: "GitLab", path: []string{"addons", "gitlab"}},
+		{name: "Harbor", path: []string{"addons", "harbor"}, declare: true},
+		{name: "Headlamp", path: []string{"addons", "headlamp"}},
+		{name: "Kiali", path: []string{"kiali"}},
+		{name: "Vault", path: []string{"addons", "vault"}, declare: true},
+	}
+	for _, test := range cases {
+		routePath := append(append([]string{}, test.path...), "values", "routes", "outbound", "sso")
+		route := mapAt(values, routePath...)
+		if route["resolution"] != "NONE" {
+			t.Errorf("%s SSO route = %#v", test.name, route)
+			continue
+		}
+		if !test.declare {
+			if _, found := route["enabled"]; found {
+				t.Errorf("%s overrides Big Bang SSO route enablement: %#v", test.name, route)
+			}
+			if _, found := route["hosts"]; found {
+				t.Errorf("%s overrides Big Bang SSO route hosts: %#v", test.name, route)
+			}
+			continue
+		}
+		hosts, _ := route["hosts"].([]any)
+		ports, _ := route["ports"].([]any)
+		if route["enabled"] != true ||
+			len(hosts) != 1 || hosts[0] != "keycloak.atum.test" ||
+			len(ports) != 1 {
+			t.Errorf("%s declared SSO route = %#v", test.name, route)
+			continue
+		}
+		port, _ := ports[0].(map[string]any)
+		if port["number"] != 443 ||
+			port["name"] != "tls-keycloak" ||
+			port["protocol"] != "TLS" {
+			t.Errorf("%s SSO route port = %#v", test.name, port)
+		}
+	}
+
+	harborSSO := mapAt(
+		values,
+		"addons", "harbor", "values", "networkPolicies",
+		"egress", "from", "harbor", "to", "definition",
+	)
+	if harborSSO["sso"] != true {
+		t.Fatalf("Harbor SSO egress policy = %#v", harborSSO)
+	}
+	vaultValues := mapAt(values, "addons", "vault", "values")
+	if _, found := vaultValues["istio"]; found {
+		t.Fatalf("Vault retains a custom cluster-visible ServiceEntry: %#v", vaultValues["istio"])
+	}
+}
+
+func TestIdentityValuesWirePrivateOIDCCertificateAuthorities(t *testing.T) {
+	t.Parallel()
+
+	values := loadLocalIdentityValues(t)
+
+	gitLabCAs := mapAt(
+		values,
+		"addons", "gitlab", "values", "global", "certificates",
+	)["customCAs"].([]any)
+	if len(gitLabCAs) != 1 {
+		t.Fatalf("GitLab custom certificate authorities = %#v", gitLabCAs)
+	}
+	gitLabCA := gitLabCAs[0].(map[string]any)
+	if gitLabCA["secret"] != gitLabSSORootCASecretName ||
+		len(gitLabCA) != 2 ||
+		!exactStrings(gitLabCA["keys"], "ca.crt") {
+		t.Fatalf("GitLab OIDC certificate authority = %#v", gitLabCA)
+	}
+
+	grafanaOAuth := mapAt(
+		values,
+		"grafana", "values", "upstream", "grafana.ini", "auth.generic_oauth",
+	)
+	if len(grafanaOAuth) != 1 ||
+		grafanaOAuth["tls_client_ca"] != grafanaOIDCCertificatePath {
+		t.Fatalf("Grafana OIDC certificate authority = %#v", grafanaOAuth)
+	}
+
+	headlamp := mapAt(values, "addons", "headlamp", "values", "upstream")
+	environment := headlamp["env"].([]any)
+	if len(environment) != 1 {
+		t.Fatalf("Headlamp OIDC trust environment = %#v", environment)
+	}
+	trustDirectory := environment[0].(map[string]any)
+	if len(trustDirectory) != 2 ||
+		trustDirectory["name"] != "SSL_CERT_DIR" ||
+		trustDirectory["value"] != ssoCACertificateDirectory {
+		t.Fatalf("Headlamp OIDC trust environment = %#v", trustDirectory)
+	}
+	mounts := headlamp["volumeMounts"].([]any)
+	volumes := headlamp["volumes"].([]any)
+	if len(mounts) != 1 || len(volumes) != 1 {
+		t.Fatalf("Headlamp OIDC CA volumes = %#v / %#v", mounts, volumes)
+	}
+	mount := mounts[0].(map[string]any)
+	if mount["name"] != "atum-sso-ca" ||
+		mount["mountPath"] != ssoCACertificateDirectory ||
+		mount["readOnly"] != true {
+		t.Fatalf("Headlamp OIDC CA mount = %#v", mount)
+	}
+	volume := volumes[0].(map[string]any)
+	secret := volume["secret"].(map[string]any)
+	items := secret["items"].([]any)
+	if volume["name"] != "atum-sso-ca" ||
+		secret["secretName"] != "tls-ca-sso" ||
+		len(items) != 1 {
+		t.Fatalf("Headlamp OIDC CA volume = %#v", volume)
+	}
+	item := items[0].(map[string]any)
+	if len(item) != 2 || item["key"] != "ca.pem" || item["path"] != "ca.pem" {
+		t.Fatalf("Headlamp OIDC CA item = %#v", item)
 	}
 }
 

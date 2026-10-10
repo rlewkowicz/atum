@@ -124,6 +124,7 @@ func TestCertificateSourceSnapshotKeepsDisjointFluxOwners(t *testing.T) {
 		"platform/clusters/atum/platform-profile-access.yaml",
 		"platform/profiles/local/prep/certificates/kustomization.yaml",
 		"platform/profiles/local/access/kustomization.yaml",
+		"platform/profiles/local/access/certificates/gitlab-sso-root-ca.yaml",
 		"platform/secrets/atum/pki/kustomization.yaml",
 	} {
 		if !containsSortedMember(members, wanted) {

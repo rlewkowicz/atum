@@ -791,7 +791,7 @@
         "id": "atum-operator",
         "family": "platform-control",
         "version": "0.1.1",
-        "target": "10.77.0.9:32443/atum/atum-operator:build-dac2936d25fbf72c010280d05c15532626418b1c840c82e9b1f0da189096332a",
+        "target": "10.77.0.9:32443/atum/atum-operator:build-617dc1a07fcfdd81438ca039b4b9e50c2179e10f2b4c9563a83a4777387cd718",
         "scopes": [
           "bigbang"
         ],
@@ -1183,7 +1183,7 @@
         "id": "garage-init-helper",
         "family": "data",
         "version": "2.1.0",
-        "target": "10.77.0.9:32443/atum/garage-init-helper:build-6bd9355a89295ef272a7c13916c4f054f6d6f7d0cb3eec286f97229d95d50e8e",
+        "target": "10.77.0.9:32443/atum/garage-init-helper:build-8b155c83513bd2f92e2e017cab3b3f6956bb2a202729cd03f7db751c30cbbf74",
         "scopes": [
           "bigbang"
         ],
@@ -1682,7 +1682,7 @@
         "id": "grafana-plugins",
         "family": "observability",
         "version": "13.0.1",
-        "target": "10.77.0.9:32443/atum/grafana-plugins:build-6088f61692dadfd36e5c559f0924fff21122b784d0487d3d27d43487dd8f8622",
+        "target": "10.77.0.9:32443/atum/grafana-plugins:build-5c5095e20bf03511563bd70c46c8324c6685109cb9d92c1792cb91c4f4f6a38b",
         "scopes": [
           "bigbang"
         ],
@@ -1702,7 +1702,7 @@
             {
               "artifact": "package/grafana",
               "renderedLocation": "bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana",
-              "runtimeContractSha256": "773e4daf0ccd3e2d1e1efa6153666366139623b6322b4e074941393c03064fa8",
+              "runtimeContractSha256": "2d240132cf694fd7eedf5c234fd2693ecbf389f4d2f0be944f235accc1fd3f60",
               "command": [],
               "arguments": [],
               "runAsUser": "65532",
@@ -1720,7 +1720,7 @@
           "incompatibility": "package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource",
           "officialSource": "docker.io/grafana/grafana:13.0.1",
           "officialMaterial": "docker.io/grafana/grafana@sha256:3625fdfa3cab904abdf9faaff8f40de0639b456ac5c5d322964fe705051d5455",
-          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana@773e4daf0ccd3e2d1e1efa6153666366139623b6322b4e074941393c03064fa8].",
+          "removalCondition": "Remove when official repository index.docker.io/grafana/grafana publishes an immutable image for docker.io/grafana/grafana:13.0.1 that satisfies [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/piechart-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/polystat-panel; package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana: mounted ConfigMap /etc/grafana/grafana.ini requires official path /var/lib/bb-plugins/redis-datasource] for rendered contracts [package/grafana/bigbang/grafana/post-rendered/resources.yaml#4/spec/template/spec/containers/grafana@2d240132cf694fd7eedf5c234fd2693ecbf389f4d2f0be944f235accc1fd3f60].",
           "officialConfig": {
             "sha256": "sha256:da9910ab9d4c6917b7786e7188b612e1f5ae799886697379248d4003c4701137",
             "entrypoint": [
@@ -2989,7 +2989,7 @@
         "id": "postgresql-18",
         "family": "data",
         "version": "18.4",
-        "target": "10.77.0.9:32443/atum/postgresql-18:build-692de02f13f03633d365aacbe2bcd834b4c7cb8c4167d24cac9e38a30ae4b7cf",
+        "target": "10.77.0.9:32443/atum/postgresql-18:build-2abadc0c651c8f7d4a1de92cf24b2a728cf5108aa1867d822920ea2bf8e566ee",
         "scopes": [
           "bigbang"
         ],
@@ -3461,7 +3461,7 @@
         "id": "vault",
         "family": "secrets",
         "version": "1.21.4",
-        "target": "10.77.0.9:32443/atum/vault:build-b0972132476e1983f2ea372ddb7358ffedf6331d55f6ec23bcb294fab56170b6",
+        "target": "10.77.0.9:32443/atum/vault:build-4ebacafa85231ac264ab5c29b567a41c17658dfb3375a6a413222bd2c9c3bd59",
         "scopes": [
           "bigbang"
         ],

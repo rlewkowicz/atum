@@ -164,9 +164,9 @@ func TestExactMirrorReceiptsRetainOnlyImmutableCacheAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonical := Image{
-		ID:        "kubespray-nginx",
-		Discovery: "kubespray",
-		Target:    "registry.atum.test/atum/kubespray-nginx:" + targetTag,
+		ID:        "nginx",
+		Discovery: "rendered",
+		Target:    "registry.atum.test/atum/nginx:" + targetTag,
 		Delivery: ImageDelivery{Default: DeliveryChoice{
 			Type:   "mirror",
 			Source: "index.docker.io/library/nginx:1.28.2-alpine",

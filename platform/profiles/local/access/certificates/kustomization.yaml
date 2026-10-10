@@ -6,3 +6,4 @@ resources:
     - harbor-sso-ca.yaml
     - keycloak-sso-ca.yaml
     - vault-sso-ca.yaml
+    - gitlab-sso-root-ca.yaml

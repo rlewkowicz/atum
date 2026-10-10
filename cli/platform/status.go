@@ -302,7 +302,15 @@ func requireCurrentBigBangRoot(
 	return nil
 }
 
-func readyConditionMessage(object map[string]any) string {
+type readyConditionStatus struct {
+	reason                  string
+	message                 string
+	observedGeneration      int64
+	hasObservedGeneration   bool
+	validObservedGeneration bool
+}
+
+func readyCondition(object map[string]any) readyConditionStatus {
 	conditions, _, _ := unstructured.NestedSlice(object, "status", "conditions")
 	for _, raw := range conditions {
 		condition, _ := raw.(map[string]any)
@@ -311,16 +319,30 @@ func readyConditionMessage(object map[string]any) string {
 		}
 		reason, _ := condition["reason"].(string)
 		message, _ := condition["message"].(string)
+		status := readyConditionStatus{reason: reason}
 		switch {
 		case reason != "" && message != "":
-			return reason + ": " + firstLine(message)
+			status.message = reason + ": " + firstLine(message)
 		case message != "":
-			return firstLine(message)
+			status.message = firstLine(message)
 		case reason != "":
-			return reason
+			status.message = reason
+		default:
+			status.message = "Ready condition is pending"
 		}
+		observed, found := condition["observedGeneration"]
+		status.hasObservedGeneration = found
+		switch value := observed.(type) {
+		case int64:
+			status.observedGeneration = value
+			status.validObservedGeneration = true
+		case float64:
+			status.observedGeneration = int64(value)
+			status.validObservedGeneration = float64(status.observedGeneration) == value
+		}
+		return status
 	}
-	return "Ready condition is pending"
+	return readyConditionStatus{message: "Ready condition is pending"}
 }
 
 func firstLine(value string) string {
@@ -462,17 +484,31 @@ func resourceStatus(object *kube.Object) ResourceStatus {
 		Ready: object.Ready,
 	}
 	if !status.Ready {
-		status.Message = resourceReadinessMessage(object)
+		status.Reason, status.Message = resourceReadiness(object)
 	}
 	return status
 }
 
-func resourceReadinessMessage(object *kube.Object) string {
+func resourceReadiness(object *kube.Object) (string, string) {
 	if object == nil {
-		return "resource is absent"
+		return "", "resource is absent"
 	}
 	if object.DeletionTimestamp != nil {
-		return "resource is deleting"
+		return "", "resource is deleting"
+	}
+	condition := readyCondition(object.Object)
+	if condition.hasObservedGeneration {
+		if !condition.validObservedGeneration {
+			return "", "Ready condition observedGeneration is invalid"
+		}
+		if condition.observedGeneration != object.Generation {
+			return "", fmt.Sprintf(
+				"Ready condition observedGeneration %d is stale for generation %d",
+				condition.observedGeneration,
+				object.Generation,
+			)
+		}
+		return condition.reason, condition.message
 	}
 	observed, found, err := unstructured.NestedInt64(
 		object.Object,
@@ -480,16 +516,16 @@ func resourceReadinessMessage(object *kube.Object) string {
 		"observedGeneration",
 	)
 	if err != nil {
-		return "status observedGeneration is invalid"
+		return "", "status observedGeneration is invalid"
 	}
 	if found && observed != object.Generation {
-		return fmt.Sprintf(
+		return "", fmt.Sprintf(
 			"status observedGeneration %d is stale for generation %d",
 			observed,
 			object.Generation,
 		)
 	}
-	return readyConditionMessage(object.Object)
+	return condition.reason, condition.message
 }
 
 func resourceKind(resource kube.Resource) string {

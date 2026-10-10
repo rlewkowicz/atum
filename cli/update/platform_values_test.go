@@ -283,6 +283,42 @@ func TestPlatformValuesKeepNativeOpenSearchSecurityAndLocalFacts(t *testing.T) {
 	}
 }
 
+func TestGitLabSSORootCAProjectionIsCAOnlyAndImmutable(t *testing.T) {
+	t.Parallel()
+
+	documents := readPlatformDocuments(
+		t,
+		"platform/profiles/local/access/certificates/gitlab-sso-root-ca.yaml",
+	)
+	if len(documents) != 1 {
+		t.Fatalf("GitLab SSO root CA documents = %d", len(documents))
+	}
+	secret := documents[0]
+	metadata := mapAt(secret, "metadata")
+	data := mapAt(secret, "data")
+	annotations := mapAt(metadata, "annotations")
+	if secret["apiVersion"] != "v1" ||
+		secret["kind"] != "Secret" ||
+		secret["type"] != "Opaque" ||
+		secret["immutable"] != true ||
+		metadata["name"] != gitLabSSORootCASecretName ||
+		metadata["namespace"] != "gitlab" ||
+		annotations["atum.dev/root-ca-digest"] != "${ATUM_ROOT_CA_DIGEST}" ||
+		len(data) != 1 ||
+		data["ca.crt"] != "${ATUM_ROOT_CA_CERTIFICATE_B64}" {
+		t.Fatalf("GitLab SSO root CA Secret = %#v", secret)
+	}
+
+	kustomization := readPlatformDocuments(
+		t,
+		"platform/profiles/local/access/certificates/kustomization.yaml",
+	)[0]
+	resources, _ := kustomization["resources"].([]any)
+	if !stringReference(resources, "gitlab-sso-root-ca.yaml") {
+		t.Fatal("local access certificates omit the GitLab SSO root CA")
+	}
+}
+
 func TestNativeOpenSearchShapeRejectsSecurityDrift(t *testing.T) {
 	t.Parallel()
 	_, operational := readPlatformValues(t, "platform/apps/bigbang/values.yaml")

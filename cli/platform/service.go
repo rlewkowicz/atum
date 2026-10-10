@@ -52,6 +52,7 @@ type ApplyOptions struct {
 type ResourceStatus struct {
 	Name    string `json:"name"`
 	Ready   bool   `json:"ready"`
+	Reason  string `json:"reason,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
@@ -82,6 +83,17 @@ func (status ReconciliationStatus) resourceSets() [][]ResourceStatus {
 		status.Certificates,
 		status.PlatformIdentityConfigurations,
 	}
+}
+
+func (status ReconciliationStatus) terminalFailures() []ResourceStatus {
+	failures := make([]ResourceStatus, 0, 1)
+	for index := range status.Kustomizations {
+		resource := status.Kustomizations[index]
+		if !resource.Ready && resource.Reason == "BuildFailed" {
+			failures = append(failures, resource)
+		}
+	}
+	return failures
 }
 
 type DeliveryComplianceStatus struct {

@@ -25,7 +25,15 @@ const identityTemplateRoot = "platform/templates/identity"
 
 const renderOnlyIdentityCredential = "atum-render-only-credential-0000000000000000"
 
-const policyReporterCACertificatePath = "/var/run/atum-sso/ca.crt"
+const identityProviderName = "Keycloak"
+
+const gitLabSSORootCASecretName = "atum-sso-root-ca"
+
+const ssoCACertificateDirectory = "/var/run/atum-sso"
+
+const policyReporterCACertificatePath = ssoCACertificateDirectory + "/ca.crt"
+
+const grafanaOIDCCertificatePath = "/etc/oidc/ca.pem"
 
 const policyReporterCACertificateManifest = `apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -153,19 +161,20 @@ func identityValues(
 	scopes := strings.Join(scopeList, " ")
 	keycloakHost := strings.TrimSuffix(
 		strings.TrimPrefix(contract.Issuer(), "https://"), "/auth/realms/master")
-	keycloakServiceEntries := []any{map[string]any{
-		"name": "keycloak",
-		"spec": map[string]any{
-			"hosts":    []any{keycloakHost},
-			"location": "MESH_EXTERNAL",
-			"ports": []any{map[string]any{
+	keycloakRoute := func(declare bool) map[string]any {
+		route := map[string]any{"resolution": "NONE"}
+		if declare {
+			route["enabled"] = true
+			route["hosts"] = []any{keycloakHost}
+			route["ports"] = []any{map[string]any{
 				"number": 443, "name": "tls-keycloak", "protocol": "TLS",
-			}},
-		},
-	}}
+			}}
+		}
+		return route
+	}
 	harborSettings, err := json.Marshal(map[string]any{
 		"auth_mode":                 "oidc_auth",
-		"oidc_name":                 "Atum",
+		"oidc_name":                 identityProviderName,
 		"oidc_endpoint":             contract.Issuer(),
 		"oidc_client_id":            harbor.ID,
 		"oidc_client_secret":        secret(harbor),
@@ -199,7 +208,7 @@ func identityValues(
 	}
 	return map[string]any{
 		"sso": map[string]any{
-			"name": "Atum",
+			"name": identityProviderName,
 			"url":  contract.Issuer(),
 			"oidc": map[string]any{
 				"discoveryUrl":  contract.Issuer() + "/.well-known/openid-configuration",
@@ -262,17 +271,27 @@ func identityValues(
 			"sso": map[string]any{
 				"enabled": true, "client_id": kiali.ID, "client_secret": secret(kiali),
 			},
+			"values": map[string]any{"routes": map[string]any{"outbound": map[string]any{
+				"sso": keycloakRoute(false),
+			}}},
 		},
-		"grafana": map[string]any{"sso": map[string]any{
-			"enabled": true,
-			"grafana": map[string]any{
-				"client_id": grafana.ID, "client_secret": secret(grafana),
-				"scopes": strings.Join(scopeList, ","), "allow_sign_up": true,
-				"role_attribute_path": fmt.Sprintf(
-					"contains(groups[*], '%s') && '%s' || 'Viewer'",
-					admin.Group, grafana.AdministratorMapping),
+		"grafana": map[string]any{
+			"sso": map[string]any{
+				"enabled": true,
+				"grafana": map[string]any{
+					"client_id": grafana.ID, "client_secret": secret(grafana),
+					"scopes": strings.Join(scopeList, ","), "allow_sign_up": true,
+					"role_attribute_path": fmt.Sprintf(
+						"contains(groups[*], '%s') && '%s' || 'Viewer'",
+						admin.Group, grafana.AdministratorMapping),
+				},
 			},
-		}},
+			"values": map[string]any{"upstream": map[string]any{
+				"grafana.ini": map[string]any{"auth.generic_oauth": map[string]any{
+					"tls_client_ca": grafanaOIDCCertificatePath,
+				}},
+			}},
+		},
 		"monitoring": map[string]any{
 			"sso": map[string]any{
 				"enabled": true,
@@ -332,19 +351,42 @@ func identityValues(
 			"authservice": map[string]any{
 				"chains": authChains,
 			},
-			"gitlab": map[string]any{"sso": map[string]any{
-				"enabled": true, "client_id": gitlab.ID, "client_secret": secret(gitlab),
-				"scopes": scopeList,
-				"groups": map[string]any{
-					"groupsAttribute": contract.GroupClaim(),
-					"adminGroups":     []any{admin.Group},
-					"requiredGroups":  []any{},
+			"gitlab": map[string]any{
+				"sso": map[string]any{
+					"enabled": true, "client_id": gitlab.ID, "client_secret": secret(gitlab),
+					"scopes": scopeList,
+					"groups": map[string]any{
+						"groupsAttribute": contract.GroupClaim(),
+						"adminGroups":     []any{admin.Group},
+						"requiredGroups":  []any{},
+					},
+				},
+				"values": map[string]any{
+					"global": map[string]any{"certificates": map[string]any{
+						"customCAs": []any{map[string]any{
+							"secret": gitLabSSORootCASecretName,
+							"keys":   []any{"ca.crt"},
+						}},
+					}},
+					"routes": map[string]any{"outbound": map[string]any{
+						"sso": keycloakRoute(false),
+					}},
+				},
+			},
+			"harbor": map[string]any{"values": map[string]any{
+				"networkPolicies": map[string]any{"egress": map[string]any{
+					"from": map[string]any{"harbor": map[string]any{
+						"to": map[string]any{"definition": map[string]any{"sso": true}},
+					}},
+				}},
+				"routes": map[string]any{"outbound": map[string]any{
+					"sso": keycloakRoute(true),
+				}},
+				"upstream": map[string]any{
+					"caBundleSecretName": "atum-sso-ca",
+					"core":               map[string]any{"configureUserSettings": string(harborSettings)},
 				},
 			}},
-			"harbor": map[string]any{"values": map[string]any{"upstream": map[string]any{
-				"caBundleSecretName": "atum-sso-ca",
-				"core":               map[string]any{"configureUserSettings": string(harborSettings)},
-			}}},
 			"headlamp": map[string]any{
 				"sso": map[string]any{
 					"enabled": true, "client_id": headlamp.ID, "client_secret": "",
@@ -361,12 +403,32 @@ func identityValues(
 							}},
 						}},
 					}},
+					"routes": map[string]any{"outbound": map[string]any{
+						"sso": keycloakRoute(false),
+					}},
 					"upstream": map[string]any{
 						"clusterRoleBinding": map[string]any{"create": false},
 						"config": map[string]any{"oidc": map[string]any{
 							"clientID": headlamp.ID, "issuerURL": contract.Issuer(),
 							"scopes": strings.Join(scopeList, ","), "usePKCE": true,
 							"secret": map[string]any{"create": false},
+						}},
+						"env": []any{map[string]any{
+							"name": "SSL_CERT_DIR", "value": ssoCACertificateDirectory,
+						}},
+						"volumeMounts": []any{map[string]any{
+							"name":      "atum-sso-ca",
+							"mountPath": ssoCACertificateDirectory,
+							"readOnly":  true,
+						}},
+						"volumes": []any{map[string]any{
+							"name": "atum-sso-ca",
+							"secret": map[string]any{
+								"secretName": "tls-ca-sso",
+								"items": []any{map[string]any{
+									"key": "ca.pem", "path": "ca.pem",
+								}},
+							},
 						}},
 					},
 				},
@@ -378,8 +440,8 @@ func identityValues(
 				}}},
 			}}},
 			"vault": map[string]any{"values": map[string]any{
-				"istio": map[string]any{"serviceEntries": map[string]any{
-					"custom": keycloakServiceEntries,
+				"routes": map[string]any{"outbound": map[string]any{
+					"sso": keycloakRoute(true),
 				}},
 				"networkPolicies": map[string]any{"egress": map[string]any{"from": map[string]any{
 					"vault": map[string]any{"to": map[string]any{"definition": map[string]any{
@@ -387,12 +449,14 @@ func identityValues(
 					}}},
 				}}},
 				"upstream": map[string]any{"server": map[string]any{
-					"extraEnvironmentVars": map[string]any{"VAULT_CACERT": "/var/run/atum-sso/ca.crt"},
+					"extraEnvironmentVars": map[string]any{
+						"VAULT_CACERT": policyReporterCACertificatePath,
+					},
 					"volumes": []any{map[string]any{
 						"name": "atum-sso-ca", "secret": map[string]any{"secretName": "atum-sso-ca"},
 					}},
 					"volumeMounts": []any{map[string]any{
-						"name": "atum-sso-ca", "mountPath": "/var/run/atum-sso",
+						"name": "atum-sso-ca", "mountPath": ssoCACertificateDirectory,
 						"readOnly": true,
 					}},
 				},
@@ -684,6 +748,11 @@ func renderIdentityManifests(
 		{"identity-certificate.yaml.tmpl", "platform/profiles/local/prep/certificates/identity-certificate.yaml", nil},
 		{"identity-values.yaml.tmpl", "platform/profiles/local/prep/identity-values.yaml", nil},
 		{"local-access-kustomization.yaml.tmpl", "platform/profiles/local/access/kustomization.yaml", nil},
+		{
+			"gitlab-sso-root-ca.yaml.tmpl",
+			"platform/profiles/local/access/certificates/gitlab-sso-root-ca.yaml",
+			nil,
+		},
 		{"operator-service-account.yaml.tmpl", "platform/apps/atum-operator/service-account.yaml", nil},
 		{"operator-deployment.yaml.tmpl", "platform/apps/atum-operator/deployment.yaml", nil},
 		{"operator-configuration.yaml.tmpl", "platform/apps/atum-operator/configuration.yaml", nil},
@@ -767,7 +836,12 @@ func renderIdentityManifests(
 		resources, _ := current["resources"].([]any)
 		additions := []string{}
 		if strings.Contains(relative, "certificates") {
-			additions = []string{"harbor-sso-ca.yaml", "keycloak-sso-ca.yaml", "vault-sso-ca.yaml"}
+			additions = []string{
+				"gitlab-sso-root-ca.yaml",
+				"harbor-sso-ca.yaml",
+				"keycloak-sso-ca.yaml",
+				"vault-sso-ca.yaml",
+			}
 		}
 		for _, addition := range additions {
 			if !sliceContains(resources, addition) {

@@ -21,7 +21,7 @@ spec:
         spec:
             automountServiceAccountToken: false
             containers:
-                - image: 10.77.0.9:32443/atum/atum-operator:build-dac2936d25fbf72c010280d05c15532626418b1c840c82e9b1f0da189096332a
+                - image: 10.77.0.9:32443/atum/atum-operator:build-617dc1a07fcfdd81438ca039b4b9e50c2179e10f2b4c9563a83a4777387cd718
                   imagePullPolicy: IfNotPresent
                   livenessProbe:
                     httpGet:

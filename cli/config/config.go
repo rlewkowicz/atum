@@ -1973,6 +1973,7 @@ func generatedIdentityRequiredFiles(desired Document, profiles []string) []strin
 			filepath.Join(profileRoot, "prep", "certificates", "opensearch-certificate.yaml"),
 			filepath.Join(profileRoot, "access", "opensearch-secrets.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
+			filepath.Join(profileRoot, "access", "certificates", "gitlab-sso-root-ca.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),
 			filepath.Join(profileRoot, "access", "certificates", "vault-sso-ca.yaml"),

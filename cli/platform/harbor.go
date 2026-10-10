@@ -280,7 +280,7 @@ func (service Service) publishPublication(
 		chartSizes[publication.Charts[index].ID] = publication.Charts[index].Size
 	}
 	var chartCount atomic.Int64
-	return service.publishCharts(ctx, publication, credentials, parallelism, func(id string) {
+	err = service.publishCharts(ctx, publication, credentials, parallelism, func(id string) {
 		chartCurrent := int(chartCount.Add(1))
 		progress.Update(ctx, progress.Platform, "chart-publication", "Chart publication",
 			"published or reused chart "+id, chartCurrent, len(publication.Charts))
@@ -298,6 +298,18 @@ func (service Service) publishPublication(
 			0,
 		)
 	})
+	if err != nil {
+		progress.Fail(ctx, progress.Platform, "chart-publication", "Chart publication", err)
+		return err
+	}
+	progress.Done(
+		ctx,
+		progress.Platform,
+		"chart-publication",
+		"Chart publication",
+		fmt.Sprintf("%d/%d charts published or reused", chartCount.Load(), len(publication.Charts)),
+	)
+	return nil
 }
 
 func (service Service) publishCharts(

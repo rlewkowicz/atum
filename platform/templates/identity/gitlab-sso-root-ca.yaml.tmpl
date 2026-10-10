@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: atum-sso-root-ca
+  namespace: gitlab
+  annotations:
+    atum.dev/root-ca-digest: ${ATUM_ROOT_CA_DIGEST}
+type: Opaque
+immutable: true
+data:
+  ca.crt: ${ATUM_ROOT_CA_CERTIFICATE_B64}

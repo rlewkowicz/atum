@@ -377,6 +377,7 @@ func trackUpdateInputs(tree *candidateTree, desired config.Document) error {
 				filepath.Join(profileRoot, "prep", "certificates", "identity-certificate.yaml"),
 				filepath.Join(profileRoot, "prep", "certificates", "opensearch-certificate.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "kustomization.yaml"),
+				filepath.Join(profileRoot, "access", "certificates", "gitlab-sso-root-ca.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "harbor-sso-ca.yaml"),
 				filepath.Join(profileRoot, "access", "opensearch-secrets.yaml"),
 				filepath.Join(profileRoot, "access", "certificates", "keycloak-sso-ca.yaml"),

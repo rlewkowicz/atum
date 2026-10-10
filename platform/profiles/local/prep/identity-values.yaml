@@ -50,12 +50,41 @@ stringData:
                     - profile
                     - email
                     - groups
+            values:
+                global:
+                    certificates:
+                        customCAs:
+                            - keys:
+                                - ca.crt
+                              secret: atum-sso-root-ca
+                routes:
+                    outbound:
+                        sso:
+                            resolution: NONE
         harbor:
             values:
+                networkPolicies:
+                    egress:
+                        from:
+                            harbor:
+                                to:
+                                    definition:
+                                        sso: true
+                routes:
+                    outbound:
+                        sso:
+                            enabled: true
+                            hosts:
+                                - keycloak.atum.test
+                            ports:
+                                - name: tls-keycloak
+                                  number: 443
+                                  protocol: TLS
+                            resolution: NONE
                 upstream:
                     caBundleSecretName: atum-sso-ca
                     core:
-                        configureUserSettings: '{"auth_mode":"oidc_auth","oidc_admin_group":"atum-admins","oidc_auto_onboard":true,"oidc_client_id":"atum-harbor","oidc_client_secret":"${ATUM_HARBOR_CLIENT_SECRET}","oidc_endpoint":"https://keycloak.atum.test/auth/realms/master","oidc_extra_redirect_parms":{},"oidc_group_filter":"","oidc_groups_claim":"groups","oidc_name":"Atum","oidc_scope":"openid profile email groups","oidc_user_claim":"preferred_username","oidc_verify_cert":true}'
+                        configureUserSettings: '{"auth_mode":"oidc_auth","oidc_admin_group":"atum-admins","oidc_auto_onboard":true,"oidc_client_id":"atum-harbor","oidc_client_secret":"${ATUM_HARBOR_CLIENT_SECRET}","oidc_endpoint":"https://keycloak.atum.test/auth/realms/master","oidc_extra_redirect_parms":{},"oidc_group_filter":"","oidc_groups_claim":"groups","oidc_name":"Keycloak","oidc_scope":"openid profile email groups","oidc_user_claim":"preferred_username","oidc_verify_cert":true}'
         headlamp:
             sso:
                 client_id: atum-headlamp
@@ -73,6 +102,10 @@ stringData:
                                   name: oidc:atum-admins
                         clusterRoles: []
                         enabled: true
+                routes:
+                    outbound:
+                        sso:
+                            resolution: NONE
                 upstream:
                     clusterRoleBinding:
                         create: false
@@ -84,6 +117,20 @@ stringData:
                             secret:
                                 create: false
                             usePKCE: true
+                    env:
+                        - name: SSL_CERT_DIR
+                          value: /var/run/atum-sso
+                    volumeMounts:
+                        - mountPath: /var/run/atum-sso
+                          name: atum-sso-ca
+                          readOnly: true
+                    volumes:
+                        - name: atum-sso-ca
+                          secret:
+                            items:
+                                - key: ca.pem
+                                  path: ca.pem
+                            secretName: tls-ca-sso
         keycloak:
             values:
                 upstream:
@@ -94,18 +141,6 @@ stringData:
                                 KEYCLOAK_ADMIN_PASSWORD: ${ATUM_IDENTITY_BOOTSTRAP_PASSWORD}
         vault:
             values:
-                istio:
-                    serviceEntries:
-                        custom:
-                            - name: keycloak
-                              spec:
-                                hosts:
-                                    - keycloak.atum.test
-                                location: MESH_EXTERNAL
-                                ports:
-                                    - name: tls-keycloak
-                                      number: 443
-                                      protocol: TLS
                 networkPolicies:
                     egress:
                         from:
@@ -113,6 +148,17 @@ stringData:
                                 to:
                                     definition:
                                         sso: true
+                routes:
+                    outbound:
+                        sso:
+                            enabled: true
+                            hosts:
+                                - keycloak.atum.test
+                            ports:
+                                - name: tls-keycloak
+                                  number: 443
+                                  protocol: TLS
+                            resolution: NONE
                 upstream:
                     server:
                         extraEnvironmentVars:
@@ -134,11 +180,21 @@ stringData:
                 client_secret: ${ATUM_GRAFANA_CLIENT_SECRET}
                 role_attribute_path: contains(groups[*], 'atum-admins') && 'Admin' || 'Viewer'
                 scopes: openid,profile,email,groups
+        values:
+            upstream:
+                grafana.ini:
+                    auth.generic_oauth:
+                        tls_client_ca: /etc/oidc/ca.pem
     kiali:
         sso:
             client_id: atum-kiali
             client_secret: ${ATUM_KIALI_CLIENT_SECRET}
             enabled: true
+        values:
+            routes:
+                outbound:
+                    sso:
+                        resolution: NONE
     kyvernoReporter:
         sso:
             client_id: atum-policy-reporter
@@ -268,7 +324,7 @@ stringData:
                 labels:
                     protect: keycloak
     sso:
-        name: Atum
+        name: Keycloak
         oidc:
             authorization: https://keycloak.atum.test/auth/realms/master/protocol/openid-connect/auth
             claims:

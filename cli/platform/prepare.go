@@ -431,6 +431,33 @@ func (service Service) waitForPlatformReconciliation(
 		if observeErr == nil && status.Complete() {
 			return nil
 		}
+		if observeErr == nil {
+			failures := status.terminalFailures()
+			if len(failures) > 0 {
+				details := make([]string, 0, len(failures))
+				for index := range failures {
+					failure := failures[index]
+					detail := failure.Message
+					if detail == "" {
+						detail = failure.Reason
+					}
+					failureErr := fmt.Errorf(
+						"native Flux Kustomization %s failed: %s",
+						failure.Name,
+						detail,
+					)
+					progress.Fail(
+						ctx,
+						progress.Platform,
+						reconciliationProgressID(failure.Name),
+						"",
+						failureErr,
+					)
+					details = append(details, failureErr.Error())
+				}
+				return errors.New(strings.Join(details, "; "))
+			}
+		}
 		select {
 		case <-waitContext.Done():
 			if observeErr != nil {
@@ -456,6 +483,13 @@ func (service Service) waitForPlatformReconciliation(
 		case <-ticker.C:
 		}
 	}
+}
+
+func reconciliationProgressID(name string) string {
+	if _, id, found := strings.Cut(name, "/"); found {
+		return id
+	}
+	return name
 }
 
 func handoffSourceCommit(publication *delivery.Publication) string {
